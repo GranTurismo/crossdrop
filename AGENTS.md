@@ -32,6 +32,30 @@ an empty DATA frame marks file start.
 
 Requires Android SDK at `~/Library/Android/sdk` (local.properties). Java 21 OK.
 
+## Emulator testing
+
+Two emulators can share one virtual Wi-Fi subnet — unicast TCP crosses,
+multicast mDNS does **not** (netsim limitation — discovery needs real HW):
+
+```sh
+emulator -avd Pixel_9_Pro   -wifi-server-port 51230   # A: wlan0 = 10.0.2.16
+emulator -avd Pixel_9_Pro_B -wifi-client-port 51230   # B: wlan0 = 10.0.2.17
+```
+
+Each device's listen port: `adb -s <serial> shell "logcat -d | grep 'listening on'"`.
+
+Debug-only hooks (`com.crossdrop.debug` builds):
+
+- Radar: "loopback self-test" (send 4 MiB to self) and "add peer by address"
+  links; own port shown under device name.
+- `adb -s A shell "cmd activity start -n com.crossdrop.debug/com.crossdrop.MainActivity -e dev_peer 10.0.2.17:<BPORT>"`
+  injects a radar peer (tap it → file picker → real sendTo).
+- `-e dev_send host:port` fires the self-transfer at that endpoint directly.
+- `pm grant com.crossdrop.debug android.permission.{NEARBY_WIFI_DEVICES,
+  BLUETOOTH_SCAN,BLUETOOTH_ADVERTISE,BLUETOOTH_CONNECT,POST_NOTIFICATIONS}`
+  skips the runtime dialog.
+- `am start` is unreliable on the Android 36.1 image — use `cmd activity start`.
+
 ## Known debt / next phases
 
 - BouncyCastle is the bulk of APK size; swap for Conscrypt X25519 (API 31+)
