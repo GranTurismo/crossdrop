@@ -14,6 +14,17 @@ installed size, ambient "sonar + liquid orb" UX.
   BLE both implement `PeerDiscovery`; sightings merge by `instanceId`
   (rotating per-launch token) in `AppContainer.peers`.
 
+## App structure
+
+Four tabs behind a `NavigationBar` (a `NavigationRail` on ≥600dp widths), in
+`ui/Root.kt`: **Radar** (discovery + tap-to-send), **Transfers** (live session
+card + persisted history via `storage/HistoryStore`), **Inbox** (full-screen
+received files), **Settings** (identity, NSD/BLE toggles, storage, about,
+debug tools). The transfer view is a full-screen overlay over the shell;
+inbound offers stay modal sheets. History records each terminal session once —
+direction is taken from the emitting call site (not `_session`, which can hold
+the opposite leg of a loopback).
+
 ## Wire protocol v1
 
 `[u32 BE len][u8 type][payload]`; HELLO/HELLO_ACK cleartext JSON, everything
@@ -46,10 +57,12 @@ Each device's listen port: `adb -s <serial> shell "logcat -d | grep 'listening o
 
 Debug-only hooks (`com.crossdrop.debug` builds):
 
-- Radar: "loopback self-test" (send 4 MiB to self) and "add peer by address"
-  links; own port shown under device name.
+- Settings → Developer: "loopback self-test" (send 4 MiB to self) and
+  "add peer by address"; own port shown under the device name + in Settings.
 - `adb -s A shell "cmd activity start -n com.crossdrop.debug/com.crossdrop.MainActivity -e dev_peer 10.0.2.17:<BPORT>"`
-  injects a radar peer (tap it → file picker → real sendTo).
+  injects a radar peer (tap it → file picker → real sendTo). Note: `onNewIntent`
+  delivery via `cmd activity start` is flaky on the Android 36.1 image —
+  force-stop the app first so the extras land in `onCreate`.
 - `-e dev_send host:port` fires the self-transfer at that endpoint directly.
 - `pm grant com.crossdrop.debug android.permission.{NEARBY_WIFI_DEVICES,
   BLUETOOTH_SCAN,BLUETOOTH_ADVERTISE,BLUETOOTH_CONNECT,POST_NOTIFICATIONS}`

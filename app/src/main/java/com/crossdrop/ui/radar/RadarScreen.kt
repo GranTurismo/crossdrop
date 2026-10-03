@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
+import com.crossdrop.ui.DeviceNameDialog
 import com.crossdrop.ui.theme.AuroraBrush
 import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.DeepSpaceRaised
@@ -71,13 +72,9 @@ private fun hasAll(context: android.content.Context): Boolean =
 fun RadarScreen(
     selfName: String,
     peers: List<Peer>,
-    inboxCount: Int,
     onSendTo: (Peer, List<android.net.Uri>) -> Unit,
-    onOpenInbox: () -> Unit,
     onRename: (String) -> Unit,
     onPermissionsGranted: () -> Unit = {},
-    onSelfTest: (() -> Unit)? = null,
-    onAddPeer: ((host: String, port: Int) -> Unit)? = null,
     selfPort: Int = 0,
 ) {
     val context = LocalContext.current
@@ -104,7 +101,7 @@ fun RadarScreen(
         if (!permsGranted) permLauncher.launch(requiredPermissions().toTypedArray())
     }
 
-    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize()) {
         // ---- top bar
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp),
@@ -140,16 +137,10 @@ fun RadarScreen(
                     }
                 }
                 if (renaming) {
-                    RenameDialog(current = selfName, onDone = { new ->
+                    DeviceNameDialog(current = selfName, onDone = { new ->
                         renaming = false
                         new?.let(onRename)
                     })
-                }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (inboxCount > 0) {
-                    InboxChip(inboxCount, onOpenInbox)
-                    Spacer(Modifier.width(8.dp))
                 }
             }
         }
@@ -190,104 +181,8 @@ fun RadarScreen(
         Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally) {
             Text("Tap a device to send files", color = TextDim, fontSize = 13.sp)
-            onSelfTest?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "loopback self-test",
-                    color = TextDim.copy(alpha = 0.6f), fontSize = 11.sp,
-                    modifier = Modifier.clickable(onClick = it),
-                )
-            }
-            onAddPeer?.let { addPeer ->
-                var adding by remember { mutableStateOf(false) }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "add peer by address",
-                    color = TextDim.copy(alpha = 0.6f), fontSize = 11.sp,
-                    modifier = Modifier.clickable { adding = true },
-                )
-                if (adding) {
-                    AddPeerDialog(
-                        onDone = { adding = false },
-                        onAdd = { h, p -> adding = false; addPeer(h, p) },
-                    )
-                }
-            }
         }
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun InboxChip(count: Int, onClick: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = DeepSpaceSoft,
-        border = androidx.compose.foundation.BorderStroke(1.dp, GlassEdge),
-        onClick = onClick,
-    ) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("▼", color = RippleTeal, fontSize = 8.sp)
-            Spacer(Modifier.width(6.dp))
-            Text(
-                "Inbox · $count",
-                color = RippleTeal, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-            )
-        }
-    }
-}
-
-@Composable
-private fun RenameDialog(current: String, onDone: (String?) -> Unit) {
-    var text by remember { mutableStateOf(current) }
-    AlertDialog(
-        onDismissRequest = { onDone(null) },
-        title = { Text("Device name") },
-        text = {
-            OutlinedTextField(
-                value = text, onValueChange = { text = it },
-                singleLine = true, label = { Text("Visible name") },
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = { onDone(text) }) { Text("Save", color = RippleTeal) }
-        },
-        dismissButton = {
-            TextButton(onClick = { onDone(null) }) { Text("Cancel", color = TextDim) }
-        },
-    )
-}
-
-@Composable
-private fun AddPeerDialog(onDone: () -> Unit, onAdd: (host: String, port: Int) -> Unit) {
-    var text by remember { mutableStateOf("") }
-    val parsed = remember(text) {
-        val h = text.trim().substringBefore(':')
-        val p = text.trim().substringAfter(':', "0").toIntOrNull() ?: 0
-        h.takeIf { it.isNotBlank() && p in 1..65535 }?.let { it to p }
-    }
-    AlertDialog(
-        onDismissRequest = onDone,
-        title = { Text("Add peer by address") },
-        text = {
-            OutlinedTextField(
-                value = text, onValueChange = { text = it },
-                singleLine = true, label = { Text("host:port — e.g. 10.0.2.17:43595") },
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { parsed?.let { (h, p) -> onAdd(h, p) } },
-                enabled = parsed != null,
-            ) { Text("Add", color = RippleTeal) }
-        },
-        dismissButton = {
-            TextButton(onClick = onDone) { Text("Cancel", color = TextDim) }
-        },
-    )
 }
 
 @Composable

@@ -12,6 +12,7 @@ import com.crossdrop.core.transfer.OutgoingFile
 import com.crossdrop.core.transfer.ReceiveDecision
 import com.crossdrop.core.transfer.TransferEngine
 import com.crossdrop.core.transfer.TransferEvent
+import com.crossdrop.storage.HistoryStore
 import com.crossdrop.storage.InboxStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -65,6 +66,7 @@ class TransferCoordinator(
     private val engine: TransferEngine,
     private val server: TransferServer,
     private val inbox: InboxStore,
+    private val history: HistoryStore,
 ) {
     private val _session = MutableStateFlow<SessionState?>(null)
     val session: StateFlow<SessionState?> = _session
@@ -188,7 +190,7 @@ class TransferCoordinator(
     private fun reduce(event: TransferEvent, direction: Direction, peerName: String) {
         val cur = _session.value
         val base = cur ?: SessionState(direction, peerName)
-        _session.value = when (event) {
+        val next = when (event) {
             is TransferEvent.Connecting -> base.copy(status = SessionStatus.CONNECTING)
             is TransferEvent.Secured -> base.copy(peerName = event.peerName, sas = event.sas)
             is TransferEvent.AwaitingAccept -> base.copy(offer = event.offer, status = SessionStatus.AWAITING_ACCEPT)
@@ -201,6 +203,33 @@ class TransferCoordinator(
             is TransferEvent.DeclinedByPeer -> base.copy(status = SessionStatus.DECLINED)
             is TransferEvent.Cancelled -> base.copy(status = SessionStatus.CANCELLED)
             is TransferEvent.Failed -> base.copy(status = SessionStatus.FAILED, error = event.message)
+        }
+        // Record the outcome once, on the transition into a terminal state.
+        // Direction comes from the caller — _session may already hold the
+        // opposite leg of a loopback, so it can't be trusted here.
+        if (next.status.isTerminal && cur?.status?.isTerminal != true) record(direction, next)
+        _session.value = next
+    }
+
+    private fun record(direction: Direction, s: SessionState) {
+        val files = s.offer?.files.orEmpty()
+        runCatching {
+            history.add(
+                HistoryStore.Entry(
+                    ts = System.currentTimeMillis(),
+                    direction = direction.name,
+                    peerName = s.peerName,
+                    summary = when {
+                        files.size == 1 -> files.first().name
+                        files.size > 1 -> "${files.size} files"
+                        s.currentFileName != null -> s.currentFileName
+                        else -> "—"
+                    },
+                    files = files.size,
+                    bytes = if (files.isNotEmpty()) files.sumOf { it.size } else s.bytesDone,
+                    status = s.status.name,
+                )
+            )
         }
     }
 
