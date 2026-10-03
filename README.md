@@ -18,6 +18,9 @@ replacement by a shared Rust engine (iOS parity).
 - **Liquid orb progress** — fluid level = bytes transferred, live percentage in
   the glass, wave turbulence tracks throughput, accelerometer sloshes the
   surface, completion crystallizes.
+- **Media-aware send flow** — tapping a peer offers "Photos & videos"
+  (Android photo picker: gallery, albums, Google Photos where supported)
+  or "Files" (SAF documents picker), multi-select on both.
 - **Transfer history** — persisted log of past sends/receives with outcome.
 - **Inbox** — sandboxed staging for received files with zero-fill shredding.
 
