@@ -36,8 +36,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
+import com.crossdrop.ui.theme.AuroraViolet
 import com.crossdrop.ui.theme.DeepSpace
+import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.FluidCyan
+import com.crossdrop.ui.theme.GlassEdge
 import com.crossdrop.ui.theme.Phosphor
 import com.crossdrop.ui.theme.RippleTeal
 import com.crossdrop.ui.theme.TextDim
@@ -81,6 +84,11 @@ fun RadarCanvas(
         animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
         label = "bob",
     )
+    val tA by transition.animateFloat(
+        initialValue = 0f, targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing)),
+        label = "ambient",
+    )
 
     // Stable geometry shared by drawing + hit-testing.
     val positions = remember(peers, canvasSize, bobT) {
@@ -120,16 +128,17 @@ fun RadarCanvas(
         val maxR = min(size.width, size.height) / 2 * 0.86f
 
         drawBackground()
+        drawAmbient(center, maxR, tA)
         drawGrid(center, maxR)
         drawSweep(center, maxR, sweepT)
         drawRipples(center, maxR, rippleT)
 
         positions.forEach { (id, pos) ->
             peers.firstOrNull { it.instanceId == id }?.let { peer ->
-                drawPeerNode(pos, peer, textMeasurer)
+                drawPeerNode(pos, peer, textMeasurer, bobT)
             }
         }
-        drawSelfNode(center, selfName, textMeasurer)
+        drawSelfNode(center, selfName, textMeasurer, rippleT)
     }
 }
 
@@ -142,6 +151,36 @@ private fun DrawScope.drawBackground() {
             center = center, radius = size.maxDimension / 1.6f,
         )
     )
+}
+
+/** Nebula washes + twinkling starfield — deterministic placement, ambient drift. */
+private fun DrawScope.drawAmbient(center: Offset, maxR: Float, tA: Float) {
+    val blobs = listOf(
+        Triple(AuroraViolet, Offset(-0.9f, -0.5f), 1.1f),
+        Triple(FluidCyan, Offset(0.8f, -0.9f), 0.9f),
+        Triple(RippleTeal, Offset(0.4f, 0.95f), 1.0f),
+    )
+    blobs.forEachIndexed { i, (color, off, scale) ->
+        val drift = Offset(sin(tA * 0.4f + i * 2.1f) * 0.08f, cos(tA * 0.3f + i) * 0.06f)
+        val pos = center + Offset(off.x * maxR + drift.x * maxR, off.y * maxR + drift.y * maxR)
+        drawCircle(
+            Brush.radialGradient(listOf(color.copy(alpha = 0.055f), Color.Transparent),
+                center = pos, radius = maxR * scale),
+            radius = maxR * scale, center = pos,
+        )
+    }
+    // Stars: hash-seeded positions, gentle twinkle. Cheap ambience, no state.
+    for (i in 0 until 90) {
+        val h = (i.toLong() * 2654435761L) xor 0x9E3779B9L
+        val px = ((h ushr 33) % 1000).toFloat() / 1000f
+        val py = ((h ushr 11) % 1023).toFloat() / 1023f
+        val tw = 0.5f + 0.5f * sin(tA * (0.8f + (i % 7) * 0.22f) + i * 1.7f)
+        drawCircle(
+            Color.White.copy(alpha = 0.05f + 0.10f * tw),
+            radius = 0.8f + (i % 3) * 0.5f,
+            center = Offset(px * size.width, py * size.height),
+        )
+    }
 }
 
 private fun DrawScope.drawGrid(center: Offset, maxR: Float) {
@@ -187,21 +226,23 @@ private fun DrawScope.drawRipples(center: Offset, maxR: Float, t: Float) {
     }
 }
 
-private fun DrawScope.drawPeerNode(pos: Offset, peer: Peer, measurer: TextMeasurer) {
+private fun DrawScope.drawPeerNode(pos: Offset, peer: Peer, measurer: TextMeasurer, t: Float) {
     val reachable = peer.endpoint != null
     val alpha = if (reachable) 1f else 0.45f
     val nodeR = 30.dp.toPx()
+    // breathing pulse on the glow — each peer phased by its id hash
+    val pulse = 1f + 0.08f * sin(t + abs(peer.instanceId.hashCode()) % 11)
 
     // soft glow halo
     drawCircle(
         Brush.radialGradient(
             colors = listOf(
-                (if (reachable) RippleTeal else FluidCyan).copy(alpha = 0.35f * alpha),
+                (if (reachable) RippleTeal else FluidCyan).copy(alpha = 0.40f * alpha),
                 Color.Transparent,
             ),
-            center = pos, radius = nodeR * 1.9f,
+            center = pos, radius = nodeR * 2.0f * pulse,
         ),
-        radius = nodeR * 1.9f, center = pos,
+        radius = nodeR * 2.0f * pulse, center = pos,
     )
     // body
     drawCircle(
@@ -218,7 +259,7 @@ private fun DrawScope.drawPeerNode(pos: Offset, peer: Peer, measurer: TextMeasur
             style = Stroke(1.4f),
         )
     }
-    // label
+    // glass-pill label
     val label = measurer.measure(
         peer.name,
         TextStyle(
@@ -226,14 +267,35 @@ private fun DrawScope.drawPeerNode(pos: Offset, peer: Peer, measurer: TextMeasur
             fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
         ),
         maxLines = 1, overflow = TextOverflow.Ellipsis,
-        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 96.dp.toPx().toInt()),
+        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 120.dp.toPx().toInt()),
     )
-    drawText(label, topLeft = pos + Offset(-label.size.width / 2f, nodeR * 0.85f))
+    val padH = 10.dp.toPx(); val padV = 4.dp.toPx()
+    val pillW = label.size.width + padH * 2
+    val pillH = label.size.height + padV * 2
+    val pillTop = pos + Offset(-pillW / 2f, nodeR * 0.85f)
+    drawRoundRect(
+        DeepSpaceSoft.copy(alpha = 0.85f),
+        topLeft = pillTop, size = Size(pillW, pillH),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
+    )
+    drawRoundRect(
+        GlassEdge, topLeft = pillTop, size = Size(pillW, pillH),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
+        style = Stroke(1f),
+    )
+    drawText(label, topLeft = pillTop + Offset(padH, padV))
 }
 
 private fun RippleTealDimSafe(alpha: Float) = RippleTeal.copy(alpha = 0.85f * alpha)
 
-private fun DrawScope.drawSelfNode(center: Offset, name: String, measurer: TextMeasurer) {
+private fun DrawScope.drawSelfNode(center: Offset, name: String, measurer: TextMeasurer, t: Float) {
+    // expanding heartbeat ring
+    val phase = t % 1f
+    drawCircle(
+        RippleTeal.copy(alpha = (1f - phase) * 0.30f),
+        radius = 14.dp.toPx() + phase * 34.dp.toPx(),
+        center = center, style = Stroke(1.2f + (1f - phase) * 1.4f),
+    )
     drawCircle(
         Brush.radialGradient(
             colors = listOf(RippleTeal.copy(alpha = 0.5f), Color.Transparent),

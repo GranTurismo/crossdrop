@@ -20,8 +20,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.crossdrop.sensor.TiltSource
 import com.crossdrop.ui.theme.FluidCyan
 import com.crossdrop.ui.theme.Phosphor
@@ -30,6 +35,7 @@ import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -77,6 +83,7 @@ fun LiquidOrb(
     val flare by animateFloatAsState(
         if (completed) 1f else 0f, tween(900), label = "flare",
     )
+    val measurer = rememberTextMeasurer()
 
     Canvas(modifier.size(size)) {
         val center = Offset(this.size.width / 2, this.size.height / 2)
@@ -148,6 +155,21 @@ fun LiquidOrb(
             drawCircle(
                 Phosphor.copy(alpha = 0.25f * flare),
                 radius = r * (1f + 0.12f * flare), center = center, style = Stroke(1.5f),
+            )
+        }
+
+        // -- percent readout inside the glass (mid-transfer only)
+        if (level in 0.005f..0.995f) {
+            val pct = measurer.measure(
+                "${(level * 100f).roundToInt()}%",
+                TextStyle(
+                    color = Phosphor.copy(alpha = 0.9f), fontSize = (size.value * 0.17f).sp,
+                    fontWeight = FontWeight.Light,
+                ),
+            )
+            drawText(
+                pct,
+                topLeft = center + Offset(-pct.size.width / 2f, -pct.size.height / 2f),
             )
         }
     }

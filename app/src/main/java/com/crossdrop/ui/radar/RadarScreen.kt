@@ -32,11 +32,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
+import com.crossdrop.ui.theme.AuroraBrush
 import com.crossdrop.ui.theme.DeepSpaceSoft
+import com.crossdrop.ui.theme.DeepSpaceRaised
+import com.crossdrop.ui.theme.GlassEdge
+import com.crossdrop.ui.theme.Phosphor
 import com.crossdrop.ui.theme.RippleTeal
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
@@ -76,6 +81,7 @@ fun RadarScreen(
     selfPort: Int = 0,
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     var pendingPeer by remember { mutableStateOf<Peer?>(null) }
     var permsGranted by remember { mutableStateOf(hasAll(context)) }
 
@@ -106,14 +112,32 @@ fun RadarScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column {
-                Text("CrossDrop", color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                var renaming by remember { mutableStateOf(false) }
                 Text(
-                    selfName, color = TextDim, fontSize = 12.sp,
-                    modifier = Modifier.clickable { renaming = true },
+                    "CrossDrop",
+                    fontSize = 24.sp, fontWeight = FontWeight.ExtraBold,
+                    style = androidx.compose.ui.text.TextStyle(brush = AuroraBrush),
+                    letterSpacing = 0.5.sp,
                 )
-                if (selfPort > 0) {
-                    Text("listening :$selfPort", color = TextDim.copy(alpha = 0.6f), fontSize = 10.sp)
+                var renaming by remember { mutableStateOf(false) }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = DeepSpaceSoft,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassEdge),
+                    ) {
+                        Row(
+                            Modifier.clickable { renaming = true }
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("●", color = RippleTeal, fontSize = 7.sp)
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                selfName + if (selfPort > 0) "  :$selfPort" else "",
+                                color = TextDim, fontSize = 11.sp,
+                            )
+                        }
+                    }
                 }
                 if (renaming) {
                     RenameDialog(current = selfName, onDone = { new ->
@@ -141,6 +165,8 @@ fun RadarScreen(
                 peers = peers,
                 onPeerTap = { peer ->
                     if (peer.endpoint != null) {
+                        view.performHapticFeedback(
+                            android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                         pendingPeer = peer
                         filePicker.launch(arrayOf("*/*"))
                     }
@@ -150,6 +176,12 @@ fun RadarScreen(
                 Text(
                     "Listening for nearby devices…",
                     color = TextDim, fontSize = 13.sp,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
+                )
+            } else {
+                Text(
+                    "${peers.size} device${if (peers.size == 1) "" else "s"} nearby — tap to send",
+                    color = Phosphor, fontSize = 13.sp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 28.dp),
                 )
             }
@@ -191,13 +223,20 @@ private fun InboxChip(count: Int, onClick: () -> Unit) {
     Surface(
         shape = RoundedCornerShape(50),
         color = DeepSpaceSoft,
+        border = androidx.compose.foundation.BorderStroke(1.dp, GlassEdge),
         onClick = onClick,
     ) {
-        Text(
-            "Inbox · $count",
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            color = RippleTeal, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-        )
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("▼", color = RippleTeal, fontSize = 8.sp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                "Inbox · $count",
+                color = RippleTeal, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 

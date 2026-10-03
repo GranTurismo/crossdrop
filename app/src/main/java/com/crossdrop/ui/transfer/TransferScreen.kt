@@ -36,6 +36,7 @@ import com.crossdrop.net.isTerminal
 import com.crossdrop.sensor.TiltSource
 import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.FluidCyan
+import com.crossdrop.ui.theme.GlassEdge
 import com.crossdrop.ui.theme.Phosphor
 import com.crossdrop.ui.theme.RippleTeal
 import com.crossdrop.ui.theme.TextDim
@@ -84,13 +85,19 @@ fun TransferScreen(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 when (session.direction) {
-                    Direction.SENDING -> "Sending to ${session.peerName}"
-                    Direction.RECEIVING -> "Receiving from ${session.peerName}"
+                    Direction.SENDING -> "↑  S E N D I N G"
+                    Direction.RECEIVING -> "↓  R E C E I V I N G"
                 },
-                color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
+                color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                letterSpacing = 3.sp,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                session.peerName,
+                color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold,
             )
             session.sas?.let {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(10.dp))
                 SasChip(it)
             }
         }
@@ -110,16 +117,38 @@ fun TransferScreen(
                 color = statusColor(session.status),
                 fontSize = 15.sp, fontWeight = FontWeight.Medium,
             )
-            session.currentFileName?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(it, color = TextDim, fontSize = 13.sp, maxLines = 1)
+            Spacer(Modifier.height(14.dp))
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = DeepSpaceSoft,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GlassEdge),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f, fill = false)) {
+                        Text(
+                            session.currentFileName ?: "preparing…",
+                            color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "${formatBytes(session.bytesDone)} / ${formatBytes(session.bytesTotal)}",
+                            color = TextDim, fontSize = 11.sp,
+                        )
+                    }
+                    if (session.bytesPerSec > 0) {
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            "${formatBytes(session.bytesPerSec)}/s",
+                            color = FluidCyan, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(start = 16.dp),
+                        )
+                    }
+                }
             }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "${formatBytes(session.bytesDone)} / ${formatBytes(session.bytesTotal)}" +
-                    if (session.bytesPerSec > 0) "  ·  ${formatBytes(session.bytesPerSec)}/s" else "",
-                color = TextDim, fontSize = 13.sp,
-            )
             Spacer(Modifier.height(20.dp))
             Row {
                 when {
@@ -141,13 +170,19 @@ private fun SasChip(sas: String) {
     Surface(
         shape = RoundedCornerShape(50),
         color = DeepSpaceSoft,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Phosphor.copy(alpha = 0.35f)),
     ) {
-        Text(
-            "verify  $sas",
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            color = Phosphor, fontSize = 13.sp, fontWeight = FontWeight.Medium,
-            letterSpacing = 2.sp,
-        )
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("◈", color = Phosphor, fontSize = 11.sp)
+            Text(
+                "  verify  $sas",
+                color = Phosphor, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                letterSpacing = 2.sp,
+            )
+        }
     }
 }
 
