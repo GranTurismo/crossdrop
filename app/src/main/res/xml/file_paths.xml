@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <files-path name="inbox" path="inbox/" />
+    <external-files-path name="ext_inbox" path="inbox/" />
+</paths>

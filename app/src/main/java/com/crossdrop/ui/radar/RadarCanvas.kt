@@ -1,0 +1,261 @@
+package com.crossdrop.ui.radar
+
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.crossdrop.core.Peer
+import com.crossdrop.ui.theme.DeepSpace
+import com.crossdrop.ui.theme.FluidCyan
+import com.crossdrop.ui.theme.Phosphor
+import com.crossdrop.ui.theme.RippleTeal
+import com.crossdrop.ui.theme.TextDim
+import com.crossdrop.ui.theme.TextPrimary
+import kotlin.math.cos
+import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.PI
+import kotlin.math.abs
+
+/**
+ * The ambient sonar screen: concentric ripples, a rotating sweep, and orbiting
+ * peer nodes whose radial distance tracks BLE RSSI (Kalman-smoothed input
+ * arrives via [Peer.estimatedDistanceMeters]). NSD-only peers orbit a default
+ * ring. A peer's angle is a stable hash of its instance id so nodes don't
+ * teleport between recompositions.
+ */
+@Composable
+fun RadarCanvas(
+    selfName: String,
+    peers: List<Peer>,
+    onPeerTap: (Peer) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val textMeasurer = rememberTextMeasurer()
+    var canvasSize by remember { mutableStateOf(Size.Zero) }
+
+    val transition = rememberInfiniteTransition(label = "sonar")
+    val rippleT by transition.animateFloat(
+        initialValue = 0f, targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(4200, easing = LinearEasing)),
+        label = "ripple",
+    )
+    val sweepT by transition.animateFloat(
+        initialValue = 0f, targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing)),
+        label = "sweep",
+    )
+    val bobT by transition.animateFloat(
+        initialValue = 0f, targetValue = (2 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
+        label = "bob",
+    )
+
+    // Stable geometry shared by drawing + hit-testing.
+    val positions = remember(peers, canvasSize, bobT) {
+        if (canvasSize == Size.Zero) emptyMap() else {
+            val center = Offset(canvasSize.width / 2, canvasSize.height / 2)
+            val maxR = min(canvasSize.width, canvasSize.height) / 2 * 0.86f
+            peers.associate { peer ->
+                val angle = angleFor(peer.instanceId)
+                val norm = normalizedDistance(peer)
+                val bob = sin(bobT + (abs(peer.instanceId.hashCode()) % 7)).toFloat() * 6f
+                val r = maxR * norm + bob
+                peer.instanceId to Offset(
+                    center.x + r * cos(angle), center.y + r * sin(angle)
+                )
+            }
+        }
+    }
+
+    Canvas(
+        modifier = modifier
+            .fillMaxSize()
+            .pointerInput(positions) {
+                detectTapGestures { tap ->
+                    positions.entries
+                        .minByOrNull { (_, pos) -> (pos - tap).getDistance() }
+                        ?.takeIf { (_, pos) -> (pos - tap).getDistance() < 140f }
+                        ?.let { (id, _) -> peers.firstOrNull { it.instanceId == id }?.let(onPeerTap) }
+                }
+            },
+    ) {
+        canvasSize = size
+        val center = Offset(size.width / 2, size.height / 2)
+        val maxR = min(size.width, size.height) / 2 * 0.86f
+
+        drawBackground()
+        drawGrid(center, maxR)
+        drawSweep(center, maxR, sweepT)
+        drawRipples(center, maxR, rippleT)
+
+        positions.forEach { (id, pos) ->
+            peers.firstOrNull { it.instanceId == id }?.let { peer ->
+                drawPeerNode(pos, peer, textMeasurer)
+            }
+        }
+        drawSelfNode(center, selfName, textMeasurer)
+    }
+}
+
+// ------------------------------------------------------------------ layers --
+
+private fun DrawScope.drawBackground() {
+    drawRect(
+        Brush.radialGradient(
+            colors = listOf(Color(0xFF0B1226), DeepSpace),
+            center = center, radius = size.maxDimension / 1.6f,
+        )
+    )
+}
+
+private fun DrawScope.drawGrid(center: Offset, maxR: Float) {
+    val ringColor = RippleTeal.copy(alpha = 0.10f)
+    for (i in 1..4) {
+        drawCircle(ringColor, maxR * i / 4f, center, style = Stroke(1.2f))
+    }
+    val lineColor = RippleTeal.copy(alpha = 0.05f)
+    drawLine(lineColor, center - Offset(maxR, 0f), center + Offset(maxR, 0f), 1f)
+    drawLine(lineColor, center - Offset(0f, maxR), center + Offset(0f, maxR), 1f)
+}
+
+private fun DrawScope.drawSweep(center: Offset, maxR: Float, sweepDeg: Float) {
+    val wedge = Path().apply {
+        moveTo(center.x, center.y)
+        arcTo(Rect(center = center, radius = maxR), 0f, 60f, false)
+        close()
+    }
+    clipPath(wedge) {
+        rotate(sweepDeg, center) {
+            drawCircle(
+                Brush.sweepGradient(
+                    0f to RippleTeal.copy(alpha = 0.22f),
+                    0.15f to Color.Transparent,
+                    1f to Color.Transparent,
+                    center = center,
+                ),
+                radius = maxR, center = center,
+            )
+        }
+    }
+}
+
+private fun DrawScope.drawRipples(center: Offset, maxR: Float, t: Float) {
+    for (i in 0 until 4) {
+        val phase = (t + i / 4f) % 1f
+        drawCircle(
+            RippleTeal.copy(alpha = (1f - phase) * 0.35f),
+            radius = phase * maxR,
+            center = center,
+            style = Stroke(width = (3f - phase * 2f).coerceAtLeast(0.6f)),
+        )
+    }
+}
+
+private fun DrawScope.drawPeerNode(pos: Offset, peer: Peer, measurer: TextMeasurer) {
+    val reachable = peer.endpoint != null
+    val alpha = if (reachable) 1f else 0.45f
+    val nodeR = 30.dp.toPx()
+
+    // soft glow halo
+    drawCircle(
+        Brush.radialGradient(
+            colors = listOf(
+                (if (reachable) RippleTeal else FluidCyan).copy(alpha = 0.35f * alpha),
+                Color.Transparent,
+            ),
+            center = pos, radius = nodeR * 1.9f,
+        ),
+        radius = nodeR * 1.9f, center = pos,
+    )
+    // body
+    drawCircle(
+        Brush.radialGradient(
+            colors = listOf(Phosphor.copy(alpha = alpha), RippleTealDimSafe(alpha)),
+            center = pos.copy(y = pos.y - nodeR * 0.3f), radius = nodeR,
+        ),
+        radius = nodeR * 0.62f, center = pos,
+    )
+    // orbit ring for reachable peers
+    if (reachable) {
+        drawCircle(
+            RippleTeal.copy(alpha = 0.6f), radius = nodeR * 0.8f, center = pos,
+            style = Stroke(1.4f),
+        )
+    }
+    // label
+    val label = measurer.measure(
+        peer.name,
+        TextStyle(
+            color = TextPrimary.copy(alpha = alpha), fontSize = 12.sp,
+            fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
+        ),
+        maxLines = 1, overflow = TextOverflow.Ellipsis,
+        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 96.dp.toPx().toInt()),
+    )
+    drawText(label, topLeft = pos + Offset(-label.size.width / 2f, nodeR * 0.85f))
+}
+
+private fun RippleTealDimSafe(alpha: Float) = RippleTeal.copy(alpha = 0.85f * alpha)
+
+private fun DrawScope.drawSelfNode(center: Offset, name: String, measurer: TextMeasurer) {
+    drawCircle(
+        Brush.radialGradient(
+            colors = listOf(RippleTeal.copy(alpha = 0.5f), Color.Transparent),
+            center = center, radius = 44.dp.toPx(),
+        ),
+        radius = 44.dp.toPx(), center = center,
+    )
+    drawCircle(Phosphor, radius = 9.dp.toPx(), center = center)
+    drawCircle(RippleTeal, radius = 14.dp.toPx(), center = center, style = Stroke(1.6f))
+    val label = measurer.measure(
+        name, TextStyle(color = TextDim, fontSize = 11.sp, textAlign = TextAlign.Center),
+        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 120.dp.toPx().toInt()),
+    )
+    drawText(label, topLeft = center + Offset(-label.size.width / 2f, 18.dp.toPx()))
+}
+
+// ------------------------------------------------------------------- math --
+
+private fun angleFor(instanceId: String): Float {
+    val h = instanceId.fold(7) { acc, c -> acc * 31 + c.code }
+    return ((h and 0x7fffffff) % 360) * PI.toFloat() / 180f
+}
+
+/** RSSI → normalized radar radius [0.14, 1.0]; no signal → default ring. */
+private fun normalizedDistance(peer: Peer): Float {
+    val meters = peer.estimatedDistanceMeters ?: return 0.55f
+    // 0.3 m … ~12 m compressed logarithmically.
+    val n = (kotlin.math.ln(meters.coerceIn(0.3, 12.0) / 0.3) / kotlin.math.ln(12.0 / 0.3))
+    return (0.14f + n.toFloat() * 0.86f)
+}
