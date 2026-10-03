@@ -1,11 +1,85 @@
-*.iml
+# ---------- Gradle / JVM ----------
 .gradle/
-/local.properties
-/.idea/
-.DS_Store
-/build/
-/captures
-.externalNativeBuild
-.cxx
-local.properties
 **/build/
+out/
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.hprof
+.kotlin/
+
+# ---------- Android ----------
+local.properties
+*.iml
+*.apk
+*.ap_
+*.aab
+captures/
+.externalNativeBuild/
+.cxx/
+*.keystore
+*.jks
+signing.properties
+google-services.json
+proguard-mapping.txt
+mapping.txt
+/seeds.txt
+/usage.txt
+
+# ---------- IntelliJ / Android Studio ----------
+.idea/
+*.ipr
+*.iws
+*.swp
+*.swo
+*.bak
+
+# ---------- VS Code / misc editors ----------
+.vscode/
+*.code-workspace
+
+# ---------- OS cruft ----------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ---------- Logs / temp ----------
+*.log
+*.tmp
+*.temp
+*.orig
+
+# ---------- Rust (future shared core) ----------
+**/target/
+**/*.rs.bk
+*.pdb
+
+# ---------- iOS / Xcode (future shell) ----------
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.app.dSYM
+**/Pods/
+**/Carthage/Build/
+**/Derived/
+*.moved-aside
+*.xcuserdatad
+
+# ---------- Env / secrets ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.properties
