@@ -56,6 +56,10 @@ fun Root(container: AppContainer) {
             onPermissionsGranted = container::restartDiscovery,
             onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
                 ({ container.coordinator.selfTransfer() }) else null,
+            onAddPeer = if (com.crossdrop.BuildConfig.DEBUG)
+                ({ h, p -> container.injectPeer(null, h, p) }) else null,
+            selfPort = if (com.crossdrop.BuildConfig.DEBUG)
+                container.listenerPort.collectAsState().value else 0,
         )
 
         AnimatedVisibility(

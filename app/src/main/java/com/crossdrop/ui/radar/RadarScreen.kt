@@ -72,6 +72,8 @@ fun RadarScreen(
     onRename: (String) -> Unit,
     onPermissionsGranted: () -> Unit = {},
     onSelfTest: (() -> Unit)? = null,
+    onAddPeer: ((host: String, port: Int) -> Unit)? = null,
+    selfPort: Int = 0,
 ) {
     val context = LocalContext.current
     var pendingPeer by remember { mutableStateOf<Peer?>(null) }
@@ -110,6 +112,9 @@ fun RadarScreen(
                     selfName, color = TextDim, fontSize = 12.sp,
                     modifier = Modifier.clickable { renaming = true },
                 )
+                if (selfPort > 0) {
+                    Text("listening :$selfPort", color = TextDim.copy(alpha = 0.6f), fontSize = 10.sp)
+                }
                 if (renaming) {
                     RenameDialog(current = selfName, onDone = { new ->
                         renaming = false
@@ -161,6 +166,21 @@ fun RadarScreen(
                     modifier = Modifier.clickable(onClick = it),
                 )
             }
+            onAddPeer?.let { addPeer ->
+                var adding by remember { mutableStateOf(false) }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "add peer by address",
+                    color = TextDim.copy(alpha = 0.6f), fontSize = 11.sp,
+                    modifier = Modifier.clickable { adding = true },
+                )
+                if (adding) {
+                    AddPeerDialog(
+                        onDone = { adding = false },
+                        onAdd = { h, p -> adding = false; addPeer(h, p) },
+                    )
+                }
+            }
         }
     }
 }
@@ -198,6 +218,35 @@ private fun RenameDialog(current: String, onDone: (String?) -> Unit) {
         },
         dismissButton = {
             TextButton(onClick = { onDone(null) }) { Text("Cancel", color = TextDim) }
+        },
+    )
+}
+
+@Composable
+private fun AddPeerDialog(onDone: () -> Unit, onAdd: (host: String, port: Int) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    val parsed = remember(text) {
+        val h = text.trim().substringBefore(':')
+        val p = text.trim().substringAfter(':', "0").toIntOrNull() ?: 0
+        h.takeIf { it.isNotBlank() && p in 1..65535 }?.let { it to p }
+    }
+    AlertDialog(
+        onDismissRequest = onDone,
+        title = { Text("Add peer by address") },
+        text = {
+            OutlinedTextField(
+                value = text, onValueChange = { text = it },
+                singleLine = true, label = { Text("host:port — e.g. 10.0.2.17:43595") },
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { parsed?.let { (h, p) -> onAdd(h, p) } },
+                enabled = parsed != null,
+            ) { Text("Add", color = RippleTeal) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDone) { Text("Cancel", color = TextDim) }
         },
     )
 }

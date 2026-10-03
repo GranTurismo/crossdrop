@@ -6,12 +6,14 @@ import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
 import androidx.core.content.getSystemService
+import com.crossdrop.BuildConfig
 import com.crossdrop.core.CrossDrop
 import com.crossdrop.core.Peer
 import com.crossdrop.core.crypto.SessionIdentity
 import com.crossdrop.core.discovery.PeerDiscovery
 import com.crossdrop.core.transfer.TransferEngine
 import com.crossdrop.discovery.BleDiscovery
+import com.crossdrop.discovery.ManualDiscovery
 import com.crossdrop.discovery.NsdDiscovery
 import com.crossdrop.net.TransferCoordinator
 import com.crossdrop.net.TransferServer
@@ -66,6 +68,9 @@ class AppContainer(private val app: Context) {
     val server = TransferServer(scope, engine, onBound = ::onListenerBound)
     val coordinator = TransferCoordinator(scope, app, engine, server, inbox)
 
+    /** Debug-only backend: hand-injected peers for emulator cross-testing. */
+    private val manualDiscovery = if (BuildConfig.DEBUG) ManualDiscovery() else null
+
     private val discoveries: List<PeerDiscovery> = buildList {
         add(NsdDiscovery(
             app.getSystemService<NsdManager>()!!,
@@ -74,6 +79,15 @@ class AppContainer(private val app: Context) {
             instanceId,
         ))
         add(BleDiscovery(app, instanceId))
+        manualDiscovery?.let { add(it) }
+    }
+
+    /** Port our transfer listener bound to — shown on the radar in debug builds. */
+    val listenerPort = MutableStateFlow(0)
+
+    /** Debug: place a peer on the radar by address, as if NSD had found it. */
+    fun injectPeer(name: String?, host: String, port: Int) {
+        manualDiscovery?.add(name ?: "$host:$port", host, port)
     }
 
     /** All sightings merged by instanceId — a peer seen on BLE + NSD is one node. */
@@ -110,6 +124,7 @@ class AppContainer(private val app: Context) {
 
     /** Called by [TransferServer] once the listener socket is bound. */
     fun onListenerBound(port: Int) {
+        listenerPort.value = port
         discoveries.filterIsInstance<NsdDiscovery>().forEach { it.advertisedPort = port }
     }
 }

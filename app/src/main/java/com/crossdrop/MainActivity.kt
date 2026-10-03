@@ -33,6 +33,12 @@ class MainActivity : ComponentActivity() {
             val host = peer.substringBefore(':')
             val port = peer.substringAfter(':', "0").toIntOrNull() ?: 0
             android.os.Handler(mainLooper).postDelayed(
+                { container.injectPeer(null, host, port) }, 1500)
+        }
+        intent?.getStringExtra("dev_send")?.takeIf { it.isNotBlank() }?.let { peer ->
+            val host = peer.substringBefore(':')
+            val port = peer.substringAfter(':', "0").toIntOrNull() ?: 0
+            android.os.Handler(mainLooper).postDelayed(
                 { container.coordinator.selfTransfer(host, port) }, 1500)
         }
     }
