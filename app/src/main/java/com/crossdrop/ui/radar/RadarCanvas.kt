@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -98,15 +99,19 @@ fun RadarCanvas(
         }
     }
 
+    // pointerInput must NOT key on `positions` — it changes every frame (bobT),
+    // which would restart detectTapGestures mid-gesture and eat every tap.
+    val latestPositions by rememberUpdatedState(positions)
+    val latestPeers by rememberUpdatedState(peers)
     Canvas(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(positions) {
+            .pointerInput(Unit) {
                 detectTapGestures { tap ->
-                    positions.entries
+                    latestPositions.entries
                         .minByOrNull { (_, pos) -> (pos - tap).getDistance() }
                         ?.takeIf { (_, pos) -> (pos - tap).getDistance() < 140f }
-                        ?.let { (id, _) -> peers.firstOrNull { it.instanceId == id }?.let(onPeerTap) }
+                        ?.let { (id, _) -> latestPeers.firstOrNull { it.instanceId == id }?.let(onPeerTap) }
                 }
             },
     ) {
