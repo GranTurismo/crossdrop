@@ -4,7 +4,9 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -113,6 +115,50 @@ fun IconArrow(tint: Color, up: Boolean, modifier: Modifier = Modifier, size: Dp 
             drawLine(tint, Offset(r * 0.24f, r * 0.54f), Offset(r * 0.5f, r * 0.80f), strokeWidth = w, cap = cap)
             drawLine(tint, Offset(r * 0.76f, r * 0.54f), Offset(r * 0.5f, r * 0.80f), strokeWidth = w, cap = cap)
         }
+    }
+}
+
+/** Framed photo glyph — sun + mountain. */
+@Composable
+fun IconPhoto(tint: Color, modifier: Modifier = Modifier, size: Dp = 20.dp) {
+    Canvas(modifier.size(size)) {
+        val w = 1.7.dp.toPx()
+        val r = this.size.minDimension
+        val cr = r * 0.12f
+        drawRoundRect(
+            tint, topLeft = Offset(r * 0.12f, r * 0.16f), size = Size(r * 0.76f, r * 0.68f),
+            cornerRadius = CornerRadius(cr), style = Stroke(w),
+        )
+        drawCircle(tint, radius = r * 0.08f, center = Offset(r * 0.36f, r * 0.38f))
+        // mountain: two lines rising to a peak then falling
+        drawLine(tint, Offset(r * 0.18f, r * 0.74f), Offset(r * 0.44f, r * 0.50f), strokeWidth = w, cap = StrokeCap.Round)
+        drawLine(tint, Offset(r * 0.44f, r * 0.50f), Offset(r * 0.60f, r * 0.66f), strokeWidth = w, cap = StrokeCap.Round)
+        drawLine(tint, Offset(r * 0.60f, r * 0.66f), Offset(r * 0.68f, r * 0.58f), strokeWidth = w, cap = StrokeCap.Round)
+        drawLine(tint, Offset(r * 0.68f, r * 0.58f), Offset(r * 0.84f, r * 0.74f), strokeWidth = w, cap = StrokeCap.Round)
+    }
+}
+
+/** Document page glyph — folded corner. */
+@Composable
+fun IconDoc(tint: Color, modifier: Modifier = Modifier, size: Dp = 20.dp) {
+    Canvas(modifier.size(size)) {
+        val w = 1.7.dp.toPx()
+        val r = this.size.minDimension
+        val cap = StrokeCap.Round
+        // page outline with folded top-right
+        val x0 = r * 0.24f; val x1 = r * 0.78f; val y0 = r * 0.12f; val y1 = r * 0.88f
+        val fold = r * 0.18f
+        drawLine(tint, Offset(x0, y0 + fold), Offset(x0, y1), strokeWidth = w, cap = cap)
+        drawLine(tint, Offset(x0, y1), Offset(x1, y1), strokeWidth = w, cap = cap)
+        drawLine(tint, Offset(x1, y1), Offset(x1, y0 + fold), strokeWidth = w, cap = cap)
+        drawLine(tint, Offset(x1, y0 + fold), Offset(x1 - fold, y0), strokeWidth = w, cap = cap)
+        drawLine(tint, Offset(x1 - fold, y0), Offset(x0, y0), strokeWidth = w, cap = cap)
+        drawLine(tint, Offset(x0, y0), Offset(x0, y0 + fold), strokeWidth = w, cap = cap)
+        // fold + text lines
+        drawLine(tint, Offset(x1 - fold, y0), Offset(x1 - fold, y0 + fold), strokeWidth = w * 0.8f, cap = cap)
+        drawLine(tint, Offset(x1 - fold, y0 + fold), Offset(x1, y0 + fold), strokeWidth = w * 0.8f, cap = cap)
+        drawLine(tint, Offset(r * 0.36f, r * 0.55f), Offset(r * 0.66f, r * 0.55f), strokeWidth = w * 0.75f, cap = cap)
+        drawLine(tint, Offset(r * 0.36f, r * 0.68f), Offset(r * 0.66f, r * 0.68f), strokeWidth = w * 0.75f, cap = cap)
     }
 }
 

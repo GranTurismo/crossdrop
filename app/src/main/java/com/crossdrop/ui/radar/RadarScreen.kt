@@ -3,6 +3,7 @@ package com.crossdrop.ui.radar
 import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -38,9 +40,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
 import com.crossdrop.ui.DeviceNameDialog
+import com.crossdrop.ui.IconDoc
+import com.crossdrop.ui.IconPhoto
 import com.crossdrop.ui.theme.AuroraBrush
 import com.crossdrop.ui.theme.DeepSpaceRaised
 import com.crossdrop.ui.theme.DeepSpaceSoft
+import com.crossdrop.ui.theme.FluidCyan
 import com.crossdrop.ui.theme.GlassEdge
 import com.crossdrop.ui.theme.Phosphor
 import com.crossdrop.ui.theme.RippleTeal
@@ -68,6 +73,7 @@ private fun hasAll(context: android.content.Context): Boolean =
             android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RadarScreen(
     selfName: String,
@@ -80,14 +86,27 @@ fun RadarScreen(
     val context = LocalContext.current
     val view = LocalView.current
     var pendingPeer by remember { mutableStateOf<Peer?>(null) }
+    var pickingForPeer by remember { mutableStateOf<Peer?>(null) }
     var permsGranted by remember { mutableStateOf(hasAll(context)) }
 
-    val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenMultipleDocuments()
-    ) { uris ->
+    fun dispatch(uris: List<android.net.Uri>?) {
         val peer = pendingPeer
         pendingPeer = null
         if (!uris.isNullOrEmpty() && peer != null) onSendTo(peer, uris)
+    }
+    val filePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { dispatch(it) }
+    val mediaPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+    ) { dispatch(it) }
+
+    /** Peer tap → chooser sheet: gallery/photo-picker vs generic files. */
+    fun startSendFlow(peer: Peer) {
+        if (peer.endpoint == null) return
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        pendingPeer = peer
+        pickingForPeer = peer
     }
 
     val permLauncher = rememberLauncherForActivityResult(
@@ -154,14 +173,7 @@ fun RadarScreen(
             RadarCanvas(
                 selfName = selfName,
                 peers = peers,
-                onPeerTap = { peer ->
-                    if (peer.endpoint != null) {
-                        view.performHapticFeedback(
-                            android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                        pendingPeer = peer
-                        filePicker.launch(arrayOf("*/*"))
-                    }
-                },
+                onPeerTap = ::startSendFlow,
             )
             if (peers.isEmpty()) {
                 Text(
@@ -198,14 +210,7 @@ fun RadarScreen(
                         color = DeepSpaceRaised,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp, if (reachable) RippleTeal.copy(alpha = 0.5f) else GlassEdge),
-                        onClick = {
-                            if (reachable) {
-                                view.performHapticFeedback(
-                                    android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                                pendingPeer = peer
-                                filePicker.launch(arrayOf("*/*"))
-                            }
-                        },
+                        onClick = { if (reachable) startSendFlow(peer) },
                     ) {
                         Row(
                             Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -228,6 +233,78 @@ fun RadarScreen(
                     }
                 }
             }
+        }
+    }
+
+    // ---- send chooser: photo picker or generic files
+    pickingForPeer?.let { peer ->
+        ModalBottomSheet(
+            onDismissRequest = { pickingForPeer = null; pendingPeer = null },
+            containerColor = DeepSpaceSoft,
+        ) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+                Text(
+                    "Send to ${peer.name}",
+                    color = TextPrimary, fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "pick what to share",
+                    color = TextDim, fontSize = 12.sp,
+                )
+                Spacer(Modifier.height(14.dp))
+                PickerOption(
+                    title = "Photos & videos",
+                    subtitle = "gallery, camera roll, Google Photos",
+                    onClick = {
+                        pickingForPeer = null
+                        mediaPicker.launch(
+                            PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+                    },
+                ) { IconPhoto(RippleTeal, size = 26.dp) }
+                Spacer(Modifier.height(8.dp))
+                PickerOption(
+                    title = "Files",
+                    subtitle = "documents, archives, everything else",
+                    onClick = {
+                        pickingForPeer = null
+                        filePicker.launch(arrayOf("*/*"))
+                    },
+                ) { IconDoc(FluidCyan, size = 24.dp) }
+                Spacer(Modifier.height(28.dp))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PickerOption(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    icon: @Composable () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = DeepSpaceRaised,
+        border = androidx.compose.foundation.BorderStroke(1.dp, GlassEdge),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            icon()
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = TextPrimary, fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium)
+                Text(subtitle, color = TextDim, fontSize = 12.sp)
+            }
+            Text("›", color = TextDim, fontSize = 18.sp)
         }
     }
 }
