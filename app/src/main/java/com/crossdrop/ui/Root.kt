@@ -55,7 +55,7 @@ fun Root(container: AppContainer) {
             onRename = container::setDeviceName,
             onPermissionsGranted = container::restartDiscovery,
             onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
-                container.coordinator::selfTransfer else null,
+                ({ container.coordinator.selfTransfer() }) else null,
         )
 
         AnimatedVisibility(

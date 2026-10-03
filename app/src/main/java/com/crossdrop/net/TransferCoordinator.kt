@@ -155,11 +155,11 @@ class TransferCoordinator(
     // ------------------------------------------------------------ session --
 
     /**
-     * Debug: send a generated file to our own listener. Exercises the whole
-     * stack — handshake, offer sheet, encrypted DATA path, inbox — on one device.
+     * Debug: send a generated file to a listener — our own by default, or a
+     * remote [host] for cross-device testing without discovery. Exercises the
+     * whole stack — handshake, offer sheet, encrypted DATA path, inbox.
      */
-    fun selfTransfer() {
-        val port = server.port
+    fun selfTransfer(host: String = "127.0.0.1", port: Int = server.port) {
         if (port == 0) return
         val bytes = ByteArray(4 * 1024 * 1024) { (it % 251).toByte() }
         val file = OutgoingFile(FileMeta("self-test.bin", bytes.size.toLong(), "application/octet-stream")) {
@@ -168,7 +168,7 @@ class TransferCoordinator(
         sessionJob?.cancel()
         _session.value = SessionState(Direction.SENDING, "self", status = SessionStatus.CONNECTING)
         sessionJob = scope.launch {
-            engine.send(Endpoint("127.0.0.1", port), listOf(file))
+            engine.send(Endpoint(host, port), listOf(file))
                 .collect { reduce(it, Direction.SENDING, "self") }
         }
     }
