@@ -63,13 +63,15 @@ class TransferEngine(
     fun send(endpoint: Endpoint, files: List<OutgoingFile>): Flow<TransferEvent> = flow {
         val started = System.currentTimeMillis()
         var socket: Socket? = null
+        var io: FrameIO? = null
         try {
             emit(TransferEvent.Connecting)
             socket = Socket(endpoint.host, endpoint.port).apply {
                 tcpNoDelay = true
                 soTimeout = CONTROL_TIMEOUT_MS
             }
-            val io = FrameIO(socket.getInputStream(), socket.getOutputStream())
+            io = FrameIO(socket.getInputStream(), socket.getOutputStream())
+            val io = io!!
             val offer = Offer(UUID.randomUUID().toString(), files.map { it.meta })
 
             // -- handshake
@@ -140,7 +142,7 @@ class TransferEngine(
             }
             emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
         } catch (e: kotlinx.coroutines.CancellationException) {
-            runCatching { socket?.let { s -> FrameIO(s.getInputStream(), s.getOutputStream()).write(FrameType.CANCEL, Cancel("sender cancelled").encode()) } }
+            runCatching { io?.write(FrameType.CANCEL, Cancel("sender cancelled").encode()) }
             throw e
         } catch (e: Exception) {
             emit(TransferEvent.Failed(e.message ?: "transfer failed", e))
@@ -158,10 +160,12 @@ class TransferEngine(
      */
     fun receive(socket: Socket, decide: suspend (peerName: String, offer: Offer) -> ReceiveDecision): Flow<TransferEvent> = flow {
         val started = System.currentTimeMillis()
+        var io: FrameIO? = null
         try {
             socket.tcpNoDelay = true
             socket.soTimeout = CONTROL_TIMEOUT_MS
-            val io = FrameIO(socket.getInputStream(), socket.getOutputStream())
+            io = FrameIO(socket.getInputStream(), socket.getOutputStream())
+            val io = io!!
 
             // -- handshake
             val (helloType, helloPayload) = io.read()
@@ -246,6 +250,7 @@ class TransferEngine(
                 sink?.close()
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
+            runCatching { io?.write(FrameType.CANCEL, Cancel("receiver cancelled").encode()) }
             throw e
         } catch (e: Exception) {
             emit(TransferEvent.Failed(e.message ?: "receive failed", e))

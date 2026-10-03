@@ -103,8 +103,8 @@ class AppContainer(private val app: Context) {
     }
 
     fun start() {
-        server.start()           // listener comes up first so we know the port…
-        discoveries.forEach { it.start() }
+        runCatching { server.start() }   // listener comes up first so we know the port…
+        discoveries.forEach { runCatching { it.start() } }
         coordinator.start()
     }
 

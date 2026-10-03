@@ -35,6 +35,7 @@ fun IncomingOfferSheet(
     offer: IncomingOffer,
     onRespond: (accept: Boolean) -> Unit,
 ) {
+    android.util.Log.i("IncomingOfferSheet", "composed for ${offer.offer.transferId}")
     ModalBottomSheet(
         onDismissRequest = { onRespond(false) },
         containerColor = DeepSpaceSoft,

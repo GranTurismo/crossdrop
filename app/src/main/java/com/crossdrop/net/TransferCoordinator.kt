@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
+import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
 import com.crossdrop.core.protocol.FileMeta
 import com.crossdrop.core.protocol.Offer
@@ -118,6 +119,7 @@ class TransferCoordinator(
     private fun onInboundSocket(socket: Socket) {
         val job = scope.launch {
             engine.receive(socket) { peerName, offer ->
+                Log.i(TAG, "offer from '$peerName': ${offer.files.size} file(s), id=${offer.transferId}")
                 val decision = CompletableDeferred<ReceiveDecision>()
                 // Displace (reject) any still-pending offer — one sheet at a time.
                 _incomingOffer.value?.decision?.complete(ReceiveDecision.Reject("superseded"))
@@ -125,6 +127,7 @@ class TransferCoordinator(
                 val result = runCatching {
                     withTimeoutOrNull(OFFER_TIMEOUT_MS) { decision.await() }
                 }.getOrNull() ?: ReceiveDecision.Reject("no response")
+                Log.i(TAG, "decision for ${offer.transferId}: $result")
                 if (_incomingOffer.value?.offer?.transferId == offer.transferId) {
                     _incomingOffer.value = null
                 }
@@ -150,6 +153,25 @@ class TransferCoordinator(
     }
 
     // ------------------------------------------------------------ session --
+
+    /**
+     * Debug: send a generated file to our own listener. Exercises the whole
+     * stack — handshake, offer sheet, encrypted DATA path, inbox — on one device.
+     */
+    fun selfTransfer() {
+        val port = server.port
+        if (port == 0) return
+        val bytes = ByteArray(4 * 1024 * 1024) { (it % 251).toByte() }
+        val file = OutgoingFile(FileMeta("self-test.bin", bytes.size.toLong(), "application/octet-stream")) {
+            java.io.ByteArrayInputStream(bytes)
+        }
+        sessionJob?.cancel()
+        _session.value = SessionState(Direction.SENDING, "self", status = SessionStatus.CONNECTING)
+        sessionJob = scope.launch {
+            engine.send(Endpoint("127.0.0.1", port), listOf(file))
+                .collect { reduce(it, Direction.SENDING, "self") }
+        }
+    }
 
     fun cancelSession() {
         sessionJob?.cancel()

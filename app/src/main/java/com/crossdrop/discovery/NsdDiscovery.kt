@@ -53,12 +53,17 @@ class NsdDiscovery(
     override fun start() {
         if (started) return
         started = true
-        multicastLock = wifi?.createMulticastLock("crossdrop")?.apply {
-            setReferenceCounted(true)
-            acquire()
+        runCatching {
+            multicastLock = wifi?.createMulticastLock("crossdrop")?.apply {
+                setReferenceCounted(true)
+                acquire()
+            }
+            startDiscovery()
+            if (advertisedPort != 0) registerService()
+        }.onFailure {
+            // NEARBY_WIFI_DEVICES denied, no LAN, … — NSD layer stays dormant.
+            Log.w(TAG, "NSD start failed", it)
         }
-        startDiscovery()
-        if (advertisedPort != 0) registerService()
     }
 
     override fun stop() {

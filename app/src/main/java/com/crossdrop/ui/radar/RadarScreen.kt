@@ -50,7 +50,10 @@ fun requiredPermissions(): List<String> = buildList {
     } else {
         add(Manifest.permission.ACCESS_FINE_LOCATION)
     }
-    if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+    if (Build.VERSION.SDK_INT >= 33) {
+        add(Manifest.permission.POST_NOTIFICATIONS)
+        add(Manifest.permission.NEARBY_WIFI_DEVICES)
+    }
 }
 
 private fun hasAll(context: android.content.Context): Boolean =
@@ -68,6 +71,7 @@ fun RadarScreen(
     onOpenInbox: () -> Unit,
     onRename: (String) -> Unit,
     onPermissionsGranted: () -> Unit = {},
+    onSelfTest: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     var pendingPeer by remember { mutableStateOf<Peer?>(null) }
@@ -146,11 +150,18 @@ fun RadarScreen(
             }
         }
 
-        Text(
-            "Tap a device to send files",
-            color = TextDim, fontSize = 13.sp,
-            modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 20.dp),
-        )
+        Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Tap a device to send files", color = TextDim, fontSize = 13.sp)
+            onSelfTest?.let {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "loopback self-test",
+                    color = TextDim.copy(alpha = 0.6f), fontSize = 11.sp,
+                    modifier = Modifier.clickable(onClick = it),
+                )
+            }
+        }
     }
 }
 

@@ -54,6 +54,8 @@ fun Root(container: AppContainer) {
             onOpenInbox = { inboxOpen = true },
             onRename = container::setDeviceName,
             onPermissionsGranted = container::restartDiscovery,
+            onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
+                container.coordinator::selfTransfer else null,
         )
 
         AnimatedVisibility(

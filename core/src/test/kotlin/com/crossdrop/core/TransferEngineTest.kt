@@ -6,8 +6,11 @@ import com.crossdrop.core.transfer.OutgoingFile
 import com.crossdrop.core.transfer.ReceiveDecision
 import com.crossdrop.core.transfer.TransferEngine
 import com.crossdrop.core.transfer.TransferEvent
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -94,5 +97,68 @@ class TransferEngineTest {
 
         assertTrue(events.last() is TransferEvent.DeclinedByPeer)
         assertFalse(events.any { it is TransferEvent.Progress })
+    }
+
+    @Test
+    fun `empty file materializes on receiver`() = runBlocking {
+        val listener = ServerSocket(0)
+        val endpoint = Endpoint("127.0.0.1", listener.localPort)
+
+        val sink = MemorySink()
+        val serverJob = async {
+            engine("receiver").receive(listener.accept()) { _, _ ->
+                ReceiveDecision.Accept(sink.factory)
+            }.toList()
+        }
+
+        val clientEvents = engine("sender").send(endpoint, listOf(
+            OutgoingFile(FileMeta("empty.bin", 0), { ByteArrayInputStream(ByteArray(0)) }),
+        )).toList()
+
+        val serverEvents = serverJob.await()
+        listener.close()
+
+        assertNotNull(sink.streams["empty.bin"])
+        assertEquals(0, sink.streams["empty.bin"]!!.size())
+        assertTrue(clientEvents.last() is TransferEvent.Completed)
+        assertTrue(serverEvents.last() is TransferEvent.Completed)
+    }
+
+    @Test
+    fun `sender cancellation reaches receiver as CANCEL`() = runBlocking {
+        val listener = ServerSocket(0)
+        val endpoint = Endpoint("127.0.0.1", listener.localPort)
+        val payload = Random.nextBytes(4 * 1024 * 1024)
+
+        // Blocking calls must stay off the runBlocking event loop — IO for both.
+        val serverJob = async(Dispatchers.IO) {
+            engine("receiver").receive(listener.accept()) { _, _ ->
+                ReceiveDecision.Accept { ByteArrayOutputStream() }
+            }.toList()
+        }
+
+        // A throttled stream keeps the transfer in flight long enough to cancel.
+        val slow = object : java.io.InputStream() {
+            private val inner = ByteArrayInputStream(payload)
+            override fun read() = inner.read()
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                Thread.sleep(15)
+                return inner.read(b, off, minOf(len, 4096))
+            }
+        }
+        val clientJob = launch(Dispatchers.IO) {
+            engine("sender").send(endpoint, listOf(
+                OutgoingFile(FileMeta("big.bin", payload.size.toLong()), { slow }),
+            )).collect { }
+        }
+
+        delay(400) // handshake + first chunks in flight
+        clientJob.cancel()
+
+        val serverEvents = serverJob.await()
+        listener.close()
+
+        assertTrue("expected Cancelled, got ${serverEvents.last()}",
+            serverEvents.last() is TransferEvent.Cancelled)
     }
 }
