@@ -31,7 +31,10 @@ import androidx.compose.ui.unit.sp
 import com.crossdrop.net.SessionState
 import com.crossdrop.net.isTerminal
 import com.crossdrop.storage.HistoryStore
+import com.crossdrop.ui.IconArrow
+import com.crossdrop.ui.IconTransfers
 import com.crossdrop.ui.theme.DeepSpaceRaised
+import com.crossdrop.ui.theme.tintGradient
 import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.DangerSoft
 import com.crossdrop.ui.theme.FluidCyan
@@ -89,7 +92,7 @@ fun TransfersScreen(
                 Modifier.fillMaxWidth().padding(vertical = 48.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("⇅", color = TextDim.copy(alpha = 0.5f), fontSize = 34.sp)
+                IconTransfers(TextDim.copy(alpha = 0.5f), size = 38.dp)
                 Spacer(Modifier.height(8.dp))
                 Text("No transfers yet.", color = TextDim, fontSize = 13.sp)
                 Text("Tap a device on the radar to send something.",
@@ -114,9 +117,9 @@ private fun ActiveCard(s: SessionState) {
     ) {
         Column(Modifier.padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (s.direction.name == "SENDING") "↑" else "↓",
-                    color = RippleTeal, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                IconArrow(
+                    tint = RippleTeal, up = s.direction.name == "SENDING",
+                    size = 18.dp,
                 )
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
@@ -166,7 +169,7 @@ private fun HistoryRow(e: HistoryStore.Entry) {
         else -> TextDim
     }
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(18.dp),
         color = DeepSpaceRaised,
         border = BorderStroke(1.dp, GlassEdge),
         modifier = Modifier.fillMaxWidth(),
@@ -175,17 +178,13 @@ private fun HistoryRow(e: HistoryStore.Entry) {
             Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Surface(
-                shape = RoundedCornerShape(10.dp),
-                color = tint.copy(alpha = 0.12f),
-                border = BorderStroke(1.dp, tint.copy(alpha = 0.4f)),
+            Box(
+                Modifier.size(38.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(tintGradient(tint)),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
-                    Text(
-                        if (e.isSend) "↑" else "↓",
-                        color = tint, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                    )
-                }
+                IconArrow(tint = tint, up = e.isSend, size = 17.dp)
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {

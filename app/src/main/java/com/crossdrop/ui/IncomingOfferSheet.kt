@@ -1,6 +1,7 @@
 package com.crossdrop.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -57,13 +59,19 @@ fun IncomingOfferSheet(
             Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // peer avatar + headline
-            Surface(
-                shape = CircleShape,
-                color = DeepSpaceRaised,
-                border = BorderStroke(1.5.dp, RippleTeal.copy(alpha = 0.6f)),
+            // peer avatar + headline — aurora ring around an initial
+            Box(
+                Modifier.size(58.dp)
+                    .clip(CircleShape)
+                    .background(AuroraBrush),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.size(52.dp)
+                        .clip(CircleShape)
+                        .background(DeepSpaceSoft),
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
                         offer.peerName.firstOrNull()?.uppercase() ?: "?",
                         color = Phosphor, fontSize = 22.sp, fontWeight = FontWeight.Bold,
@@ -83,7 +91,7 @@ fun IncomingOfferSheet(
 
             // file list card
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(18.dp),
                 color = DeepSpaceRaised,
                 border = BorderStroke(1.dp, GlassEdge),
                 modifier = Modifier.fillMaxWidth(),
@@ -126,7 +134,11 @@ fun IncomingOfferSheet(
                     onClick = { onRespond(true) },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = RippleTeal),
-                ) { Text("Accept", color = DeepSpace, fontWeight = FontWeight.SemiBold) }
+                ) {
+                    IconCheck(DeepSpace, size = 16.dp)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Accept", color = DeepSpace, fontWeight = FontWeight.SemiBold)
+                }
             }
             Spacer(Modifier.height(24.dp))
         }

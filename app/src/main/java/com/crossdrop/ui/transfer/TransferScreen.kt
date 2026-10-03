@@ -83,14 +83,20 @@ fun TransferScreen(
     ) {
         // header
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                when (session.direction) {
-                    Direction.SENDING -> "↑  S E N D I N G"
-                    Direction.RECEIVING -> "↓  R E C E I V I N G"
-                },
-                color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                letterSpacing = 3.sp,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                com.crossdrop.ui.IconArrow(
+                    tint = TextDim, up = session.direction == Direction.SENDING,
+                    size = 13.dp,
+                )
+                Text(
+                    when (session.direction) {
+                        Direction.SENDING -> "   S E N D I N G"
+                        Direction.RECEIVING -> "   R E C E I V I N G"
+                    },
+                    color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                    letterSpacing = 3.sp,
+                )
+            }
             Spacer(Modifier.height(6.dp))
             Text(
                 session.peerName,

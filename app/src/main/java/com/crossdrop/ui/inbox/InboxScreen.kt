@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.crossdrop.storage.InboxStore
 import com.crossdrop.ui.FileTypeTile
+import com.crossdrop.ui.IconClose
+import com.crossdrop.ui.IconInbox
 import com.crossdrop.ui.theme.DangerSoft
 import com.crossdrop.ui.theme.DeepSpaceRaised
 import com.crossdrop.ui.theme.GlassEdge
@@ -83,7 +85,7 @@ fun InboxScreen(
                 Modifier.fillMaxWidth().padding(vertical = 48.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("◌", color = TextDim.copy(alpha = 0.5f), fontSize = 34.sp)
+                IconInbox(TextDim.copy(alpha = 0.5f), size = 40.dp)
                 Spacer(Modifier.height(8.dp))
                 Text("Nothing received yet.", color = TextDim, fontSize = 13.sp)
                 Text(
@@ -95,7 +97,7 @@ fun InboxScreen(
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(files) { item ->
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = DeepSpaceRaised,
                         border = BorderStroke(1.dp, GlassEdge),
                         modifier = Modifier.fillMaxWidth(),
@@ -121,7 +123,7 @@ fun InboxScreen(
                                 Text("Open", color = RippleTeal, fontSize = 13.sp)
                             }
                             TextButton(onClick = { inbox.shred(item.file); tick++; onChanged() }) {
-                                Text("✕", color = DangerSoft, fontSize = 14.sp)
+                                IconClose(DangerSoft, size = 15.dp)
                             }
                         }
                     }

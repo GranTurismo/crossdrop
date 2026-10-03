@@ -39,8 +39,8 @@ import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
 import com.crossdrop.ui.DeviceNameDialog
 import com.crossdrop.ui.theme.AuroraBrush
-import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.DeepSpaceRaised
+import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.GlassEdge
 import com.crossdrop.ui.theme.Phosphor
 import com.crossdrop.ui.theme.RippleTeal
@@ -178,9 +178,56 @@ fun RadarScreen(
             }
         }
 
-        Column(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("Tap a device to send files", color = TextDim, fontSize = 13.sp)
+        // ---- peer strip / hint
+        if (peers.isEmpty()) {
+            Text(
+                "Tap a device to send files",
+                color = TextDim, fontSize = 13.sp,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(bottom = 20.dp),
+            )
+        } else {
+            Row(
+                Modifier.align(Alignment.CenterHorizontally)
+                    .padding(bottom = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                peers.take(3).forEach { peer ->
+                    val reachable = peer.endpoint != null
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = DeepSpaceRaised,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp, if (reachable) RippleTeal.copy(alpha = 0.5f) else GlassEdge),
+                        onClick = {
+                            if (reachable) {
+                                view.performHapticFeedback(
+                                    android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                                pendingPeer = peer
+                                filePicker.launch(arrayOf("*/*"))
+                            }
+                        },
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "●", color = if (reachable) RippleTeal else TextDim,
+                                fontSize = 8.sp,
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                peer.name, color = TextPrimary, fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium, maxLines = 1,
+                            )
+                            if (reachable) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("send", color = RippleTeal, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

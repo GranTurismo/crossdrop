@@ -210,7 +210,7 @@ private fun SectionLabel(text: String) {
 @Composable
 private fun SettingsCard(content: @Composable () -> Unit) {
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         color = DeepSpaceRaised,
         border = BorderStroke(1.dp, GlassEdge),
         modifier = Modifier.fillMaxWidth(),

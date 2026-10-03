@@ -43,11 +43,11 @@ import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.transfer.TransferScreen
 import com.crossdrop.ui.transfers.TransfersScreen
 
-enum class Tab(val label: String, val glyph: String) {
-    RADAR("Radar", "◎"),
-    TRANSFERS("Transfers", "⇅"),
-    INBOX("Inbox", "▼"),
-    SETTINGS("Settings", "⚙"),
+enum class Tab(val label: String) {
+    RADAR("Radar"),
+    TRANSFERS("Transfers"),
+    INBOX("Inbox"),
+    SETTINGS("Settings"),
 }
 
 /**
@@ -202,6 +202,7 @@ fun Root(container: AppContainer) {
 
 @Composable
 private fun TabGlyph(tab: Tab, badgeCount: Int) {
+    val tint = androidx.compose.material3.LocalContentColor.current
     BadgedBox(
         badge = {
             if (badgeCount > 0) {
@@ -211,6 +212,11 @@ private fun TabGlyph(tab: Tab, badgeCount: Int) {
             }
         },
     ) {
-        Text(tab.glyph, fontSize = 17.sp)
+        when (tab) {
+            Tab.RADAR -> IconRadar(tint)
+            Tab.TRANSFERS -> IconTransfers(tint)
+            Tab.INBOX -> IconInbox(tint)
+            Tab.SETTINGS -> IconGear(tint)
+        }
     }
 }

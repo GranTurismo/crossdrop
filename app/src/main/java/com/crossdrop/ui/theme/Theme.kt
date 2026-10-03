@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Color
 val DeepSpace = Color(0xFF05070F)
 val DeepSpaceSoft = Color(0xFF0B1020)
 val DeepSpaceRaised = Color(0xFF111A30)
+val SurfaceHigh = Color(0xFF182242)
 val RippleTeal = Color(0xFF2EE6C8)
 val RippleTealDim = Color(0xFF1AA08C)
 val FluidCyan = Color(0xFF4FD8FF)
@@ -25,6 +26,19 @@ val GlassFill = Color(0x14B8EFFF)
 /** Signature gradient — teal → cyan → violet, used for accents and the wordmark. */
 val AuroraBrush: Brush = Brush.linearGradient(
     listOf(RippleTeal, FluidCyan, AuroraViolet),
+)
+
+/**
+ * Tonal card surface — a faint top-down light gradient on the raised tone,
+ * the modern alternative to a hard hairline border.
+ */
+val CardGradient: Brush = Brush.verticalGradient(
+    listOf(Color(0xFF1A2647), Color(0xFF131C38)),
+)
+
+/** Aurora-tinted tile background for icon chips. */
+fun tintGradient(tint: Color): Brush = Brush.linearGradient(
+    listOf(tint.copy(alpha = 0.22f), tint.copy(alpha = 0.07f)),
 )
 
 private val scheme = darkColorScheme(
