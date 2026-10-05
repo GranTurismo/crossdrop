@@ -36,6 +36,7 @@ import com.crossdrop.service.TransferService
 import com.crossdrop.ui.inbox.InboxScreen
 import com.crossdrop.ui.radar.RadarScreen
 import com.crossdrop.ui.settings.SettingsScreen
+import com.crossdrop.ui.theme.AuroraBackdrop
 import com.crossdrop.ui.theme.DeepSpace
 import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.RippleTeal
@@ -59,6 +60,9 @@ enum class Tab(val label: String) {
 fun Root(container: AppContainer) {
     val peers by container.peers.collectAsState()
     val session by container.coordinator.session.collectAsState()
+    val shareState by container.qrShare.state.collectAsState()
+    val vaultUi by container.vaultExplorer.state.collectAsState()
+    val vaultHost by container.vaultHost.state.collectAsState()
     val incomingOffer by container.coordinator.incomingOffer.collectAsState()
     val deviceName by container.deviceName.collectAsState()
     val nsdEnabled by container.nsdEnabled.collectAsState()
@@ -84,6 +88,13 @@ fun Root(container: AppContainer) {
                 onSendTo = { peer, uris ->
                     TransferService.start(container.contextForService())
                     container.coordinator.sendTo(peer, uris)
+                },
+                onShareToAnyone = { uris ->
+                    TransferService.start(container.contextForService())
+                    container.qrShare.start(uris)
+                },
+                onMountVault = { peer ->
+                    container.vaultExplorer.mount(peer)
                 },
                 onRename = container::setDeviceName,
                 onPermissionsGranted = container::restartDiscovery,
@@ -116,6 +127,12 @@ fun Root(container: AppContainer) {
                     inboxTick++
                 },
                 onClearHistory = { container.history.clear(); historyTick++ },
+                vaultState = vaultHost,
+                onVaultStart = { rw, pin ->
+                    TransferService.start(container.contextForService())
+                    container.vaultHost.start(rw, pin)
+                },
+                onVaultStop = container.vaultHost::stop,
                 onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
                     ({ container.coordinator.selfTransfer() }) else null,
                 onAddPeer = if (com.crossdrop.BuildConfig.DEBUG)
@@ -182,10 +199,59 @@ fun Root(container: AppContainer) {
         ) {
             session?.let { s ->
                 Surface(Modifier.fillMaxSize(), color = DeepSpace) {
+                    AuroraBackdrop()
                     TransferScreen(
                         session = s,
                         onCancel = container.coordinator::cancelSession,
                         onClose = container.coordinator::dismissSession,
+                    )
+                }
+            }
+        }
+
+        // ---- "send to anyone" overlay (QR + embedded HTTP share)
+        AnimatedVisibility(
+            visible = shareState != null,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it },
+        ) {
+            shareState?.let { s ->
+                Surface(Modifier.fillMaxSize(), color = DeepSpace) {
+                    AuroraBackdrop()
+                    com.crossdrop.ui.qrshare.QrShareScreen(
+                        state = s,
+                        onStop = container.qrShare::stop,
+                    )
+                }
+            }
+        }
+
+        // ---- vault explorer overlay (mounted LAN drive)
+        AnimatedVisibility(
+            visible = vaultUi != null,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it },
+        ) {
+            vaultUi?.let { v ->
+                Surface(Modifier.fillMaxSize(), color = DeepSpace) {
+                    AuroraBackdrop()
+                    com.crossdrop.ui.vault.VaultExplorerScreen(
+                        state = v,
+                        onBrowse = container.vaultExplorer::browse,
+                        onUp = container.vaultExplorer::up,
+                        onToggleSelect = container.vaultExplorer::toggleSelect,
+                        onDownload = { paths ->
+                            container.vaultExplorer.download(paths)
+                            inboxCount = container.inbox.list().size + paths.size
+                        },
+                        onUpload = { uris ->
+                            TransferService.start(container.contextForService())
+                            container.vaultExplorer.upload(uris)
+                        },
+                        onStream = { path -> container.vaultExplorer.streamUrl(path) },
+                        isMedia = { e -> container.vaultExplorer.isMediaPath(e.name, e.mime) },
+                        onClose = container.vaultExplorer::close,
+                        onUnlock = container.vaultExplorer::unlock,
                     )
                 }
             }

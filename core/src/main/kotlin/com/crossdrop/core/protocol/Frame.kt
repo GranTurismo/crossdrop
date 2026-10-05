@@ -10,7 +10,13 @@ import java.nio.ByteOrder
 /** Wire frame types. HELLO/HELLO_ACK are cleartext; everything after them is AEAD-sealed. */
 enum class FrameType(val code: Int) {
     HELLO(0), HELLO_ACK(1), OFFER(2), ACCEPT(3), DECLINE(4),
-    DATA(5), DONE(6), CANCEL(7), ERROR(8);
+    DATA(5), DONE(6), CANCEL(7), ERROR(8),
+    /** v2 delta path: chunked manifest, missing-index request, chunk payload. */
+    CHUNK_MAP(9), CHUNK_REQ(10), CHUNK(11),
+    /** LAN vault: browse/stat/pull/push + PIN auth (see core/vault/). */
+    VAULT_LS(0x10), VAULT_DIR(0x11), VAULT_STAT(0x12), VAULT_ATTR(0x13),
+    VAULT_PULL(0x14), VAULT_DATA(0x15), VAULT_PUSH_INIT(0x16),
+    VAULT_PUSH_ACK(0x17), VAULT_DONE(0x18), VAULT_ERR(0x19), VAULT_AUTH(0x1A);
 
     companion object {
         private val byCode = entries.associateBy { it.code }

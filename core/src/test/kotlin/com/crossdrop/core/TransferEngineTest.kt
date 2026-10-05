@@ -133,7 +133,7 @@ class TransferEngineTest {
         // Blocking calls must stay off the runBlocking event loop — IO for both.
         val serverJob = async(Dispatchers.IO) {
             engine("receiver").receive(listener.accept()) { _, _ ->
-                ReceiveDecision.Accept { ByteArrayOutputStream() }
+                ReceiveDecision.Accept({ ByteArrayOutputStream() })
             }.toList()
         }
 

@@ -3,6 +3,11 @@ package com.crossdrop.core.transfer
 import com.crossdrop.core.Endpoint
 import com.crossdrop.core.crypto.SessionCrypto
 import com.crossdrop.core.crypto.SessionIdentity
+import com.crossdrop.core.delta.Blake3
+import com.crossdrop.core.delta.ChunkCodec
+import com.crossdrop.core.delta.ChunkEntry
+import com.crossdrop.core.delta.DeltaReceiver
+import com.crossdrop.core.delta.FastCdc
 import com.crossdrop.core.protocol.*
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +16,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.RandomAccessFile
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -27,6 +33,8 @@ sealed interface TransferEvent {
         val bytesTotal: Long,
         val bytesPerSec: Long,
         val currentFile: FileMeta,
+        /** v2: bytes satisfied locally via delta/resume instead of the wire. */
+        val bytesSkipped: Long = 0,
     ) : TransferEvent
     data class Completed(val offer: Offer, val elapsedMs: Long) : TransferEvent
     data object DeclinedByPeer : TransferEvent
@@ -39,18 +47,29 @@ class OutgoingFile(val meta: FileMeta, val open: () -> InputStream)
 
 /** Receiver's answer to an [Offer]. */
 sealed interface ReceiveDecision {
-    /** Accept: [sinkFor] returns the stream each incoming file is written to. */
-    data class Accept(val sinkFor: (FileMeta) -> OutputStream) : ReceiveDecision
+    /** [sinkFor] serves the v1 monolithic path; [delta] (when non-null and the
+     *  peer speaks v2) engages chunked delta/resume storage instead. */
+    data class Accept(
+        val sinkFor: (FileMeta) -> OutputStream,
+        val delta: DeltaReceiver? = null,
+    ) : ReceiveDecision
     data class Reject(val reason: String? = null) : ReceiveDecision
 }
 
 /**
  * Drives one transfer in either direction over a single TCP socket:
  *
- *   HELLO → HELLO_ACK → [encrypted] OFFER → ACCEPT/DECLINE → DATA* → DONE → DONE
+ *   HELLO → HELLO_ACK → [encrypted] OFFER → ACCEPT/DECLINE → payload → DONE → DONE
  *
- * The final DONE is echoed by the receiver carrying its own SHA-256 of the
- * payload; the sender compares — tampering or truncation fails loudly.
+ * Payload paths, negotiated by version:
+ *
+ *   v1 — DATA* frames, monolithic streams; DONE echoes a whole-transfer SHA-256.
+ *
+ *   v2 — per file: CHUNK_MAP (FastCDC/BLAKE3 manifest) → CHUNK_REQ (missing
+ *        indices) → CHUNK* (only changed/missing bytes). Chunks land in a
+ *        hash-named staging pool so interrupted sessions resume for free, and
+ *        existing inbox files act as delta baselines. DONE echoes per-file
+ *        BLAKE3 roots — every chunk is additionally hash-verified on receipt.
  */
 class TransferEngine(
     private val identity: SessionIdentity,
@@ -75,7 +94,7 @@ class TransferEngine(
             val offer = Offer(UUID.randomUUID().toString(), files.map { it.meta })
 
             // -- handshake
-            io.write(FrameType.HELLO, Hello(deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            io.write(FrameType.HELLO, Hello(version = PROTOCOL_VERSION, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
             val (ackType, ackPayload) = io.read()
             if (ackType != FrameType.HELLO_ACK) throw ProtocolException("expected HELLO_ACK, got $ackType")
             val ack = ackPayload.decode<HelloAck>()
@@ -88,59 +107,18 @@ class TransferEngine(
             // -- offer / accept
             io.write(FrameType.OFFER, offer.encode())
             emit(TransferEvent.AwaitingAccept(offer))
-            when (io.read().first) {
+            val (ansType, ansPayload) = io.read()
+            when (ansType) {
                 FrameType.ACCEPT -> Unit
                 FrameType.DECLINE -> { emit(TransferEvent.DeclinedByPeer); return@flow }
                 FrameType.CANCEL -> { emit(TransferEvent.Cancelled); return@flow }
                 else -> throw ProtocolException("expected ACCEPT/DECLINE")
             }
 
-            // -- payload
-            val total = files.sumOf { it.meta.size }.coerceAtLeast(1)
-            val digest = MessageDigest.getInstance("SHA-256")
-            val chunk = ByteArray(CHUNK_SIZE)
-            var sent = 0L
-            var windowStart = System.nanoTime()
-            var windowBytes = 0L
-            var lastEmit = 0L
-
-            for ((index, file) in files.withIndex()) {
-                // File-start marker — also guarantees zero-byte files materialize.
-                io.write(FrameType.DATA, fileIndexHeader(index))
-                file.open().use { input ->
-                    while (true) {
-                        val n = input.read(chunk)
-                        if (n < 0) break
-                        val payload = ByteArray(4 + n)
-                        ByteBuffer.wrap(payload, 0, 4).order(ByteOrder.BIG_ENDIAN).putInt(index)
-                        chunk.copyInto(payload, 4, 0, n)
-                        io.write(FrameType.DATA, payload)
-                        digest.update(chunk, 0, n)
-                        sent += n; windowBytes += n
-
-                        val now = System.currentTimeMillis()
-                        val windowNs = System.nanoTime() - windowStart
-                        if (now - lastEmit >= 100 || sent == total) {
-                            val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
-                            emit(TransferEvent.Progress(sent, total, bps, file.meta))
-                            lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
-                        }
-                    }
-                }
-            }
-            val sha = digest.digest().toHex()
-            io.write(FrameType.DONE, Done(offer.transferId, sha).encode())
-
-            // -- receiver echoes its own digest for verification
-            val (doneType, donePayload) = io.read()
-            if (doneType == FrameType.CANCEL) { emit(TransferEvent.Cancelled); return@flow }
-            if (doneType != FrameType.DONE) throw ProtocolException("expected DONE echo, got $doneType")
-            val echo = donePayload.decode<Done>()
-            if (!echo.sha256.equals(sha, ignoreCase = true)) {
-                emit(TransferEvent.Failed("integrity check failed"))
-                return@flow
-            }
-            emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
+            // Receiver opts in: v2 delta only when both sides agreed.
+            if (ack.version >= 2 && ansPayload.decode<Accept>().delta)
+                sendDelta(io, offer, files, started) { emit(it) }
+            else sendMonolithic(io, offer, files, started) { emit(it) }
         } catch (e: kotlinx.coroutines.CancellationException) {
             runCatching { io?.write(FrameType.CANCEL, Cancel("sender cancelled").encode()) }
             throw e
@@ -151,12 +129,176 @@ class TransferEngine(
         }
     }.flowOn(dispatcher)
 
+    /** v1: stream raw bytes in DATA frames; SHA-256 echo at the end. */
+    private suspend fun sendMonolithic(
+        io: FrameIO, offer: Offer, files: List<OutgoingFile>, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
+        val total = files.sumOf { it.meta.size }.coerceAtLeast(1)
+        val digest = MessageDigest.getInstance("SHA-256")
+        val chunk = ByteArray(CHUNK_SIZE)
+        var sent = 0L
+        var windowStart = System.nanoTime()
+        var windowBytes = 0L
+        var lastEmit = 0L
+
+        for ((index, file) in files.withIndex()) {
+            // File-start marker — also guarantees zero-byte files materialize.
+            io.write(FrameType.DATA, fileIndexHeader(index))
+            file.open().use { input ->
+                while (true) {
+                    val n = input.read(chunk)
+                    if (n < 0) break
+                    val payload = ByteArray(4 + n)
+                    ByteBuffer.wrap(payload, 0, 4).order(ByteOrder.BIG_ENDIAN).putInt(index)
+                    chunk.copyInto(payload, 4, 0, n)
+                    io.write(FrameType.DATA, payload)
+                    digest.update(chunk, 0, n)
+                    sent += n; windowBytes += n
+
+                    val now = System.currentTimeMillis()
+                    val windowNs = System.nanoTime() - windowStart
+                    if (now - lastEmit >= 100 || sent == total) {
+                        val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
+                        emit(TransferEvent.Progress(sent, total, bps, file.meta))
+                        lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
+                    }
+                }
+            }
+        }
+        val sha = digest.digest().toHex()
+        io.write(FrameType.DONE, Done(offer.transferId, sha).encode())
+
+        // -- receiver echoes its own digest for verification
+        val (doneType, donePayload) = io.read()
+        if (doneType == FrameType.CANCEL) { emit(TransferEvent.Cancelled); return }
+        if (doneType != FrameType.DONE) throw ProtocolException("expected DONE echo, got $doneType")
+        val echo = donePayload.decode<Done>()
+        if (!echo.sha256.equals(sha, ignoreCase = true)) {
+            emit(TransferEvent.Failed("integrity check failed"))
+            return
+        }
+        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
+    }
+
+    /** v2: manifest → missing-index request → only those chunks on the wire. */
+    private suspend fun sendDelta(
+        io: FrameIO, offer: Offer, files: List<OutgoingFile>, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
+        val total = files.sumOf { it.meta.size }.coerceAtLeast(1)
+        val roots = ArrayList<String>(files.size)
+        var sent = 0L          // wire bytes — drives bps
+        var cached = 0L        // delta-resumed bytes
+        var lastEmit = 0L
+        var windowStart = System.nanoTime()
+        var windowBytes = 0L
+
+        for ((index, file) in files.withIndex()) {
+            // -- pass 1: FastCDC split + BLAKE3 per chunk & per file.
+            //    Keep each chunk's offset so pass 2 can skip straight to the
+            //    bytes it needs instead of re-chunking the whole file.
+            val chunks = ArrayList<ChunkEntry>()
+            val offs = ArrayList<Long>()
+            val fileHasher = Blake3()
+            file.open().use { input ->
+                FastCdc.chunks(input).forEach { (bytes, off) ->
+                    chunks += ChunkEntry(bytes.size, Blake3.hash(bytes))
+                    offs += off
+                    fileHasher.update(bytes)
+                }
+            }
+            roots += fileHasher.hexDigest()
+
+            // -- manifest, in parts bounded by frame size
+            val parts = maxOf(1, (chunks.size + ChunkCodec.ENTRIES_PER_PART - 1) / ChunkCodec.ENTRIES_PER_PART)
+            for (p in 0 until parts) {
+                val slice = chunks.subList(p * ChunkCodec.ENTRIES_PER_PART,
+                    minOf(chunks.size, (p + 1) * ChunkCodec.ENTRIES_PER_PART))
+                io.write(FrameType.CHUNK_MAP, ChunkCodec.encodeMapPart(index, p, parts, slice))
+            }
+
+            // -- receiver answers with the indices it lacks
+            val (reqType, reqPayload) = io.read()
+            when (reqType) {
+                FrameType.CANCEL -> { emit(TransferEvent.Cancelled); return }
+                FrameType.CHUNK_REQ -> Unit
+                else -> throw ProtocolException("expected CHUNK_REQ, got $reqType")
+            }
+            val need = ChunkCodec.decodeRequest(reqPayload).indices.toHashSet()
+            if (need.any { it !in chunks.indices })
+                throw ProtocolException("CHUNK_REQ index out of range")
+            val needBytes = need.sumOf { chunks[it].len.toLong() }
+            cached += file.meta.size - needBytes
+
+            // -- pass 2: skip to each needed chunk's recorded offset and
+            //    stream only those bytes (deduped — equal content sent once)
+            if (need.isNotEmpty()) {
+                file.open().use { input ->
+                    var pos = 0L
+                    for (ci in need.sorted()) {
+                        skipFully(input, offs[ci] - pos)
+                        val bytes = ByteArray(chunks[ci].len)
+                        readFully(input, bytes)
+                        pos = offs[ci] + bytes.size
+                        if (!Blake3.hash(bytes).contentEquals(chunks[ci].hash))
+                            throw ProtocolException("${file.meta.name} changed mid-transfer")
+                        io.write(FrameType.CHUNK, ChunkCodec.encodeChunk(index, ci, bytes))
+                        sent += bytes.size; windowBytes += bytes.size
+                        val now = System.currentTimeMillis()
+                        val windowNs = System.nanoTime() - windowStart
+                        if (now - lastEmit >= 100) {
+                            val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
+                            emit(TransferEvent.Progress(sent + cached, total, bps, file.meta, cached))
+                            lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
+                        }
+                    }
+                }
+            }
+        }
+
+        // -- completion: receiver verifies assembled roots, echoes its own
+        emit(TransferEvent.Progress(sent + cached, total, 0,
+            files.lastOrNull()?.meta ?: FileMeta("", 0), cached))
+        io.write(FrameType.DONE, Done(offer.transferId, "", roots).encode())
+        val (doneType, donePayload) = io.read()
+        if (doneType == FrameType.CANCEL) { emit(TransferEvent.Cancelled); return }
+        if (doneType != FrameType.DONE) throw ProtocolException("expected DONE echo, got $doneType")
+        val echo = donePayload.decode<Done>()
+        if (echo.roots != null && echo.roots != roots) {
+            emit(TransferEvent.Failed("integrity check failed"))
+            return
+        }
+        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
+    }
+
+    /** Advance [n] bytes forward in [input]; falls back to read-discard when
+     *  the stream can't seek (skip returns 0). */
+    private fun skipFully(input: InputStream, n: Long) {
+        var left = n
+        while (left > 0) {
+            val s = input.skip(left)
+            if (s > 0) { left -= s; continue }
+            if (input.read() < 0) throw ProtocolException("source truncated mid-transfer")
+            left--
+        }
+    }
+
+    private fun readFully(input: InputStream, buf: ByteArray) {
+        var off = 0
+        while (off < buf.size) {
+            val n = input.read(buf, off, buf.size - off)
+            if (n < 0) throw ProtocolException("source truncated mid-transfer")
+            off += n
+        }
+    }
+
     // ----------------------------------------------------------- receiver --
 
     /**
      * Serve one inbound connection already accepted from the listener socket.
      * [decide] is invoked once the (decrypted) OFFER arrives — return
-     * [ReceiveDecision.Accept] with a sink factory, or [ReceiveDecision.Reject].
+     * [ReceiveDecision.Accept] or [ReceiveDecision.Reject].
      */
     fun receive(socket: Socket, decide: suspend (peerName: String, offer: Offer) -> ReceiveDecision): Flow<TransferEvent> = flow {
         val started = System.currentTimeMillis()
@@ -171,8 +313,11 @@ class TransferEngine(
             val (helloType, helloPayload) = io.read()
             if (helloType != FrameType.HELLO) throw ProtocolException("expected HELLO, got $helloType")
             val hello = helloPayload.decode<Hello>()
-            if (hello.version != PROTOCOL_VERSION) throw ProtocolException("protocol v${hello.version} unsupported")
-            io.write(FrameType.HELLO_ACK, HelloAck(deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            if (hello.version < 1)
+                throw ProtocolException("protocol v${hello.version} unsupported")
+            // A newer peer clamps down to what we speak rather than failing.
+            val negotiated = minOf(hello.version, PROTOCOL_VERSION)
+            io.write(FrameType.HELLO_ACK, HelloAck(version = PROTOCOL_VERSION, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
             val keys = SessionCrypto.deriveSession(identity, unb64(hello.publicKeyB64), isInitiator = false)
             io.writeCipher = com.crossdrop.core.crypto.RecordCipher(keys.sendKey)
             io.readCipher = com.crossdrop.core.crypto.RecordCipher(keys.recvKey)
@@ -190,64 +335,14 @@ class TransferEngine(
                     emit(TransferEvent.DeclinedByPeer)
                     return@flow
                 }
-                is ReceiveDecision.Accept -> io.write(FrameType.ACCEPT, Accept(offer.transferId).encode())
+                is ReceiveDecision.Accept -> io.write(FrameType.ACCEPT,
+                    Accept(offer.transferId, delta = negotiated >= 2 && decision.delta != null).encode())
             }
-            val sinkFor = decision.sinkFor
 
-            // -- payload
-            val total = offer.files.sumOf { it.size }
-            val digest = MessageDigest.getInstance("SHA-256")
-            var received = 0L
-            var currentFile = -1
-            var sink: OutputStream? = null
-            var windowStart = System.nanoTime()
-            var windowBytes = 0L
-            var lastEmit = 0L
-
-            try {
-                loop@ while (true) {
-                    val (type, payload) = io.read()
-                    when (type) {
-                        FrameType.DATA -> {
-                            if (payload.size < 4) throw ProtocolException("short DATA frame")
-                            val fileIndex = ByteBuffer.wrap(payload, 0, 4).order(ByteOrder.BIG_ENDIAN).int
-                            if (fileIndex != currentFile) {
-                                if (fileIndex <= currentFile || fileIndex >= offer.files.size)
-                                    throw ProtocolException("bad file index $fileIndex")
-                                sink?.close()
-                                currentFile = fileIndex
-                                sink = sinkFor(offer.files[fileIndex])
-                            }
-                            val body = payload.copyOfRange(4, payload.size)
-                            sink!!.write(body)
-                            digest.update(body)
-                            received += body.size; windowBytes += body.size
-
-                            val now = System.currentTimeMillis()
-                            val windowNs = System.nanoTime() - windowStart
-                            if (now - lastEmit >= 100 || (total > 0 && received == total)) {
-                                val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
-                                emit(TransferEvent.Progress(received, total, bps, offer.files[currentFile]))
-                                lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
-                            }
-                        }
-                        FrameType.DONE -> {
-                            val done = payload.decode<Done>()
-                            val localSha = digest.digest().toHex()
-                            io.write(FrameType.DONE, Done(offer.transferId, localSha).encode())
-                            if (!localSha.equals(done.sha256, ignoreCase = true)) {
-                                emit(TransferEvent.Failed("integrity check failed"))
-                                return@flow
-                            }
-                            emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
-                            break@loop
-                        }
-                        FrameType.CANCEL -> { emit(TransferEvent.Cancelled); return@flow }
-                        else -> throw ProtocolException("unexpected $type during payload")
-                    }
-                }
-            } finally {
-                sink?.close()
+            if (negotiated >= 2 && decision.delta != null) {
+                receiveDelta(socket, io, offer, decision.delta, started) { emit(it) }
+            } else {
+                receiveMonolithic(io, offer, decision.sinkFor, started) { emit(it) }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             runCatching { io?.write(FrameType.CANCEL, Cancel("receiver cancelled").encode()) }
@@ -259,6 +354,274 @@ class TransferEngine(
         }
     }.flowOn(dispatcher)
 
+    /** v1: consume DATA frames into per-file sinks; SHA-256 echo at the end. */
+    private suspend fun receiveMonolithic(
+        io: FrameIO, offer: Offer,
+        sinkFor: (FileMeta) -> OutputStream, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
+        val total = offer.files.sumOf { it.size }
+        val digest = MessageDigest.getInstance("SHA-256")
+        var received = 0L
+        var currentFile = -1
+        var sink: OutputStream? = null
+        var windowStart = System.nanoTime()
+        var windowBytes = 0L
+        var lastEmit = 0L
+
+        try {
+            loop@ while (true) {
+                val (type, payload) = io.read()
+                when (type) {
+                    FrameType.DATA -> {
+                        if (payload.size < 4) throw ProtocolException("short DATA frame")
+                        val fileIndex = ByteBuffer.wrap(payload, 0, 4).order(ByteOrder.BIG_ENDIAN).int
+                        if (fileIndex != currentFile) {
+                            if (fileIndex <= currentFile || fileIndex >= offer.files.size)
+                                throw ProtocolException("bad file index $fileIndex")
+                            sink?.close()
+                            currentFile = fileIndex
+                            sink = sinkFor(offer.files[fileIndex])
+                        }
+                        val body = payload.copyOfRange(4, payload.size)
+                        sink!!.write(body)
+                        digest.update(body)
+                        received += body.size; windowBytes += body.size
+
+                        val now = System.currentTimeMillis()
+                        val windowNs = System.nanoTime() - windowStart
+                        if (now - lastEmit >= 100 || (total > 0 && received == total)) {
+                            val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
+                            emit(TransferEvent.Progress(received, total, bps, offer.files[currentFile]))
+                            lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
+                        }
+                    }
+                    FrameType.DONE -> {
+                        val done = payload.decode<Done>()
+                        val localSha = digest.digest().toHex()
+                        io.write(FrameType.DONE, Done(offer.transferId, localSha).encode())
+                        if (!localSha.equals(done.sha256, ignoreCase = true)) {
+                            emit(TransferEvent.Failed("integrity check failed"))
+                            return
+                        }
+                        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
+                        break@loop
+                    }
+                    FrameType.CANCEL -> { emit(TransferEvent.Cancelled); return }
+                    else -> throw ProtocolException("unexpected $type during payload")
+                }
+            }
+        } finally {
+            sink?.close()
+        }
+    }
+
+    /** v2: manifests → local reuse (staging pool + baseline) → assemble. */
+    private suspend fun receiveDelta(
+        socket: Socket, io: FrameIO, offer: Offer, delta: DeltaReceiver, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
+        val total = offer.files.sumOf { it.size }.coerceAtLeast(1)
+        // Chunking a multi-GB file before the first CHUNK_MAP can take far
+        // longer than DATA_TIMEOUT — bounded but generous; aborts arrive via
+        // CANCEL or socket close.
+        socket.soTimeout = DELTA_TIMEOUT_MS
+        val pool = delta.stagingPool().apply { mkdirs() }
+        val roots = ArrayList<String>(offer.files.size)
+        var received = 0L      // wire bytes
+        var cached = 0L        // locally-satisfied bytes
+        var lastEmit = 0L
+        var windowStart = System.nanoTime()
+        var windowBytes = 0L
+
+        for ((index, meta) in offer.files.withIndex()) {
+            // -- 1. read the sender's chunk manifest (possibly several parts)
+            val manifest = ArrayList<ChunkEntry>()
+            var parts = -1; var nextPart = 0
+            while (parts < 0 || nextPart < parts) {
+                val (type, payload) = io.read()
+                when (type) {
+                    FrameType.CHUNK_MAP -> {
+                        val mp = ChunkCodec.decodeMapPart(payload)
+                        if (mp.fileIndex != index || mp.part != nextPart)
+                            throw ProtocolException("unexpected chunk-map part ${mp.fileIndex}/${mp.part}")
+                        if (parts >= 0 && mp.parts != parts)
+                            throw ProtocolException("inconsistent chunk-map parts")
+                        parts = mp.parts; nextPart++
+                        manifest.addAll(mp.entries)
+                        // Every chunk but the last is ≥ MIN — cap the alloc.
+                        if (manifest.size > meta.size / FastCdc.MIN + 1)
+                            throw ProtocolException("manifest too large for ${meta.name}")
+                    }
+                    FrameType.CANCEL -> { emit(TransferEvent.Cancelled); return }
+                    else -> throw ProtocolException("expected CHUNK_MAP, got $type")
+                }
+            }
+            if (manifest.sumOf { it.len.toLong() } != meta.size)
+                throw ProtocolException("manifest size mismatch for ${meta.name}")
+
+            // -- 2. index local reuse sources: staging pool + baseline file.
+            //    A pooled chunk only counts if its bytes hash to its name —
+            //    a corrupt .bin would otherwise poison every retry.
+            pool.listFiles()?.forEach { if (it.name.endsWith(".tmp")) it.delete() }
+            val poolFiles = (pool.listFiles()
+                ?.filter { it.isFile && it.name.endsWith(".bin") && it.name.length == 68 }
+                ?.associateBy { it.name.removeSuffix(".bin") } ?: emptyMap()).toMutableMap()
+            val poolOk = HashMap<String, java.io.File?>()
+            fun pooled(e: ChunkEntry): java.io.File? = poolOk.getOrPut(e.key) {
+                val f = poolFiles[e.key] ?: return@getOrPut null
+                val good = f.length() == e.len.toLong() && runCatching {
+                    f.inputStream().buffered().use { Blake3.hash(it) }.contentEquals(e.hash)
+                }.getOrDefault(false)
+                if (!good) { f.delete(); poolFiles.remove(e.key); null } else f
+            }
+            val baseline = delta.baselineFor(meta)
+            val baseIndex = HashMap<String, Pair<Long, Int>>()   // key → (offset,len)
+            if (baseline != null) {
+                var off = 0L
+                for (e in baseline.chunks) { baseIndex.putIfAbsent(e.key, off to e.len); off += e.len }
+            }
+            // One request per missing hash — equal chunks cross the wire once.
+            val requested = LinkedHashMap<String, Int>()         // key → first missing index
+            for (i in manifest.indices) {
+                val e = manifest[i]
+                if (e.key !in baseIndex && pooled(e) == null) requested.putIfAbsent(e.key, i)
+            }
+            cached += meta.size - requested.keys.sumOf { manifest[requested.getValue(it)].len.toLong() }
+
+            // -- 3. ask for only what's missing
+            io.write(FrameType.CHUNK_REQ, ChunkCodec.encodeRequest(index, requested.values.toIntArray()))
+            emit(TransferEvent.Progress(received + cached, total, 0, meta, cached))
+
+            // -- 4. receive missing chunks → hash-verify → staging pool
+            val wantIndex = requested.values.toHashSet()
+            val pending = requested.keys.toMutableSet()
+            while (pending.isNotEmpty()) {
+                val (type, payload) = io.read()
+                when (type) {
+                    FrameType.CHUNK -> {
+                        val c = ChunkCodec.decodeChunk(payload)
+                        if (c.fileIndex != index || c.chunkIndex !in wantIndex)
+                            throw ProtocolException("unexpected chunk ${c.fileIndex}/${c.chunkIndex}")
+                        val want = manifest[c.chunkIndex]
+                        if (c.payload.size != want.len || !Blake3.hash(c.payload).contentEquals(want.hash))
+                            throw ProtocolException("chunk ${c.chunkIndex} failed hash check")
+                        if (!pending.remove(want.key))
+                            throw ProtocolException("duplicate chunk ${c.chunkIndex}")
+                        val tmp = java.io.File(pool, "${want.key}.${System.nanoTime()}.tmp")
+                        tmp.writeBytes(c.payload)
+                        val bin = java.io.File(pool, "${want.key}.bin")
+                        // renameTo can't overwrite on Windows — Files.move can.
+                        java.nio.file.Files.move(tmp.toPath(), bin.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                        poolFiles[want.key] = bin
+                        received += c.payload.size; windowBytes += c.payload.size
+                        val now = System.currentTimeMillis()
+                        val windowNs = System.nanoTime() - windowStart
+                        if (now - lastEmit >= 100 || pending.isEmpty()) {
+                            val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
+                            emit(TransferEvent.Progress(received + cached, total, bps, meta, cached))
+                            lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
+                        }
+                    }
+                    FrameType.CANCEL -> { emit(TransferEvent.Cancelled); return }
+                    else -> throw ProtocolException("expected CHUNK, got $type")
+                }
+            }
+
+            // -- 5. assemble. Fast path: manifest identical to the baseline's
+            // index AND the file's bytes still hash to its stored root —
+            // nothing to write. A mutated baseline falls through to the
+            // verified assembly below.
+            val fastOk = baseline != null && baseline.root != null &&
+                baseline.chunks == manifest && runCatching {
+                    baseline.file.inputStream().buffered().use { Blake3.hash(it).toHex() }
+                }.getOrNull() == baseline.root
+            if (fastOk) {
+                roots += baseline.root
+            } else {
+                val target = delta.targetFor(meta)
+                val tmp = java.io.File(target.parentFile, "${target.name}.${System.nanoTime()}.part")
+                val fileHasher = Blake3()
+                val raf = baseline?.let { RandomAccessFile(it.file, "r") }
+                try {
+                    tmp.outputStream().buffered().use { out ->
+                        for (e in manifest) {
+                            val pooled = poolFiles[e.key]
+                            if (pooled != null) {
+                                pooled.inputStream().buffered().use { it.copyTo(tee(out, fileHasher)) }
+                            } else {
+                                val (off, len) = baseIndex[e.key]
+                                    ?: throw ProtocolException("chunk ${e.key.take(8)} missing locally")
+                                // Baseline bytes are trusted only after their
+                                // own chunk hash matches — a corrupt baseline
+                                // gets its index dropped and heals next retry.
+                                raf!!.seek(off)
+                                val h = copySlice(raf, out, fileHasher, len)
+                                if (h == null || !h.contentEquals(e.hash)) {
+                                    delta.invalidate(meta)
+                                    throw ProtocolException("baseline chunk ${e.key.take(8)} corrupt")
+                                }
+                            }
+                        }
+                    }
+                } finally {
+                    // Baseline handle must close before the move — the target
+                    // may BE the baseline file (Windows locks open files).
+                    raf?.close()
+                }
+                java.nio.file.Files.move(tmp.toPath(), target.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                roots += fileHasher.hexDigest()
+                delta.publishIndex(target, manifest, fileHasher.hexDigest())
+            }
+
+            // -- pool hygiene: chunks now live inside the assembled file
+            for (e in manifest) java.io.File(pool, "${e.key}.bin").delete()
+        }
+
+        // -- 6. final DONE with our BLAKE3 roots; sender compares
+        val (type, payload) = io.read()
+        if (type == FrameType.CANCEL) { emit(TransferEvent.Cancelled); return }
+        if (type != FrameType.DONE) throw ProtocolException("expected DONE, got $type")
+        val done = payload.decode<Done>()
+        io.write(FrameType.DONE, Done(offer.transferId, "", roots).encode())
+        if (done.roots != null && done.roots != roots) {
+            // Content assembled but the root disagrees — drop the indexes we
+            // trusted so a retry re-chunks baselines rather than re-failing.
+            offer.files.forEach { runCatching { delta.invalidate(it) } }
+            emit(TransferEvent.Failed("integrity check failed"))
+            return
+        }
+        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
+    }
+
+    /** Copy [len] bytes from a positioned [raf] into [out], hashing into
+     *  [hasher] (whole-file) on the way. Returns the copied chunk's own
+     *  BLAKE3, or null if the source ran out early — callers compare the
+     *  digest against the manifest hash. */
+    private fun copySlice(
+        raf: RandomAccessFile, out: OutputStream, hasher: Blake3, len: Int,
+    ): ByteArray? {
+        val chunkHasher = Blake3()
+        val buf = ByteArray(64 * 1024)
+        var left = len
+        while (left > 0) {
+            val n = raf.read(buf, 0, minOf(buf.size, left))
+            if (n < 0) break
+            out.write(buf, 0, n); hasher.update(buf, 0, n); chunkHasher.update(buf, 0, n); left -= n
+        }
+        return if (left == 0) chunkHasher.digest() else null
+    }
+
+    /** Wrap [out] so every written byte also feeds [hasher]. */
+    private fun tee(out: OutputStream, hasher: Blake3) = object : OutputStream() {
+        override fun write(b: Int) { out.write(b); hasher.update(byteArrayOf(b.toByte())) }
+        override fun write(b: ByteArray, off: Int, len: Int) {
+            out.write(b, off, len); hasher.update(b, off, len)
+        }
+    }
+
     private fun fileIndexHeader(index: Int): ByteArray =
         ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(index).array()
 
@@ -266,6 +629,8 @@ class TransferEngine(
         const val CHUNK_SIZE = 256 * 1024
         const val CONTROL_TIMEOUT_MS = 15_000
         const val DATA_TIMEOUT_MS = 60_000
+        /** v2 manifest/chunk phases pause for full-file hashing — generous. */
+        const val DELTA_TIMEOUT_MS = 600_000
     }
 }
 

@@ -144,6 +144,12 @@ fun TransferScreen(
                             "${formatBytes(session.bytesDone)} / ${formatBytes(session.bytesTotal)}",
                             color = TextDim, fontSize = 11.sp,
                         )
+                        if (session.bytesSkipped > 0) {
+                            Text(
+                                "Δ ${formatBytes(session.bytesSkipped)} already local",
+                                color = FluidCyan, fontSize = 11.sp,
+                            )
+                        }
                     }
                     if (session.bytesPerSec > 0) {
                         Spacer(Modifier.weight(1f))

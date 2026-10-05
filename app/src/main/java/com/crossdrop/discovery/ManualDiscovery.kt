@@ -27,6 +27,22 @@ class ManualDiscovery : PeerDiscovery {
         ))
     }
 
+    /** Vault beacon variant — exercises the orbital-node render + mount sheet. */
+    fun addVault(name: String, host: String, port: Int,
+                 writable: Boolean, pin: Boolean) {
+        val id = "manual-vault-$host:$port"
+        _peers.value = _peers.value + (id to Peer(
+            instanceId = id,
+            name = name.ifBlank { "$host:$port" },
+            endpoint = Endpoint(host, port),
+            sources = setOf(DiscoverySource.NSD),
+            lastSeenMs = System.currentTimeMillis(),
+            vault = com.crossdrop.core.VaultDescriptor(
+                vaultName = name.ifBlank { "Vault" },
+                writable = writable, needsPin = pin),
+        ))
+    }
+
     fun removeAll() {
         _peers.value = emptyMap()
     }

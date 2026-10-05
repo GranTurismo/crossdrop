@@ -42,7 +42,10 @@ import com.crossdrop.core.Peer
 import com.crossdrop.ui.DeviceNameDialog
 import com.crossdrop.ui.IconDoc
 import com.crossdrop.ui.IconPhoto
+import com.crossdrop.ui.IconQr
+import com.crossdrop.ui.IconVault
 import com.crossdrop.ui.theme.AuroraBrush
+import com.crossdrop.ui.theme.AuroraViolet
 import com.crossdrop.ui.theme.DeepSpaceRaised
 import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.FluidCyan
@@ -79,6 +82,8 @@ fun RadarScreen(
     selfName: String,
     peers: List<Peer>,
     onSendTo: (Peer, List<android.net.Uri>) -> Unit,
+    onShareToAnyone: (List<android.net.Uri>) -> Unit = {},
+    onMountVault: (Peer) -> Unit = {},
     onRename: (String) -> Unit,
     onPermissionsGranted: () -> Unit = {},
     selfPort: Int = 0,
@@ -86,13 +91,19 @@ fun RadarScreen(
     val context = LocalContext.current
     val view = LocalView.current
     var pendingPeer by remember { mutableStateOf<Peer?>(null) }
+    var pendingAnyone by remember { mutableStateOf(false) }
     var pickingForPeer by remember { mutableStateOf<Peer?>(null) }
+    var pickingAnyone by remember { mutableStateOf(false) }
+    var vaultPeer by remember { mutableStateOf<Peer?>(null) }
     var permsGranted by remember { mutableStateOf(hasAll(context)) }
 
     fun dispatch(uris: List<android.net.Uri>?) {
         val peer = pendingPeer
+        val anyone = pendingAnyone
         pendingPeer = null
-        if (!uris.isNullOrEmpty() && peer != null) onSendTo(peer, uris)
+        pendingAnyone = false
+        if (uris.isNullOrEmpty()) return
+        if (anyone) onShareToAnyone(uris) else if (peer != null) onSendTo(peer, uris)
     }
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -101,12 +112,20 @@ fun RadarScreen(
         ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
     ) { dispatch(it) }
 
-    /** Peer tap → chooser sheet: gallery/photo-picker vs generic files. */
+    /** Peer tap → send chooser, or the vault mount sheet for beacons. */
     fun startSendFlow(peer: Peer) {
         if (peer.endpoint == null) return
         view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        if (peer.vault != null) { vaultPeer = peer; return }
         pendingPeer = peer
         pickingForPeer = peer
+    }
+
+    /** "Send to anyone" → same chooser, but the result feeds the QR share. */
+    fun startAnyoneFlow() {
+        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+        pendingAnyone = true
+        pickingAnyone = true
     }
 
     val permLauncher = rememberLauncherForActivityResult(
@@ -160,6 +179,24 @@ fun RadarScreen(
                         renaming = false
                         new?.let(onRename)
                     })
+                }
+            }
+
+            // ---- "send to anyone" — zero-install receiver via QR
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = DeepSpaceSoft,
+                border = androidx.compose.foundation.BorderStroke(1.dp, RippleTeal.copy(alpha = 0.4f)),
+                onClick = ::startAnyoneFlow,
+            ) {
+                Row(
+                    Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconQr(RippleTeal, size = 18.dp)
+                    Spacer(Modifier.width(8.dp))
+                    Text("to anyone", color = TextPrimary, fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium)
                 }
             }
         }
@@ -227,7 +264,10 @@ fun RadarScreen(
                             )
                             if (reachable) {
                                 Spacer(Modifier.width(8.dp))
-                                Text("send", color = RippleTeal, fontSize = 12.sp)
+                                Text(
+                                    if (peer.vault != null) "vault" else "send",
+                                    color = if (peer.vault != null) AuroraViolet else RippleTeal,
+                                    fontSize = 12.sp)
                             }
                         }
                     }
@@ -238,42 +278,132 @@ fun RadarScreen(
 
     // ---- send chooser: photo picker or generic files
     pickingForPeer?.let { peer ->
-        ModalBottomSheet(
-            onDismissRequest = { pickingForPeer = null; pendingPeer = null },
-            containerColor = DeepSpaceSoft,
+        SendChooserSheet(
+            title = "Send to ${peer.name}",
+            onDismiss = { pickingForPeer = null; pendingPeer = null },
+            onPickMedia = {
+                pickingForPeer = null
+                mediaPicker.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+            },
+            onPickFiles = { pickingForPeer = null; filePicker.launch(arrayOf("*/*")) },
+        )
+    }
+    if (pickingAnyone) {
+        SendChooserSheet(
+            title = "Send to anyone",
+            subtitle = "they'll scan a QR — no app needed",
+            onDismiss = { pickingAnyone = false; pendingAnyone = false },
+            onPickMedia = {
+                pickingAnyone = false
+                mediaPicker.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageAndVideo))
+            },
+            onPickFiles = { pickingAnyone = false; filePicker.launch(arrayOf("*/*")) },
+        )
+    }
+
+    // ---- vault beacon tap → mount sheet
+    vaultPeer?.let { peer ->
+        VaultMountSheet(
+            peer = peer,
+            onDismiss = { vaultPeer = null },
+            onMount = { vaultPeer = null; onMountVault(peer) },
+        )
+    }
+}
+
+/**
+ * Orbital-beacon action sheet: mount in the native explorer, or hand the
+ * browser URL to anyone nearby (QR + copyable link).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VaultMountSheet(
+    peer: Peer,
+    onDismiss: () -> Unit,
+    onMount: () -> Unit,
+) {
+    val context = LocalContext.current
+    val vault = peer.vault!!
+    val url = peer.endpoint?.let { "http://${it.host}:${it.port}/" } ?: ""
+    var showQr by remember { mutableStateOf(false) }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DeepSpaceSoft) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+            Text(vault.vaultName, color = TextPrimary, fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold)
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    "Send to ${peer.name}",
-                    color = TextPrimary, fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    "pick what to share",
-                    color = TextDim, fontSize = 12.sp,
-                )
-                Spacer(Modifier.height(14.dp))
-                PickerOption(
-                    title = "Photos & videos",
-                    subtitle = "gallery, camera roll, Google Photos",
-                    onClick = {
-                        pickingForPeer = null
-                        mediaPicker.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageAndVideo))
-                    },
-                ) { IconPhoto(RippleTeal, size = 26.dp) }
-                Spacer(Modifier.height(8.dp))
-                PickerOption(
-                    title = "Files",
-                    subtitle = "documents, archives, everything else",
-                    onClick = {
-                        pickingForPeer = null
-                        filePicker.launch(arrayOf("*/*"))
-                    },
-                ) { IconDoc(FluidCyan, size = 24.dp) }
-                Spacer(Modifier.height(28.dp))
+                    if (vault.writable) "read · write" else "read-only",
+                    color = if (vault.writable) Phosphor else TextDim, fontSize = 12.sp)
+                if (vault.needsPin) {
+                    Text("  ·  🔒 PIN protected", color = TextDim, fontSize = 12.sp)
+                }
             }
+            Spacer(Modifier.height(16.dp))
+            PickerOption(
+                title = "Mount vault",
+                subtitle = "browse and pull files in-app (encrypted)",
+                onClick = onMount,
+            ) { IconVault(RippleTeal, size = 26.dp) }
+            Spacer(Modifier.height(8.dp))
+            PickerOption(
+                title = "Open in browser",
+                subtitle = "share the link — no app needed on their end",
+                onClick = {
+                    url.let {
+                        val cm = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE)
+                            as android.content.ClipboardManager
+                        cm.setPrimaryClip(android.content.ClipData.newPlainText("vault", it))
+                    }
+                    showQr = !showQr
+                },
+            ) { IconQr(FluidCyan, size = 24.dp) }
+            if (showQr && url.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                com.crossdrop.ui.QrCard(url, size = 190.dp)
+                Spacer(Modifier.height(6.dp))
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Text(url, color = TextDim, fontSize = 11.sp)
+                }
+                Text("link copied — or let them scan", color = TextDim, fontSize = 11.sp)
+            }
+            Spacer(Modifier.height(28.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SendChooserSheet(
+    title: String,
+    subtitle: String = "pick what to share",
+    onDismiss: () -> Unit,
+    onPickMedia: () -> Unit,
+    onPickFiles: () -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = DeepSpaceSoft) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
+            Text(title, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = TextDim, fontSize = 12.sp)
+            Spacer(Modifier.height(14.dp))
+            PickerOption(
+                title = "Photos & videos",
+                subtitle = "gallery, camera roll, Google Photos",
+                onClick = onPickMedia,
+            ) { IconPhoto(RippleTeal, size = 26.dp) }
+            Spacer(Modifier.height(8.dp))
+            PickerOption(
+                title = "Files",
+                subtitle = "documents, archives, everything else",
+                onClick = onPickFiles,
+            ) { IconDoc(FluidCyan, size = 24.dp) }
+            Spacer(Modifier.height(28.dp))
         }
     }
 }

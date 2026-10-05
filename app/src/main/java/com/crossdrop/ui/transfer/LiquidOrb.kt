@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.sensor.TiltSource
+import com.crossdrop.ui.theme.AuroraViolet
 import com.crossdrop.ui.theme.FluidCyan
 import com.crossdrop.ui.theme.Phosphor
 import com.crossdrop.ui.theme.RippleTeal
@@ -89,18 +90,22 @@ fun LiquidOrb(
         val center = Offset(this.size.width / 2, this.size.height / 2)
         val r = min(this.size.width, this.size.height) / 2 * 0.94f
 
-        // -- inner phosphorescent glow (throughput energy)
+        // -- inner aurora glow (throughput energy): mint core into violet rim
         if (turb > 0.02f) {
             drawCircle(
                 Brush.radialGradient(
-                    colors = listOf(FluidCyan.copy(alpha = 0.28f * turb), Color.Transparent),
+                    colors = listOf(
+                        RippleTeal.copy(alpha = 0.26f * turb),
+                        AuroraViolet.copy(alpha = 0.16f * turb),
+                        Color.Transparent,
+                    ),
                     center = center, radius = r,
                 ), radius = r, center = center,
             )
         }
 
         // -- glass shell
-        drawCircle(Color(0xFF0D1428), radius = r, center = center)
+        drawCircle(Color(0xFF0C0626), radius = r, center = center)
         drawCircle(
             Brush.linearGradient(
                 colors = listOf(Color(0x66EAF9FF), Color(0x1AEAF9FF), Color(0x44EAF9FF)),
@@ -131,13 +136,15 @@ fun LiquidOrb(
             if (level > 0.005f) {
                 rotate(sloshDeg, center) {
                     drawWave(center, r, surfaceY + r * 0.03f, amp * 0.7f, tA + 1.7f, tB,
-                        color = RippleTeal.copy(alpha = 0.55f))
+                        color = AuroraViolet.copy(alpha = 0.42f))
                     drawWave(center, r, surfaceY, amp, tA, tB + 0.9f,
                         color = Brush.verticalGradient(
                             colors = listOf(
-                                FluidCyan.copy(alpha = 0.95f),
+                                Phosphor.copy(alpha = 0.92f),
                                 RippleTeal.copy(alpha = 0.95f),
-                                Color(0xFF0B7C6E),
+                                FluidCyan.copy(alpha = 0.90f),
+                                AuroraViolet.copy(alpha = 0.88f),
+                                Color(0xFF241052),
                             ),
                             startY = surfaceY - amp * 2, endY = center.y + r,
                         ))

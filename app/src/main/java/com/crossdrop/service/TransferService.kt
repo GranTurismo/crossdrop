@@ -21,6 +21,7 @@ import com.crossdrop.net.SessionStatus
 import com.crossdrop.net.isTerminal
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
@@ -54,13 +55,20 @@ class TransferService : LifecycleService() {
     private fun observe() {
         if (observeJob != null) return
         observeJob = lifecycleScope.launch {
-            val coordinator = (application as CrossDropApp).container.coordinator
-            coordinator.session.collectLatest { session ->
-                when {
-                    session == null -> stopSelf()
-                    else -> updateNotification(session)
+            val container = (application as CrossDropApp).container
+            combine(
+                container.coordinator.session,
+                container.qrShare.state,
+                container.vaultHost.state,
+            ) { s, q, v -> Triple(s, q, v) }
+                .collectLatest { (session, share, vault) ->
+                    when {
+                        session != null -> updateNotification(session)
+                        share != null -> updateShareNotification(share)
+                        vault != null -> updateVaultNotification(vault)
+                        else -> stopSelf()
+                    }
                 }
-            }
         }
     }
 
@@ -115,6 +123,50 @@ class TransferService : LifecycleService() {
             else -> builder.setContentText("Connecting…").setOngoing(true)
         }
         startForegroundWith(builder.build())
+    }
+
+    /** "Send to anyone" share — keeps the HTTP server reachable while backgrounded. */
+    private fun updateShareNotification(share: com.crossdrop.net.QrShareManager.State) {
+        val text = when {
+            share.delivered -> "All files delivered"
+            share.downloadsStarted > 0 ->
+                "${share.downloadsDone}/${share.downloadsStarted} downloads · ${formatBytes(share.bytesServed)}"
+            share.connected -> "Receiver connected"
+            else -> "${share.files.size} file${if (share.files.size == 1) "" else "s"} · waiting for a scan"
+        }
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle("Sharing via browser link")
+            .setContentText(text)
+            .setOngoing(!share.delivered)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(contentIntent())
+            .build()
+        startForegroundWith(notification)
+    }
+
+    /** Hosted LAN vault — keeps the listener + NSD advert alive in background. */
+    private fun updateVaultNotification(vault: com.crossdrop.net.VaultHostManager.State) {
+        val clients = vault.clients.size
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher)
+            .setContentTitle("Vault live — ${vault.vaultName}")
+            .setContentText(
+                "${if (vault.writable) "read-write" else "read-only"} · " +
+                    "$clients client${if (clients == 1) "" else "s"} · " +
+                    "↓${formatBytes(vault.bytesOut)}")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(contentIntent())
+            .build()
+        startForegroundWith(notification)
+    }
+
+    private fun formatBytes(b: Long): String = when {
+        b >= 1L shl 30 -> "%.1f GB".format(b / (1L shl 30).toDouble())
+        b >= 1L shl 20 -> "%.1f MB".format(b / (1L shl 20).toDouble())
+        b >= 1L shl 10 -> "%.0f KB".format(b / (1L shl 10).toDouble())
+        else -> "$b B"
     }
 
     private fun formatRate(bps: Long): String = when {

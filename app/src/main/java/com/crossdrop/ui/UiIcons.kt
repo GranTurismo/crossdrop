@@ -162,6 +162,50 @@ fun IconDoc(tint: Color, modifier: Modifier = Modifier, size: Dp = 20.dp) {
     }
 }
 
+/** QR glyph — three finder squares plus scattered modules. */
+@Composable
+fun IconQr(tint: Color, modifier: Modifier = Modifier, size: Dp = 20.dp) {
+    Canvas(modifier.size(size)) {
+        val w = 1.6.dp.toPx()
+        val r = this.size.minDimension
+        fun finder(x0: Float, y0: Float, s: Float) {
+            drawRoundRect(tint, Offset(x0, y0), Size(s, s),
+                cornerRadius = CornerRadius(s * 0.18f), style = Stroke(w))
+            drawRect(tint, Offset(x0 + s * 0.30f, y0 + s * 0.30f), Size(s * 0.40f, s * 0.40f))
+        }
+        val q = r * 0.40f
+        finder(r * 0.10f, r * 0.10f, q)                    // top-left
+        finder(r * 0.50f, r * 0.10f, q)                    // top-right
+        finder(r * 0.10f, r * 0.50f, q)                    // bottom-left
+        // scattered data modules bottom-right
+        val d = r * 0.16f
+        drawRect(tint, Offset(r * 0.55f, r * 0.55f), Size(d, d))
+        drawRect(tint, Offset(r * 0.78f, r * 0.62f), Size(d, d))
+        drawRect(tint, Offset(r * 0.62f, r * 0.78f), Size(d, d))
+        drawRect(tint, Offset(r * 0.80f, r * 0.82f), Size(d * 0.8f, d * 0.8f))
+    }
+}
+
+/** Vault drive glyph — a drive cylinder (orbital beacon → storage metaphor). */
+@Composable
+fun IconVault(tint: Color, modifier: Modifier = Modifier, size: Dp = 20.dp) {
+    Canvas(modifier.size(size)) {
+        val w = 1.7.dp.toPx()
+        val r = this.size.minDimension
+        // cylinder: top ellipse + side walls + bottom arc
+        val cx = r * 0.5f; val rx = r * 0.34f; val ry = r * 0.16f
+        val y0 = r * 0.28f; val y1 = r * 0.72f
+        drawArc(tint, 180f, 180f, false,
+            Offset(cx - rx, y0 - ry), Size(rx * 2, ry * 2), style = Stroke(w))
+        drawLine(tint, Offset(cx - rx, y0), Offset(cx - rx, y1), strokeWidth = w)
+        drawLine(tint, Offset(cx + rx, y0), Offset(cx + rx, y1), strokeWidth = w)
+        drawArc(tint, 0f, 180f, false,
+            Offset(cx - rx, y1 - ry), Size(rx * 2, ry * 2), style = Stroke(w))
+        drawArc(tint, 0f, 180f, true,
+            Offset(cx - rx, y0 - ry), Size(rx * 2, ry * 2), style = Stroke(w))
+    }
+}
+
 @Composable
 fun IconClose(tint: Color, modifier: Modifier = Modifier, size: Dp = 14.dp) {
     Canvas(modifier.size(size)) {

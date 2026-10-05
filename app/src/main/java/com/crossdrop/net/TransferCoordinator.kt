@@ -2,7 +2,6 @@ package com.crossdrop.net
 
 import android.content.Context
 import android.net.Uri
-import android.provider.OpenableColumns
 import android.util.Log
 import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
@@ -41,6 +40,8 @@ data class SessionState(
     val bytesDone: Long = 0,
     val bytesTotal: Long = 1,
     val bytesPerSec: Long = 0,
+    /** v2 delta: bytes satisfied from local sources instead of the wire. */
+    val bytesSkipped: Long = 0,
     val currentFileName: String? = null,
     val status: SessionStatus = SessionStatus.CONNECTING,
     val error: String? = null,
@@ -77,6 +78,10 @@ class TransferCoordinator(
     private var sessionJob: Job? = null
     private val inboundJobs = mutableListOf<Job>()
 
+    /** Dev-only: auto-accept the next inbound offer — set by loopback
+     *  self-tests so they can complete without a sheet tap. */
+    @Volatile var autoAcceptOnce = false
+
     fun start() {
         server.onSocket = ::onInboundSocket
     }
@@ -88,7 +93,7 @@ class TransferCoordinator(
         sessionJob?.cancel()
         _session.value = SessionState(Direction.SENDING, peer.name, status = SessionStatus.CONNECTING)
         sessionJob = scope.launch {
-            val files = uris.mapNotNull { uri -> openOutgoing(uri) }
+            val files = uris.mapNotNull { uri -> context.outgoingFileFor(uri) }
             if (files.isEmpty()) {
                 _session.value = _session.value?.copy(
                     status = SessionStatus.FAILED, error = "nothing readable selected")
@@ -98,37 +103,26 @@ class TransferCoordinator(
         }
     }
 
-    private fun openOutgoing(uri: Uri): OutgoingFile? = runCatching {
-        var name = "file"
-        var size = -1L
-        context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-            if (c.moveToFirst()) {
-                c.getColumnIndex(OpenableColumns.DISPLAY_NAME).takeIf { it >= 0 }
-                    ?.let { name = c.getString(it) }
-                c.getColumnIndex(OpenableColumns.SIZE).takeIf { it >= 0 }
-                    ?.let { if (!c.isNull(it)) size = c.getLong(it) }
-            }
-        }
-        val meta = FileMeta(name, size.coerceAtLeast(0), context.contentResolver.getType(uri))
-        OutgoingFile(meta) {
-            context.contentResolver.openInputStream(uri)
-                ?: throw java.io.FileNotFoundException("cannot open $uri")
-        }
-    }.getOrNull()
-
     // ----------------------------------------------------------- incoming --
 
     private fun onInboundSocket(socket: Socket) {
         val job = scope.launch {
             engine.receive(socket) { peerName, offer ->
                 Log.i(TAG, "offer from '$peerName': ${offer.files.size} file(s), id=${offer.transferId}")
-                val decision = CompletableDeferred<ReceiveDecision>()
-                // Displace (reject) any still-pending offer — one sheet at a time.
-                _incomingOffer.value?.decision?.complete(ReceiveDecision.Reject("superseded"))
-                _incomingOffer.value = IncomingOffer(peerName, offer, decision)
-                val result = runCatching {
-                    withTimeoutOrNull(OFFER_TIMEOUT_MS) { decision.await() }
-                }.getOrNull() ?: ReceiveDecision.Reject("no response")
+                val result = if (autoAcceptOnce) {
+                    autoAcceptOnce = false
+                    Log.i(TAG, "auto-accepting loopback offer")
+                    ReceiveDecision.Accept(
+                        sinkFor = { meta -> inbox.sinkFor(meta) }, delta = inbox.delta)
+                } else {
+                    val decision = CompletableDeferred<ReceiveDecision>()
+                    // Displace (reject) any still-pending offer — one sheet at a time.
+                    _incomingOffer.value?.decision?.complete(ReceiveDecision.Reject("superseded"))
+                    _incomingOffer.value = IncomingOffer(peerName, offer, decision)
+                    runCatching {
+                        withTimeoutOrNull(OFFER_TIMEOUT_MS) { decision.await() }
+                    }.getOrNull() ?: ReceiveDecision.Reject("no response")
+                }
                 Log.i(TAG, "decision for ${offer.transferId}: $result")
                 if (_incomingOffer.value?.offer?.transferId == offer.transferId) {
                     _incomingOffer.value = null
@@ -148,7 +142,10 @@ class TransferCoordinator(
         val pending = _incomingOffer.value ?: return
         _incomingOffer.value = null
         if (accept) {
-            pending.decision.complete(ReceiveDecision.Accept { meta -> inbox.sinkFor(meta) })
+            pending.decision.complete(ReceiveDecision.Accept(
+                sinkFor = { meta -> inbox.sinkFor(meta) },
+                delta = inbox.delta,
+            ))
         } else {
             pending.decision.complete(ReceiveDecision.Reject("declined"))
         }
@@ -162,15 +159,18 @@ class TransferCoordinator(
      * whole stack — handshake, offer sheet, encrypted DATA path, inbox.
      */
     fun selfTransfer(host: String = "127.0.0.1", port: Int = server.port) {
-        if (port == 0) return
+        val target = if (port == 0) server.port else port
+        if (target == 0) return
         val bytes = ByteArray(4 * 1024 * 1024) { (it % 251).toByte() }
         val file = OutgoingFile(FileMeta("self-test.bin", bytes.size.toLong(), "application/octet-stream")) {
             java.io.ByteArrayInputStream(bytes)
         }
+        // Loopback sends accept their own offer sheet.
+        if (host == "127.0.0.1" || host == "::1") autoAcceptOnce = true
         sessionJob?.cancel()
         _session.value = SessionState(Direction.SENDING, "self", status = SessionStatus.CONNECTING)
         sessionJob = scope.launch {
-            engine.send(Endpoint(host, port), listOf(file))
+            engine.send(Endpoint(host, target), listOf(file))
                 .collect { reduce(it, Direction.SENDING, "self") }
         }
     }
@@ -197,7 +197,8 @@ class TransferCoordinator(
             is TransferEvent.Progress -> base.copy(
                 status = SessionStatus.TRANSFERRING,
                 bytesDone = event.bytesDone, bytesTotal = event.bytesTotal,
-                bytesPerSec = event.bytesPerSec, currentFileName = event.currentFile.name,
+                bytesPerSec = event.bytesPerSec, bytesSkipped = event.bytesSkipped,
+                currentFileName = event.currentFile.name,
             )
             is TransferEvent.Completed -> base.copy(status = SessionStatus.COMPLETED, offer = event.offer)
             is TransferEvent.DeclinedByPeer -> base.copy(status = SessionStatus.DECLINED)

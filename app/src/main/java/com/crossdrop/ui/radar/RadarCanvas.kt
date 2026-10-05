@@ -41,6 +41,7 @@ import com.crossdrop.ui.theme.DeepSpace
 import com.crossdrop.ui.theme.DeepSpaceSoft
 import com.crossdrop.ui.theme.FluidCyan
 import com.crossdrop.ui.theme.GlassEdge
+import com.crossdrop.ui.theme.NebulaPink
 import com.crossdrop.ui.theme.Phosphor
 import com.crossdrop.ui.theme.RippleTeal
 import com.crossdrop.ui.theme.TextDim
@@ -135,7 +136,8 @@ fun RadarCanvas(
 
         positions.forEach { (id, pos) ->
             peers.firstOrNull { it.instanceId == id }?.let { peer ->
-                drawPeerNode(pos, peer, textMeasurer, bobT)
+                if (peer.vault != null) drawVaultBeacon(pos, peer, textMeasurer, bobT, tA)
+                else drawPeerNode(pos, peer, textMeasurer, bobT)
             }
         }
         drawSelfNode(center, selfName, textMeasurer, rippleT)
@@ -147,7 +149,7 @@ fun RadarCanvas(
 private fun DrawScope.drawBackground() {
     drawRect(
         Brush.radialGradient(
-            colors = listOf(Color(0xFF0B1226), DeepSpace),
+            colors = listOf(Color(0xFF0C0628), DeepSpace),
             center = center, radius = size.maxDimension / 1.6f,
         )
     )
@@ -159,12 +161,13 @@ private fun DrawScope.drawAmbient(center: Offset, maxR: Float, tA: Float) {
         Triple(AuroraViolet, Offset(-0.9f, -0.5f), 1.1f),
         Triple(FluidCyan, Offset(0.8f, -0.9f), 0.9f),
         Triple(RippleTeal, Offset(0.4f, 0.95f), 1.0f),
+        Triple(NebulaPink, Offset(-0.75f, 0.6f), 0.7f),
     )
     blobs.forEachIndexed { i, (color, off, scale) ->
         val drift = Offset(sin(tA * 0.4f + i * 2.1f) * 0.08f, cos(tA * 0.3f + i) * 0.06f)
         val pos = center + Offset(off.x * maxR + drift.x * maxR, off.y * maxR + drift.y * maxR)
         drawCircle(
-            Brush.radialGradient(listOf(color.copy(alpha = 0.055f), Color.Transparent),
+            Brush.radialGradient(listOf(color.copy(alpha = 0.075f), Color.Transparent),
                 center = pos, radius = maxR * scale),
             radius = maxR * scale, center = pos,
         )
@@ -203,8 +206,10 @@ private fun DrawScope.drawSweep(center: Offset, maxR: Float, sweepDeg: Float) {
         rotate(sweepDeg, center) {
             drawCircle(
                 Brush.sweepGradient(
-                    0f to RippleTeal.copy(alpha = 0.22f),
-                    0.15f to Color.Transparent,
+                    0f to RippleTeal.copy(alpha = 0.30f),
+                    0.07f to FluidCyan.copy(alpha = 0.16f),
+                    0.13f to AuroraViolet.copy(alpha = 0.07f),
+                    0.18f to Color.Transparent,
                     1f to Color.Transparent,
                     center = center,
                 ),
@@ -287,6 +292,94 @@ private fun DrawScope.drawPeerNode(pos: Offset, peer: Peer, measurer: TextMeasur
 }
 
 private fun RippleTealDimSafe(alpha: Float) = RippleTeal.copy(alpha = 0.85f * alpha)
+
+/**
+ * Orbital Beacon — the vault node: violet core, segmented orbit ring that
+ * slowly rotates, and an [RO]/[RW] badge above the name pill.
+ */
+private fun DrawScope.drawVaultBeacon(
+    pos: Offset, peer: Peer, measurer: TextMeasurer, t: Float, orbit: Float,
+) {
+    val vault = peer.vault ?: return
+    val nodeR = 30.dp.toPx()
+    val pulse = 1f + 0.10f * sin(t + abs(peer.instanceId.hashCode()) % 11)
+    val tint = AuroraViolet
+
+    // halo
+    drawCircle(
+        Brush.radialGradient(
+            colors = listOf(tint.copy(alpha = 0.45f), Color.Transparent),
+            center = pos, radius = nodeR * 2.2f * pulse,
+        ),
+        radius = nodeR * 2.2f * pulse, center = pos,
+    )
+    // core
+    drawCircle(
+        Brush.radialGradient(
+            colors = listOf(Phosphor, tint.copy(alpha = 0.85f)),
+            center = pos.copy(y = pos.y - nodeR * 0.3f), radius = nodeR,
+        ),
+        radius = nodeR * 0.58f, center = pos,
+    )
+    // segmented orbit ring — dashes rotating around the node
+    val ringR = nodeR * 1.02f
+    rotate(orbit * 180f / PI.toFloat(), pivot = pos) {
+        for (i in 0 until 12) {
+            // alternating violet/magenta dashes — the aurora curtain edge
+            val c = when (i % 3) { 0 -> NebulaPink; else -> tint }
+            drawArc(
+                color = c.copy(alpha = if (i % 2 == 0) 0.9f else 0.42f),
+                startAngle = i * 30f, sweepAngle = 16f, useCenter = false,
+                topLeft = pos - Offset(ringR, ringR), size = Size(ringR * 2, ringR * 2),
+                style = Stroke(2.dp.toPx()),
+            )
+        }
+    }
+    // [RW]/[RO] badge above the node
+    val badgeText = if (vault.writable) "RW" else "RO"
+    val badge = measurer.measure(
+        badgeText,
+        TextStyle(color = if (vault.writable) Phosphor else tint,
+            fontSize = 9.sp, fontWeight = FontWeight.Bold),
+    )
+    val bPadH = 6.dp.toPx(); val bPadV = 2.dp.toPx()
+    val bw = badge.size.width + bPadH * 2
+    val bh = badge.size.height + bPadV * 2
+    val bTop = pos - Offset(bw / 2f, nodeR * 1.35f + bh)
+    drawRoundRect(
+        DeepSpaceSoft.copy(alpha = 0.9f), topLeft = bTop, size = Size(bw, bh),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(bh / 2f),
+    )
+    drawRoundRect(
+        tint.copy(alpha = 0.7f), topLeft = bTop, size = Size(bw, bh),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(bh / 2f),
+        style = Stroke(1f),
+    )
+    drawText(badge, topLeft = bTop + Offset(bPadH, bPadV))
+    // name pill (same chrome as peers)
+    val label = measurer.measure(
+        vault.vaultName,
+        TextStyle(color = TextPrimary, fontSize = 12.sp,
+            fontWeight = FontWeight.Medium, textAlign = TextAlign.Center),
+        maxLines = 1, overflow = TextOverflow.Ellipsis,
+        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 120.dp.toPx().toInt()),
+    )
+    val padH = 10.dp.toPx(); val padV = 4.dp.toPx()
+    val pillW = label.size.width + padH * 2
+    val pillH = label.size.height + padV * 2
+    val pillTop = pos + Offset(-pillW / 2f, nodeR * 0.85f)
+    drawRoundRect(
+        DeepSpaceSoft.copy(alpha = 0.85f),
+        topLeft = pillTop, size = Size(pillW, pillH),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
+    )
+    drawRoundRect(
+        tint.copy(alpha = 0.6f), topLeft = pillTop, size = Size(pillW, pillH),
+        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
+        style = Stroke(1f),
+    )
+    drawText(label, topLeft = pillTop + Offset(padH, padV))
+}
 
 private fun DrawScope.drawSelfNode(center: Offset, name: String, measurer: TextMeasurer, t: Float) {
     // expanding heartbeat ring

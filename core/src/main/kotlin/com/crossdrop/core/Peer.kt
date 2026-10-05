@@ -18,8 +18,17 @@ data class Peer(
     /** BLE signal strength, when seen over BLE. Drives radar distance. */
     val rssi: Int? = null,
     val lastSeenMs: Long = System.currentTimeMillis(),
+    /** Non-null when this node is a LAN vault beacon (not a transfer peer). */
+    val vault: VaultDescriptor? = null,
 ) {
     /** Approximate distance in metres from RSSI, for radar placement. */
     val estimatedDistanceMeters: Double?
         get() = rssi?.let { Math.pow(10.0, (-59 - it) / (10.0 * 2.2)) }
 }
+
+/** TXT-advertised properties of a `_crossdrop-vault._tcp.` service. */
+data class VaultDescriptor(
+    val vaultName: String,     // user-set display label
+    val writable: Boolean,     // "rw" vs "ro"
+    val needsPin: Boolean,     // "pin" vs "open"
+)

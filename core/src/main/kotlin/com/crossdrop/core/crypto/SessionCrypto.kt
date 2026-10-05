@@ -26,6 +26,8 @@ class SessionKeys(
     val sendKey: ByteArray,
     val recvKey: ByteArray,
     val sas: String,
+    /** Raw X25519 shared secret — input to extra derivations (vault PIN auth). */
+    val shared: ByteArray,
 )
 
 object SessionCrypto {
@@ -58,8 +60,14 @@ object SessionCrypto {
             (sasBytes.readUInt() % 1_000_000L)
         )
 
-        return if (isInitiator) SessionKeys(i2r, r2i, sas) else SessionKeys(r2i, i2r, sas)
+        return if (isInitiator) SessionKeys(i2r, r2i, sas, shared)
+            else SessionKeys(r2i, i2r, sas, shared)
     }
+
+    /** Vault PIN proof — HKDF(ECDH secret, salt = PIN utf8). A wrong PIN yields
+     *  a wrong token; only compared, never transmitted in the clear (AEAD). */
+    fun vaultAuthToken(shared: ByteArray, pin: String): ByteArray =
+        hkdf(shared, pin.toByteArray(Charsets.UTF_8), "crossdrop/v1/vault-auth", 32)
 
     internal fun hkdf(ikm: ByteArray, salt: ByteArray, info: String, outLen: Int): ByteArray {
         val out = ByteArray(outLen)

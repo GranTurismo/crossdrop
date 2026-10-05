@@ -20,6 +20,14 @@ class InboxStore(private val context: Context) {
     val dir: File
         get() = File(context.filesDir, "inbox").apply { mkdirs() }
 
+    /**
+     * v2 delta/resume plumbing: staging pool + baseline indexes under the
+     * inbox. Same-name offers update the existing file in place (it's the
+     * delta target), unlike [sinkFor] which dedupes for the v1 path.
+     */
+    val delta: com.crossdrop.core.delta.DeltaReceiver =
+        com.crossdrop.core.delta.FileDeltaStore(dir) { meta -> sanitize(meta.name) }
+
     data class ReceivedFile(val file: File) {
         val name: String get() = file.name
         val size: Long get() = file.length()
@@ -28,7 +36,9 @@ class InboxStore(private val context: Context) {
     }
 
     fun list(): List<ReceivedFile> =
-        dir.listFiles()?.sortedByDescending { it.lastModified() }?.map(::ReceivedFile) ?: emptyList()
+        dir.listFiles()
+            ?.filter { it.isFile && !it.name.startsWith(".") }
+            ?.sortedByDescending { it.lastModified() }?.map(::ReceivedFile) ?: emptyList()
 
     /** Collision- and traversal-safe local filename for an incoming [FileMeta]. */
     fun sinkFor(meta: FileMeta): OutputStream {
@@ -60,7 +70,11 @@ class InboxStore(private val context: Context) {
         }
     }
 
-    fun shredAll() = list().forEach { shred(it.file) }
+    fun shredAll() {
+        list().forEach { shred(it.file) }
+        File(dir, ".staging").listFiles()?.forEach { it.delete() }
+        File(dir, ".idx").listFiles()?.forEach { it.delete() }
+    }
 
     private fun sanitize(name: String): String =
         name.substringAfterLast('/').substringAfterLast('\\')

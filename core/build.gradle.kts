@@ -10,6 +10,8 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation("com.google.zxing:core:3.5.3")
+    testImplementation("com.google.zxing:javase:3.5.3")
 }
 
 java {

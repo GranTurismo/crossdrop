@@ -8,11 +8,13 @@ val protocolJson = Json {
     encodeDefaults = true
 }
 
-const val PROTOCOL_VERSION = 1
+/** v2 adds content-defined-chunk delta/resume (CHUNK_MAP/CHUNK_REQ/CHUNK). */
+const val PROTOCOL_VERSION = 2
 
 @Serializable
 data class Hello(
-    val version: Int = PROTOCOL_VERSION,
+    /** Missing field ⇒ v1: peers older than the field can't claim v2. */
+    val version: Int = 1,
     val deviceName: String,
     /** 32-byte X25519 ephemeral public key, base64. */
     val publicKeyB64: String,
@@ -22,10 +24,14 @@ data class Hello(
 
 @Serializable
 data class HelloAck(
-    val version: Int = PROTOCOL_VERSION,
+    /** Missing field ⇒ v1: peers older than the field can't claim v2. */
+    val version: Int = 1,
     val deviceName: String,
     val publicKeyB64: String,
     val instanceId: String,
+    /** Vault listeners set "open"/"pin" so clients know whether to send
+     *  VAULT_AUTH next. Null/absent on plain transfer endpoints. */
+    val vaultAuth: String? = null,
 )
 
 @Serializable
@@ -35,13 +41,22 @@ data class FileMeta(val name: String, val size: Long, val mime: String? = null)
 data class Offer(val transferId: String, val files: List<FileMeta>)
 
 @Serializable
-data class Accept(val transferId: String)
+data class Accept(
+    val transferId: String,
+    /** Receiver opts into the v2 chunked delta path (it has a DeltaReceiver). */
+    val delta: Boolean = false,
+)
 
 @Serializable
 data class Decline(val transferId: String, val reason: String? = null)
 
 @Serializable
-data class Done(val transferId: String, val sha256: String)
+data class Done(
+    val transferId: String,
+    val sha256: String,
+    /** v2: per-file BLAKE3 roots, parallel to Offer.files. Null on v1 sessions. */
+    val roots: List<String>? = null,
+)
 
 @Serializable
 data class Cancel(val reason: String? = null)
