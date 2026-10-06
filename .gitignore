@@ -54,6 +54,17 @@ $RECYCLE.BIN/
 *.tmp
 *.temp
 *.orig
+*.rej
+*.stackdump
+
+# ---------- Node / promo tooling ----------
+node_modules/
+promo/rec*/
+promo/audio*.wav
+promo/*.webm
+
+# ---------- JetBrains Fleet ----------
+.fleet/
 
 # ---------- Rust (future shared core) ----------
 **/target/
