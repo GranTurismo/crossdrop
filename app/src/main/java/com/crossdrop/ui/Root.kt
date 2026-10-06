@@ -74,6 +74,7 @@ fun Root(container: AppContainer) {
     var inboxCount by remember { mutableIntStateOf(container.inbox.list().size) }
     var historyTick by remember { mutableIntStateOf(0) }
     var inboxTick by remember { mutableIntStateOf(0) }
+    var driveOpen by remember { mutableStateOf(false) }
 
     // Files may land while we're anywhere in the app — keep badges fresh.
     LaunchedEffect(session) { inboxCount = container.inbox.list().size }
@@ -128,11 +129,7 @@ fun Root(container: AppContainer) {
                 },
                 onClearHistory = { container.history.clear(); historyTick++ },
                 vaultState = vaultHost,
-                onVaultStart = { rw, pin ->
-                    TransferService.start(container.contextForService())
-                    container.vaultHost.start(rw, pin)
-                },
-                onVaultStop = container.vaultHost::stop,
+                onOpenDrive = { driveOpen = true },
                 onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
                     ({ container.coordinator.selfTransfer() }) else null,
                 onAddPeer = if (com.crossdrop.BuildConfig.DEBUG)
@@ -223,6 +220,26 @@ fun Root(container: AppContainer) {
                         onStop = container.qrShare::stop,
                     )
                 }
+            }
+        }
+
+        // ---- wireless drive overlay (this phone as a network drive) ----
+        AnimatedVisibility(
+            visible = driveOpen,
+            enter = slideInVertically { it },
+            exit = slideOutVertically { it },
+        ) {
+            Surface(Modifier.fillMaxSize(), color = DeepSpace) {
+                AuroraBackdrop()
+                com.crossdrop.ui.drive.DriveHostScreen(
+                    state = vaultHost,
+                    onStart = { rw, pin, uri ->
+                        TransferService.start(container.contextForService())
+                        container.vaultHost.start(rw, pin, treeUri = uri)
+                    },
+                    onStop = container.vaultHost::stop,
+                    onClose = { driveOpen = false },
+                )
             }
         }
 

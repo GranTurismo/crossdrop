@@ -56,17 +56,13 @@ fun SettingsScreen(
     onWipeInbox: () -> Unit,
     onClearHistory: () -> Unit,
     vaultState: com.crossdrop.net.VaultHostManager.State? = null,
-    onVaultStart: (writable: Boolean, usePin: Boolean) -> Unit = { _, _ -> },
-    onVaultStop: () -> Unit = {},
+    onOpenDrive: () -> Unit = {},
     onSelfTest: (() -> Unit)?,
     onAddPeer: ((String, Int) -> Unit)?,
     refreshSignal: Any?,
 ) {
     var renaming by remember { mutableStateOf(false) }
     var addingPeer by remember { mutableStateOf(false) }
-    var vaultRw by remember { mutableStateOf(true) }
-    var vaultPin by remember { mutableStateOf(false) }
-    var showVaultQr by remember { mutableStateOf(false) }
     val stats = remember(refreshSignal) { inboxStats() }
 
     Column(
@@ -119,91 +115,19 @@ fun SettingsScreen(
             )
         }
 
-        // ------------------------------------------------------ local drive --
-        SectionLabel("Local drive")
+        // ---------------------------------------------------- wireless drive --
+        SectionLabel("Wireless drive")
         SettingsCard {
             val hosting = vaultState != null
-            ToggleRow(
-                title = "Host LAN vault",
-                subtitle = if (hosting) vaultState!!.url
-                    else "let nearby devices browse this phone's vault",
-                checked = hosting,
-                onChecked = { on ->
-                    if (on) onVaultStart(vaultRw, vaultPin) else onVaultStop()
-                },
+            SettingRow(
+                title = if (hosting) "● Drive is on" else "Turn into drive",
+                subtitle = if (hosting)
+                    "${vaultState!!.rootLabel} · ${vaultState!!.url} · " +
+                        "${vaultState!!.clients.size} connected"
+                else "share this phone's files with any device on the Wi-Fi",
+                titleColor = if (hosting) Phosphor else TextPrimary,
+                onClick = onOpenDrive,
             )
-            if (hosting) {
-                val v = vaultState!!
-                RowDivider()
-                ToggleRow(
-                    title = "Read-write",
-                    subtitle = "clients may upload files",
-                    checked = v.writable,
-                    onChecked = { onVaultStart(it, v.pin != null) },   // restarts
-                )
-                RowDivider()
-                ToggleRow(
-                    title = "PIN lock",
-                    subtitle = "clients need the 4-digit code",
-                    checked = v.pin != null,
-                    onChecked = { onVaultStart(v.writable, it) },      // restarts
-                )
-                if (v.pin != null) {
-                    RowDivider()
-                    SettingRow(
-                        title = "PIN  ${v.pin}",
-                        subtitle = "regenerates on every restart",
-                        titleColor = Phosphor,
-                    )
-                }
-                RowDivider()
-                SettingRow(
-                    title = "Connected",
-                    subtitle = if (v.clients.isEmpty()) "no clients"
-                        else v.clients.joinToString(),
-                )
-                RowDivider()
-                SettingRow(
-                    title = "Traffic",
-                    subtitle = "↓ ${formatBytes(v.bytesOut)} out · ↑ ${formatBytes(v.bytesIn)} in",
-                )
-                RowDivider()
-                SettingRow(
-                    title = if (showVaultQr) "Hide browser QR" else "Show browser QR",
-                    subtitle = "any browser on this Wi-Fi can open the drive",
-                    onClick = { showVaultQr = !showVaultQr },
-                )
-                if (showVaultQr) {
-                    androidx.compose.foundation.layout.Column(
-                        Modifier.fillMaxWidth().padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        com.crossdrop.ui.QrCard(v.url, size = 170.dp)
-                    }
-                }
-                RowDivider()
-                SettingRow(
-                    title = "Kill drive",
-                    subtitle = "drop listener + clients, purge staging",
-                    titleColor = DangerSoft,
-                    onClick = onVaultStop,
-                )
-            } else {
-                RowDivider()
-                ToggleRow(
-                    title = "Read-write",
-                    subtitle = "clients may upload files",
-                    checked = vaultRw,
-                    onChecked = { vaultRw = it },
-                )
-                RowDivider()
-                ToggleRow(
-                    title = "PIN lock",
-                    subtitle = "clients need the 4-digit code",
-                    checked = vaultPin,
-                    onChecked = { vaultPin = it },
-                )
-            }
         }
 
         // --------------------------------------------------------- storage --

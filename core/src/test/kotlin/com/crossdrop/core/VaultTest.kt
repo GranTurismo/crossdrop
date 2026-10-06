@@ -2,6 +2,7 @@ package com.crossdrop.core
 
 import com.crossdrop.core.crypto.SessionIdentity
 import com.crossdrop.core.vault.VaultClient
+import com.crossdrop.core.vault.FileVaultFs
 import com.crossdrop.core.vault.VaultFs
 import com.crossdrop.core.vault.VaultFs.VaultError
 import com.crossdrop.core.vault.VaultServer
@@ -48,7 +49,7 @@ class VaultTest {
     }
 
     private fun serve(writable: Boolean = true, pin: String? = null): VaultServer =
-        VaultServer(VaultFs(root), SessionIdentity(), { "TestHost" },
+        VaultServer(FileVaultFs(root), SessionIdentity(), { "TestHost" },
             writable = writable, pin = pin, instanceId = "hostinstance01")
             .also { it.start(); server = it }
 
@@ -60,7 +61,7 @@ class VaultTest {
     // ------------------------------------------------------------- jail --
 
     @Test fun `jail rejects traversal, absolute and hidden paths`() {
-        val fs = VaultFs(root)
+        val fs = FileVaultFs(root)
         for (bad in listOf("..", "../x", "a/../../b", "..\\..\\win", "C:\\Windows",
             ".staging/x", ".hidden", "a/../b", "//..//x", "x\u0000y")) {
             try { fs.resolve(bad); fail("accepted $bad") }
@@ -76,7 +77,7 @@ class VaultTest {
     }
 
     @Test fun `listing hides dotfiles and staging`() {
-        val names = VaultFs(root).list("/").map { it.name }
+        val names = FileVaultFs(root).list("/").map { it.name }
         assertTrue("docs" in names && "media" in names && "pic.png" in names)
         assertFalse(".secret" in names)
         assertFalse(".staging" in names)
@@ -121,7 +122,7 @@ class VaultTest {
         // read-only host
         val roRoot = Files.createTempDirectory("vault-ro").toFile()
         try {
-            val ro = VaultServer(VaultFs(roRoot), SessionIdentity(), { "RO" },
+            val ro = VaultServer(FileVaultFs(roRoot), SessionIdentity(), { "RO" },
                 writable = false, pin = null, instanceId = "rohostinstance")
             ro.start()
             try {
@@ -255,7 +256,7 @@ class VaultTest {
 
         // ro vault: upload rejected
         val roRoot = Files.createTempDirectory("vault-ro").toFile()
-        val ro = VaultServer(VaultFs(roRoot), SessionIdentity(), { "RO" },
+        val ro = VaultServer(FileVaultFs(roRoot), SessionIdentity(), { "RO" },
             writable = false, pin = null, instanceId = "rohostinstance")
         ro.start()
         try {

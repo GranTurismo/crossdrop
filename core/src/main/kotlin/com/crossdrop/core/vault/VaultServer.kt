@@ -85,9 +85,15 @@ class VaultServer(
     private val clientSockets = ConcurrentHashMap.newKeySet<Socket>()
     private val nextTransferId = AtomicLong(1)
 
-    fun start(): Int {
+    /**
+     * Bind the listener. [preferredPort] (e.g. 8080 for WebDAV clients that
+     * like a memorable address) is tried first; busy/failed → ephemeral.
+     */
+    fun start(preferredPort: Int = 0): Int {
         check(listener == null) { "already running" }
-        val ss = ServerSocket(0)
+        val ss = if (preferredPort > 0) {
+            runCatching { ServerSocket(preferredPort) }.getOrElse { ServerSocket(0) }
+        } else ServerSocket(0)
         listener = ss
         port = ss.localPort
         acceptThread = thread(name = "vault-accept", isDaemon = true) {
@@ -228,7 +234,7 @@ class VaultServer(
     private fun sendAttr(io: FrameIO, path: String) {
         val e = fs.stat(path)
         val hash = if (e.isDir || e.size > HASH_MAX) null
-            else fs.resolve(path).inputStream().use { Blake3.hash(it) }.toHex()
+            else fs.open(path, 0).use { Blake3.hash(it) }.toHex()
         io.write(FrameType.VAULT_ATTR, encodeMsg(VaultAttr(
             e.name, e.size, e.isDir, e.mtime, e.mime, hash)))
     }
@@ -236,22 +242,20 @@ class VaultServer(
     // ------------------------------------------------------------- pull --
 
     private fun doPull(io: FrameIO, req: VaultPull) {
-        val f = fs.resolve(req.path)
-        if (!f.exists()) throw VaultError(404, "not found")
-        if (!f.isFile) throw VaultError(400, "not a file")
-        val size = f.length()
+        val e = fs.stat(req.path)
+        if (e.isDir) throw VaultError(400, "not a file")
+        val size = e.size
         val offset = req.offset.coerceIn(0, size)
         val length = (if (req.length < 0) size - offset else req.length)
             .coerceIn(0, size - offset)
         val tid = req.transferId
         val hasher = Blake3()
-        RandomAccessFile(f, "r").use { raf ->
-            raf.seek(offset)
+        fs.open(req.path, offset).use { src ->
             val buf = ByteArray(DATA_CHUNK)
             val frame = ByteArray(12 + DATA_CHUNK)
             var sent = 0L
             while (sent < length) {
-                val n = raf.read(buf, 0, minOf(buf.size, (length - sent).toInt()))
+                val n = src.read(buf, 0, minOf(buf.size, (length - sent).toInt()))
                 if (n <= 0) break
                 hasher.update(buf, 0, n)
                 putHeader(frame, tid, offset + sent)

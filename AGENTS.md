@@ -38,31 +38,52 @@ mask) — verified by ZXing decode in test-scope tests (ZXing is NOT a shipped
 dep). Shares record history as peerName "browser share" on stop. `LocalIp`
 chooses wlan*/ap* IPv4 for the URL.
 
-## Local cloud drive (LAN vault)
+## Local cloud drive (LAN vault) — "Wireless Drive"
 
-`core/vault/` turns a device into a browsable LAN drive — one ephemeral
-`ServerSocket` demuxes two surfaces by sniffing the first 4 bytes: HTTP verbs
-route to `VaultHttp` (zero-install web drive: `/` embedded `vault.html`,
-`/api/info`, `/api/fs`, `/raw/<path>` with Range/206, `POST /upload`
-multipart); anything else routes to the AEAD vault session (`VaultServer` —
-X25519→HKDF→ChaCha20-Poly1305 like transfers, frames `0x10-0x1A`: VAULT_LS /
-DIR / STAT / ATTR / PULL / DATA / PUSH_INIT / PUSH_ACK / DONE / ERR / AUTH).
-`VaultFs` is the jail: NFC, strip leading `/`, reject `\0`/`..`, canonical
-containment, uploads stage in `.staging/` then commit atomically after BLAKE3.
-Optional 4-digit PIN: `VAULT_AUTH` token = HKDF(ECDH secret, salt=PIN). Client
-side is `VaultClient` (blocking, `opLock`-serialized) + `VaultMediaBridge`
-(127.0.0.1 HTTP→pull bridge so players get Range streaming over the AEAD
-session).
+`core/vault/` turns a device into a browsable LAN drive — one `ServerSocket`
+(prefers port 8080, falls back to ephemeral) demuxes surfaces by sniffing the
+first 4 bytes: HTTP verbs route to `VaultHttp`; anything else routes to the
+AEAD vault session (`VaultServer` — X25519→HKDF→ChaCha20-Poly1305 like
+transfers, frames `0x10-0x1A`).
+
+`VaultHttp` serves three surfaces on one socket:
+- **Browser drive**: `/` embedded `vault.html`, `/api/info`, `/api/fs`,
+  `/api/stat`, `/raw/<path>` with Range/206, `POST /upload` multipart.
+- **Direct file GET/HEAD**: any non-API GET resolves through the fs jail —
+  files serve bytes (Range→206), dirs serve the explorer page.
+- **WebDAV**: `OPTIONS` (DAV: 1,2), `PROPFIND` depth 0/1 (depth infinity →
+  403; multistatus XML), `PUT`, `MKCOL`, `DELETE`, `MOVE`, `COPY`,
+  `LOCK`/`UNLOCK` stubs (Finder requires them). Verified end-to-end against
+  real sockets in `core/.../VaultDavTest.kt`.
+
+Auth: when a 4-digit PIN is set, DAV methods + direct GETs accept HTTP
+**Digest** (MD5, realm `crossdrop` — what Finder/Windows redirector need) or
+`X-Vault-Pin`/`?pin=`; JSON API routes take `X-Vault-Pin`/`?pin=` (401 JSON →
+page shows PIN prompt). `/api/info` stays ungated so the page learns `pin` is
+required. The AEAD vault session keeps its own `VAULT_AUTH` = HKDF(ECDH
+secret, salt=PIN). Write verbs 403 when `writable=false` — read-only default.
+
+`VaultFs` is an interface (jail contract: NFC, strip `/`, reject `\0`/`..`,
+containment, `.staging/` uploads commit after BLAKE3). `FileVaultFs` = the
+internal vault dir; `SafVaultFs` (app module) wraps a SAF-picked
+`DocumentFile` tree so any user folder can be the drive root — Documents,
+DCIM etc. (Android blocks sharing `Download` root + `Android/*` natively).
 
 App: `VaultHostManager` (server + NSD advert `xdrop-vault-<16hex>` on
-`_crossdrop-vault._tcp.`, TXT `id/name/mode/auth/ver`, dashboard state),
-`VaultDiscovery` (vaults as peers — own beacon filtered by TXT `id`),
-`VaultExplorerManager` (mount/browse/download-queue/upload/pin-retry).
-UI: orbital-beacon node on the radar (violet, segmented ring, RW/RO badge) →
-mount sheet → full-screen `ui/vault/VaultExplorerScreen` (breadcrumbs,
-select-downloads, media taps stream via the bridge into ACTION_VIEW); host
-dashboard lives in Settings → Local drive (URL, RW/PIN toggles that restart
-the vault, connected clients, traffic, browser QR, Kill drive).
+`_crossdrop-vault._tcp.`, TXT `id/name/mode/auth/ver`, dashboard state incl.
+root label + drive URL, WiFiLock HIGH_PERF + partial WakeLock for screen-off
+streaming), `VaultDiscovery` (vaults as peers — own beacon filtered by TXT
+`id`), `VaultExplorerManager` (mount/browse/download-queue/upload/pin-retry).
+Client side: `VaultClient` + `VaultMediaBridge` (127.0.0.1 HTTP→pull bridge so
+players get Range streaming over the AEAD session).
+
+UI: Settings → "Turn into drive" opens `ui/drive/DriveHostScreen` — start
+card (vault vs SAF folder, guests-edit toggle, passcode toggle) → live card
+("● Drive is on", shared-folder summary, QR, copyable address + passcode,
+"Stop Sharing Drive") → `DriveGuideScreen` (Mac Finder ⌘K / Windows network
+location / browser-Safari tabs + troubleshooting — no iOS Files SMB tab:
+unrooted Android can't serve SMB2/3). Inbound vaults still mount via the
+radar beacon → `VaultExplorerScreen`.
 
 ## Wire protocol
 
@@ -125,7 +146,14 @@ Debug-only hooks (`com.crossdrop.debug` builds):
 - `-e dev_share 1` starts a QR share of a generated 4 MiB file; logcat prints
   the full URL. On emulators use `adb forward tcp:<port> tcp:<port>` then curl.
 - `-e dev_vault rw|ro|pin` hosts a seeded vault (`files/vault` with docs/,
-  media/, readme.md); `vault pin=<code>` is logged in debug builds.
+  media/, readme.md); `vault pin=<code>` is logged in debug builds. The drive
+  prefers port 8080 — `adb forward tcp:8080 tcp:8080` then curl it:
+  `curl -i -X OPTIONS http://127.0.0.1:8080/` (DAV: 1,2), `-X PROPFIND -H
+  "Depth: 1"` (multistatus), `--digest -u drive:<pin>` for `auth=pin`
+  (ungated: `/api/info` only; wrong/absent creds → 401), write verbs 403 in
+  `ro` mode. SAF root: Settings → Turn into drive → "Pick a folder" (system
+  picker; `Download`/`Android/*` are OS-blocked, `Documents` works — PUT
+  lands real files in `/sdcard/Documents/`).
 - `-e dev_vault_mount host[:port]` opens the native explorer (port omitted/0 ⇒
   loopback to our own vault); `-e dev_vault_pin <code>` supplies the PIN.
 - `-e dev_vault_peer host[:port]` injects a vault beacon onto the radar —

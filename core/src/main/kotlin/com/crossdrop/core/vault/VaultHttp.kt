@@ -7,7 +7,6 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.PushbackInputStream
-import java.io.RandomAccessFile
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicLong
 
@@ -23,10 +22,19 @@ import java.util.concurrent.atomic.AtomicLong
  *  - `GET|HEAD /raw/<path>`   file stream, single-range `Range:` → 206
  *  - `POST /upload?path=`     multipart/form-data → staging → atomic commit
  *
- * When the vault runs `auth=pin`, everything except `/`, `/api/info` and
- * OPTIONS requires `X-Vault-Pin: <pin>` or `?pin=`; misses get a JSON 401 the
- * page turns into its PIN prompt. Every request is one-shot
- * (`Connection: close`) — browsers parallelize across sockets fine.
+ * WebDAV surface (mounted at `/`, so Finder/Explorer mount `http://ip:port/`):
+ *  - `OPTIONS`                       DAV capability advertisement
+ *  - `PROPFIND <path>`  Depth 0/1    multistatus XML listing
+ *  - `GET|HEAD /<path>`              direct file access (Range → 206)
+ *  - `PUT / MKCOL / DELETE / MOVE / COPY`   writable vaults only
+ *  - `LOCK / UNLOCK`                 stubs — Finder wants them for RW mounts
+ *
+ * When the vault runs `auth=pin`: the JSON API + browser paths accept
+ * `X-Vault-Pin`/`?pin=` (JSON 401 → page PIN prompt), while DAV methods and
+ * direct GETs additionally accept HTTP Digest auth
+ * (`WWW-Authenticate: Digest realm=crossdrop`) — that is what Finder,
+ * Explorer and browsers prompt for as "name: drive / 4-digit passcode".
+ * Every request is one-shot (`Connection: close`).
  */
 internal class VaultHttp(
     private val fs: VaultFs,
@@ -53,7 +61,7 @@ internal class VaultHttp(
             val params = parseQuery(query)
 
             when {
-                method == "OPTIONS" -> respond(out, 204)
+                method == "OPTIONS" -> respondOptions(out)
                 method == "GET" && (rawPath == "/" || rawPath == "/index.html") ->
                     respondPage(out)
                 method == "GET" && rawPath == "/api/info" ->
@@ -77,10 +85,60 @@ internal class VaultHttp(
                     if (!writable) throw VaultError(403, "vault is read-only")
                     handleUpload(out, input, headers, params["path"] ?: "/")
                 }
+
+                // --------------------------------------------------- WebDAV --
+                method == "PROPFIND" -> {
+                    if (!authorized(headers, params, method)) { authChallenge(out); return }
+                    drainBody(input, headers)
+                    handlePropfind(out, urlDecode(rawPath), headers["depth"])
+                }
+                method == "GET" || method == "HEAD" -> {
+                    // DAV path: any non-/api GET — file → bytes, dir → explorer
+                    if (!authorized(headers, params, method)) { authChallenge(out); return }
+                    serveDavPath(out, urlDecode(rawPath), headers["range"],
+                        headOnly = method == "HEAD")
+                }
+                method == "PUT" -> {
+                    if (!writable) throw VaultError(403, "vault is read-only")
+                    if (!authorized(headers, params, method)) { authChallenge(out); return }
+                    handlePut(out, input, urlDecode(rawPath), headers)
+                }
+                method == "MKCOL" -> {
+                    requireWritable(headers, params, method)
+                    fs.mkdir(urlDecode(rawPath))
+                    respond(out, 201)
+                }
+                method == "DELETE" -> {
+                    requireWritable(headers, params, method)
+                    fs.delete(urlDecode(rawPath))
+                    respond(out, 204)
+                }
+                method == "MOVE" || method == "COPY" -> {
+                    requireWritable(headers, params, method)
+                    val dst = headers["destination"]?.let(::destPath)
+                        ?: throw VaultError(400, "missing Destination")
+                    val overwrite = headers["overwrite"]?.uppercase() != "F"
+                    val src = urlDecode(rawPath)
+                    val existed = runCatching { fs.stat(dst) }.isSuccess
+                    if (method == "MOVE") fs.move(src, dst, overwrite)
+                    else fs.copy(src, dst, overwrite)
+                    respond(out, if (existed) 204 else 201)
+                }
+                method == "LOCK" -> {
+                    requireWritable(headers, params, method)
+                    drainBody(input, headers)
+                    respondLock(out)
+                }
+                method == "UNLOCK" -> {
+                    requireWritable(headers, params, method)
+                    respond(out, 204)
+                }
                 else -> throw VaultError(404, "not found")
             }
         } catch (e: VaultError) {
             runCatching { respondJson(out, e.code, errorJson(e.code, e.message ?: "error")) }
+        } catch (_: AuthRequired) {
+            runCatching { authChallenge(out) }
         } catch (e: BadRequest) {
             runCatching { respondJson(out, 400, errorJson(400, e.message ?: "bad request")) }
         } catch (_: Exception) {
@@ -96,6 +154,206 @@ internal class VaultHttp(
         val p = pin ?: return
         val sent = headers["x-vault-pin"] ?: params["pin"]
         if (sent != p) throw VaultError(401, "pin required")
+    }
+
+    // --------------------------------------------------------------- auth --
+
+    /** Per-boot nonce for Digest challenges — LAN-scoped, never persisted. */
+    private val davNonce = run {
+        val b = ByteArray(16); java.security.SecureRandom().nextBytes(b)
+        b.joinToString("") { "%02x".format(it) }
+    }
+
+    /**
+     * DAV-capable auth: pass on `X-Vault-Pin`/`?pin=` (browser page) OR a
+     * valid HTTP Digest credential (Finder/Explorer/browsers' native dialog).
+     * Open vaults always pass.
+     */
+    private fun authorized(headers: Map<String, String>, params: Map<String, String>,
+                           method: String): Boolean {
+        val p = pin ?: return true
+        if (headers["x-vault-pin"] == p || params["pin"] == p) return true
+        return checkDigest(headers["authorization"], method, p)
+    }
+
+    /** Write-verb gate: read-only 403s before auth, then Digest/pin applies. */
+    private fun requireWritable(headers: Map<String, String>, params: Map<String, String>,
+                                method: String) {
+        if (!writable) throw VaultError(403, "vault is read-only")
+        if (!authorized(headers, params, method)) throw AuthRequired()
+    }
+
+    /** Marker → catch-site writes the Digest 401 (needs headers, unlike errors). */
+    private class AuthRequired : Exception()
+
+    private fun checkDigest(auth: String?, method: String, p: String): Boolean {
+        if (auth == null || !auth.startsWith("Digest ")) return false
+        val kv = Regex("""(\w+)\s*=\s*(?:"([^"]*)"|[^,\s]+)""")
+            .findAll(auth.substring(7)).associate { m ->
+                m.groupValues[1].lowercase() to
+                    m.groupValues[2].ifEmpty { m.groupValues[0].substringAfter('=').trim().removeSurrounding("\"") }
+            }
+        val user = kv["username"] ?: return false
+        val uri = kv["uri"] ?: return false
+        if (kv["nonce"] != davNonce) return false
+        val response = kv["response"] ?: return false
+        val ha1 = md5Hex("$user:$DAV_REALM:$p")
+        val ha2 = md5Hex("$method:$uri")
+        val expected = if (kv["qop"] != null) {
+            md5Hex("$ha1:$davNonce:${kv["nc"]}:${kv["cnonce"]}:${kv["qop"]}:$ha2")
+        } else md5Hex("$ha1:$davNonce:$ha2")
+        return java.security.MessageDigest.isEqual(
+            expected.toByteArray(Charsets.ISO_8859_1),
+            response.lowercase().toByteArray(Charsets.ISO_8859_1))
+    }
+
+    private fun md5Hex(s: String): String =
+        java.security.MessageDigest.getInstance("MD5")
+            .digest(s.toByteArray(Charsets.ISO_8859_1))
+            .joinToString("") { "%02x".format(it) }
+
+    private fun authChallenge(out: OutputStream) {
+        respond(out, 401, listOf(
+            "WWW-Authenticate" to
+                "Digest realm=\"$DAV_REALM\", nonce=\"$davNonce\", qop=\"auth\", algorithm=MD5",
+            "Content-Type" to "text/plain; charset=utf-8",
+        ), contentLength = 0)
+    }
+
+    // ------------------------------------------------------------- WebDAV --
+
+    private fun respondOptions(out: OutputStream) {
+        respond(out, 204, listOf(
+            "DAV" to "1,2",
+            "Allow" to "OPTIONS,GET,HEAD,POST,PROPFIND,PUT,DELETE,MKCOL,COPY,MOVE,LOCK,UNLOCK",
+            "MS-Author-Via" to "DAV",
+        ), contentLength = 0)
+    }
+
+    /** `GET /some/dir` → the explorer page; `GET /file` → bytes. */
+    private fun serveDavPath(out: OutputStream, path: String, rangeHeader: String?,
+                             headOnly: Boolean) {
+        val e = try { fs.stat(path) } catch (err: VaultError) {
+            if (err.code == 404 && headOnly) { respond(out, 404, contentLength = 0); return }
+            throw err
+        }
+        if (e.isDir) {
+            if (headOnly) { respond(out, 200, listOf("Content-Type" to "text/html"),
+                contentLength = 0); return }
+            respondPage(out)
+        } else serveRaw(out, path, rangeHeader, headOnly, download = false)
+    }
+
+    private fun handlePropfind(out: OutputStream, path: String, depth: String?) {
+        if (depth == "infinity") throw VaultError(403, "depth infinity not supported")
+        val e = fs.stat(path)
+        val sb = StringBuilder("""<?xml version="1.0" encoding="utf-8"?>""")
+            .append("<D:multistatus xmlns:D=\"DAV:\">")
+        appendResponse(sb, davHref(path, e.isDir), e)
+        if (e.isDir && depth != "0") {
+            val parent = davHref(path, true)
+            for (child in fs.list(path)) {
+                appendResponse(sb, parent + urlEncode(child.name) +
+                    if (child.isDir) "/" else "", child)
+            }
+        }
+        sb.append("</D:multistatus>")
+        val body = sb.toString().toByteArray(Charsets.UTF_8)
+        respond(out, 207, listOf(
+            "Content-Type" to "application/xml; charset=utf-8",
+            "Content-Length" to body.size.toString(),
+        ))
+        out.write(body); out.flush()
+    }
+
+    /** href form of a jail path: percent-encoded per segment, dirs trailing /. */
+    private fun davHref(path: String, isDir: Boolean): String {
+        val clean = fs.sanitize(path)
+        if (clean.isEmpty()) return "/"
+        val href = "/" + clean.split('/').joinToString("/") { urlEncode(it) }
+        return if (isDir) "$href/" else href
+    }
+
+    private fun appendResponse(sb: StringBuilder, href: String, e: VaultFs.Entry) {
+        sb.append("<D:response><D:href>").append(xml(href)).append("</D:href>")
+            .append("<D:propstat><D:prop>")
+            .append("<D:displayname>").append(xml(e.name)).append("</D:displayname>")
+            .append(if (e.isDir) "<D:resourcetype><D:collection/></D:resourcetype>"
+                else "<D:resourcetype/>")
+        if (!e.isDir) {
+            sb.append("<D:getcontentlength>").append(e.size).append("</D:getcontentlength>")
+            if (e.mime != null) sb.append("<D:getcontenttype>")
+                .append(xml(e.mime)).append("</D:getcontenttype>")
+        }
+        sb.append("<D:getlastmodified>").append(httpDate(e.mtime * 1000))
+            .append("</D:getlastmodified>")
+            .append("<D:getetag>\"").append(e.mtime).append('-').append(e.size).append("\"</D:getetag>")
+            .append("</D:prop><D:status>HTTP/1.1 200 OK</D:status></D:propstat>")
+            .append("</D:response>")
+    }
+
+    /** Direct PUT: body → file, replacing. 201 when created, 204 when replaced. */
+    private fun handlePut(out: OutputStream, input: InputStream, path: String,
+                          headers: Map<String, String>) {
+        val length = headers["content-length"]?.toLongOrNull()
+            ?: throw VaultError(411, "content-length required")
+        val existed = runCatching { fs.stat(path) }.isSuccess
+        fs.putStream(path, input, length)
+        respond(out, if (existed) 204 else 201)
+    }
+
+    /** Finder requires lock tokens to mount read-write; the lock is a stub. */
+    private fun respondLock(out: OutputStream) {
+        val token = "opaquelocktoken:crossdrop-" +
+            java.util.UUID.randomUUID().toString()
+        val body = ("<D:prop xmlns:D=\"DAV:\"><D:lockdiscovery><D:activelock>" +
+            "<D:locktype><D:write/></D:locktype>" +
+            "<D:lockscope><D:exclusive/></D:lockscope>" +
+            "<D:depth>infinity</D:depth>" +
+            "<D:timeout>Second-3600</D:timeout>" +
+            "<D:locktoken><D:href>$token</D:href></D:locktoken>" +
+            "</D:activelock></D:lockdiscovery></D:prop>").toByteArray(Charsets.UTF_8)
+        respond(out, 200, listOf(
+            "Lock-Token" to "<$token>",
+            "Content-Type" to "application/xml; charset=utf-8",
+            "Content-Length" to body.size.toString(),
+        ))
+        out.write(body); out.flush()
+    }
+
+    /** `Destination:` may be an absolute URL or a bare path — take the path part. */
+    private fun destPath(h: String): String {
+        var p = h.trim()
+        val scheme = p.indexOf("://")
+        if (scheme >= 0) {
+            val slash = p.indexOf('/', scheme + 3)
+            p = if (slash >= 0) p.substring(slash) else "/"
+        }
+        return urlDecode(p.substringBefore('?'))
+    }
+
+    /** Discard a bounded request body (PROPFIND/LOCK payloads are ignored). */
+    private fun drainBody(input: InputStream, headers: Map<String, String>) {
+        var left = headers["content-length"]?.toLongOrNull()?.coerceAtMost(256 * 1024) ?: 0
+        val buf = ByteArray(8 * 1024)
+        while (left > 0) {
+            val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+            if (n <= 0) break
+            left -= n
+        }
+    }
+
+    private fun httpDate(ms: Long): String {
+        val f = java.text.SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss 'GMT'", java.util.Locale.US)
+        f.timeZone = java.util.TimeZone.getTimeZone("GMT")
+        return f.format(java.util.Date(ms))
+    }
+
+    private fun xml(s: String) = buildString(s.length) {
+        for (c in s) when (c) {
+            '<' -> append("&lt;"); '>' -> append("&gt;"); '&' -> append("&amp;")
+            '"' -> append("&quot;"); '\'' -> append("&apos;"); else -> append(c)
+        }
     }
 
     private fun infoJson(): String = buildString {
@@ -131,9 +389,9 @@ internal class VaultHttp(
 
     private fun serveRaw(out: OutputStream, path: String, rangeHeader: String?,
                          headOnly: Boolean, download: Boolean) {
-        val f = fs.resolve(path)
-        if (!f.isFile) throw VaultError(404, "not found")
-        val size = f.length()
+        val e = fs.stat(path)
+        if (e.isDir) throw VaultError(404, "not found")
+        val size = e.size
         var start = 0L
         var end = size - 1
         var status = 200
@@ -143,24 +401,24 @@ internal class VaultHttp(
             start = r.first; end = r.second; status = 206
         }
         val len = if (size == 0L) 0 else end - start + 1
-        val mime = fs.mimeOf(f.name)
+        val mime = e.mime ?: fs.mimeOf(path.substringAfterLast('/'))
+        val name = path.substringAfterLast('/')
         val headers = buildList {
             add("Accept-Ranges" to "bytes")
             add("Content-Type" to mime)
             add("Content-Length" to len.toString())
             add("Cache-Control" to "no-store")
             add("Content-Disposition" to
-                "${if (download) "attachment" else "inline"}; filename*=UTF-8''${urlEncode(f.name)}")
+                "${if (download) "attachment" else "inline"}; filename*=UTF-8''${urlEncode(name)}")
             if (status == 206) add("Content-Range" to "bytes $start-$end/$size")
         }
         respond(out, status, headers, contentLength = len)
         if (headOnly || len == 0L) return
-        RandomAccessFile(f, "r").use { raf ->
-            raf.seek(start)
+        fs.open(path, start).use { src ->
             val buf = ByteArray(64 * 1024)
             var left = len
             while (left > 0) {
-                val n = raf.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                val n = src.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
                 if (n <= 0) break
                 out.write(buf, 0, n)
                 left -= n
@@ -209,9 +467,7 @@ internal class VaultHttp(
         val length = headers["content-length"]?.toLongOrNull()
             ?: throw BadRequest("no content-length")
 
-        fs.resolve(dirPath).let {                       // target dir must exist & be a dir
-            if (!it.isDirectory) throw VaultError(400, "bad target dir")
-        }
+        if (!fs.stat(dirPath).isDir) throw VaultError(400, "bad target dir")
 
         val body = BodyReader(input, length)
         val saved = mutableListOf<String>()
@@ -437,9 +693,12 @@ internal class VaultHttp(
     }
 
     private fun statusText(code: Int) = when (code) {
-        200 -> "OK"; 204 -> "No Content"; 206 -> "Partial Content"
+        200 -> "OK"; 201 -> "Created"; 204 -> "No Content"; 206 -> "Partial Content"
+        207 -> "Multi-Status"; 301 -> "Moved Permanently"
         400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"
-        404 -> "Not Found"; 413 -> "Payload Too Large"; 416 -> "Range Not Satisfiable"
+        404 -> "Not Found"; 405 -> "Method Not Allowed"; 409 -> "Conflict"
+        411 -> "Length Required"; 412 -> "Precondition Failed"
+        413 -> "Payload Too Large"; 416 -> "Range Not Satisfiable"
         500 -> "Internal Server Error"; else -> "?"
     }
 
@@ -493,6 +752,8 @@ internal class VaultHttp(
         private const val MAX_FILES_PER_UPLOAD = 256
         /** HTTP staging ids live in their own range — no tid collisions. */
         private const val HTTP_STAGE_BASE = 1_000_000_000L
+        /** Digest realm shown by Finder/Explorer auth prompts. */
+        private const val DAV_REALM = "crossdrop"
 
         private val FALLBACK_PAGE = """
             <!doctype html><meta charset=utf-8><title>CrossDrop Vault</title>
