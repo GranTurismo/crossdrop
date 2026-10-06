@@ -8,6 +8,7 @@ import com.crossdrop.core.vault.VaultFs
 import com.crossdrop.core.vault.VaultFs.VaultError
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.InputStream
 
 /**
@@ -147,12 +148,14 @@ class SafVaultFs(
                 ?: throw VaultError(500, "cannot create file")
         }
         stage.inputStream().use { src ->
-            context.contentResolver.openOutputStream(target.uri, "wt")!!.use { out ->
+            (context.contentResolver.openOutputStream(target.uri, "wt")
+                ?: throw VaultError(500, "cannot write file")).use { out ->
                 src.copyTo(out)
             }
         }
         stage.delete()
-        return dirPath.let { if (it.isEmpty()) target.name!! else "$it/${target.name}" }
+        val finalName = target.name ?: leaf
+        return if (dirPath.isEmpty()) finalName else "$dirPath/$finalName"
     }
 
     override fun purgeStaging() {
@@ -172,20 +175,30 @@ class SafVaultFs(
         val (parent, leaf) = parentOf(rawPath)
         if (!hasRoom(length)) throw VaultError(413, "insufficient storage")
         val existing = parent.findFile(leaf)
-        val target = when {
-            existing == null -> parent.createFile(mimeOf(leaf), leaf)
-                ?: throw VaultError(500, "cannot create file")
-            existing.isDirectory -> throw VaultError(409, "target is a directory")
-            else -> existing
-        }
-        context.contentResolver.openOutputStream(target.uri, "wt")!!.use { out ->
-            val buf = ByteArray(64 * 1024); var left = length
-            while (left > 0) {
-                val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
-                if (n < 0) break
-                out.write(buf, 0, n); left -= n
+        if (existing?.isDirectory == true) throw VaultError(409, "target is a directory")
+        // Stage in app cache first: SAF "wt" truncates the target up front, so a
+        // torn PUT must never touch the document — commit replaces it whole.
+        val stage = File(stagingDir, "put-${System.nanoTime()}.tmp")
+        try {
+            FileOutputStream(stage).use { out ->
+                val buf = ByteArray(64 * 1024); var left = length
+                while (left > 0) {
+                    val n = input.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+                    if (n < 0) break
+                    out.write(buf, 0, n); left -= n
+                }
+                if (left != 0L) throw VaultError(400, "body truncated")
             }
-            if (left != 0L) throw VaultError(400, "body truncated")
+            val target = existing ?: parent.createFile(mimeOf(leaf), leaf)
+                ?: throw VaultError(500, "cannot create file")
+            stage.inputStream().use { src ->
+                (context.contentResolver.openOutputStream(target.uri, "wt")
+                    ?: throw VaultError(500, "cannot write file")).use { out ->
+                    src.copyTo(out)
+                }
+            }
+        } finally {
+            stage.delete()
         }
         return sanitize(rawPath)
     }
@@ -202,6 +215,10 @@ class SafVaultFs(
     }
 
     override fun move(src: String, dst: String, overwrite: Boolean) {
+        val srcClean = sanitize(src)
+        val dstClean = sanitize(dst)
+        if (dstClean == srcClean || dstClean.startsWith("$srcClean/"))
+            throw VaultError(409, "cannot move a folder into itself")
         val s = must(src)
         if (s.uri == root.uri) throw VaultError(403, "cannot move drive root")
         val (dstParent, dstLeaf) = parentOf(dst)
@@ -217,6 +234,10 @@ class SafVaultFs(
     }
 
     override fun copy(src: String, dst: String, overwrite: Boolean) {
+        val srcClean = sanitize(src)
+        val dstClean = sanitize(dst)
+        if (dstClean == srcClean || dstClean.startsWith("$srcClean/"))
+            throw VaultError(409, "cannot copy a folder into itself")
         val s = must(src)
         val (dstParent, dstLeaf) = parentOf(dst)
         dstParent.findFile(dstLeaf)?.let { existing ->

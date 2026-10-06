@@ -73,7 +73,7 @@ import com.crossdrop.ui.transfer.formatBytes
 @Composable
 fun DriveHostScreen(
     state: VaultHostManager.State?,
-    onStart: (writable: Boolean, usePin: Boolean, treeUri: Uri?) -> Unit,
+    onStart: (writable: Boolean, usePin: Boolean, treeUri: Uri?) -> Boolean,
     onStop: () -> Unit,
     onClose: () -> Unit,
 ) {
@@ -113,22 +113,34 @@ fun DriveHostScreen(
 // -------------------------------------------------------------- start card --
 
 @Composable
-private fun StartCard(onStart: (Boolean, Boolean, Uri?) -> Unit) {
-    var writable by remember { mutableStateOf(true) }
+private fun StartCard(onStart: (Boolean, Boolean, Uri?) -> Boolean) {
+    var writable by remember { mutableStateOf(false) }
     var usePin by remember { mutableStateOf(true) }
+    var startFailed by remember { mutableStateOf(false) }
     val ctx = LocalContext.current
 
     val folderPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
         if (uri != null) {
+            // Persist whatever the provider actually granted — some trees are
+            // read-only, and asking for write there fails the whole grant.
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             runCatching {
-                ctx.contentResolver.takePersistableUriPermission(
-                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+                ctx.contentResolver.takePersistableUriPermission(uri, flags)
+            }.onFailure {
+                runCatching {
+                    ctx.contentResolver.takePersistableUriPermission(
+                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
             }
-            onStart(writable, usePin, uri)
+            startFailed = !onStart(writable, usePin, uri)
         }
+    }
+
+    fun tryStartVault() {
+        startFailed = !onStart(writable, usePin, null)
     }
 
     Text(
@@ -147,7 +159,7 @@ private fun StartCard(onStart: (Boolean, Boolean, Uri?) -> Unit) {
             title = "Share the CrossDrop vault",
             subtitle = "files saved in this app",
             accent = RippleTeal,
-        ) { onStart(writable, usePin, null) }
+        ) { tryStartVault() }
         RowDivider()
         ActionRow(
             title = "Pick a folder to share",
@@ -166,6 +178,13 @@ private fun StartCard(onStart: (Boolean, Boolean, Uri?) -> Unit) {
             subtitle = "recommended on shared Wi-Fi",
             checked = usePin,
         ) { usePin = it }
+    }
+    if (startFailed) {
+        Spacer(Modifier.height(10.dp))
+        Text(
+            "Couldn't turn on the drive — the folder may no longer be accessible.",
+            color = DangerSoft, fontSize = 13.sp, textAlign = TextAlign.Center,
+        )
     }
 }
 

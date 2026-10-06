@@ -183,6 +183,56 @@ class VaultDavTest {
         assertEquals(204, dav("UNLOCK", "/pic.png").code)
     }
 
+    @Test fun `move or copy a directory into itself is rejected`() {
+        serve(writable = true)
+        // /docs → /docs/inner would recurse forever without the subtree guard
+        assertEquals(409, dav("MOVE", "/docs",
+            mapOf("Destination" to "/docs/inner")).code)
+        assertEquals(409, dav("COPY", "/docs",
+            mapOf("Destination" to "/docs/inner")).code)
+        assertEquals(400, dav("MOVE", "/docs",
+            mapOf("Destination" to "/docs")).code)
+        // source untouched
+        assertEquals(200, dav("GET", "/docs/readme.txt").code)
+        // and a legit nested move still works
+        assertEquals(201, dav("MKCOL", "/hold").code)
+        assertEquals(201, dav("MOVE", "/docs/readme.txt",
+            mapOf("Destination" to "/hold/r.txt")).code)
+    }
+
+    @Test fun `put answers expect 100-continue`() {
+        serve(writable = true)
+        // Finder-style PUT: headers, wait for 100, then body
+        Socket("127.0.0.1", server!!.port).use { s ->
+            s.soTimeout = 10_000
+            val out = s.getOutputStream()
+            out.write(("PUT /cont.txt HTTP/1.1\r\nHost: x\r\n" +
+                "Expect: 100-continue\r\nContent-Length: 4\r\n\r\n")
+                .toByteArray(Charsets.ISO_8859_1))
+            out.flush()
+            val input = s.getInputStream()
+            val head = readUntil(input, "\r\n\r\n")
+            assertTrue(head.startsWith("HTTP/1.1 100"))
+            out.write("data".toByteArray()); out.flush()
+            val rest = readUntil(input, "\r\n\r\n")
+            assertTrue(rest.startsWith("HTTP/1.1 201"))
+        }
+        assertArrayEquals("data".toByteArray(), dav("GET", "/cont.txt").body)
+    }
+
+    private fun readUntil(input: java.io.InputStream, term: String): String {
+        val sb = StringBuilder()
+        val end = term.toByteArray()
+        var matched = 0
+        while (matched < end.size) {
+            val b = input.read(); if (b < 0) break
+            sb.append(b.toChar())
+            matched = if (b == end[matched].toInt()) matched + 1
+                else if (b == end[0].toInt()) 1 else 0
+        }
+        return sb.toString()
+    }
+
     @Test fun `read only blocks every write verb`() {
         serve(writable = false)
         assertEquals(403, dav("PUT", "/x.txt", body = byteArrayOf(1)).code)

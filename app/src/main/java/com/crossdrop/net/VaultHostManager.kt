@@ -72,8 +72,9 @@ class VaultHostManager(
      * Host the drive. [treeUri] = a persisted SAF folder the user picked;
      * null → the built-in vault dir.
      */
+    /** Returns false when the folder couldn't be opened or the port refused. */
     fun start(writable: Boolean, usePin: Boolean, label: String? = null,
-              treeUri: Uri? = null) {
+              treeUri: Uri? = null): Boolean {
         stop()
         val id = ByteArray(8).also { SecureRandom().nextBytes(it) }
             .joinToString("") { "%02x".format(it) }
@@ -82,7 +83,7 @@ class VaultHostManager(
         val fs = if (treeUri != null) {
             runCatching { SafVaultFs(context, treeUri, File(context.cacheDir, "drive-staging")) }
                 .getOrElse {
-                    Log.w(TAG, "cannot open picked folder", it); return
+                    Log.w(TAG, "cannot open picked folder", it); return false
                 }
         } else FileVaultFs(vaultRoot)
 
@@ -102,7 +103,7 @@ class VaultHostManager(
         // Port 8080 is the friendly "drive address" for Finder/Explorer;
         // another service squatting on it → ephemeral fallback.
         runCatching { srv.start(PREFERRED_PORT) }.onFailure {
-            Log.w(TAG, "vault failed to bind", it); return
+            Log.w(TAG, "vault failed to bind", it); return false
         }
         server = srv
         vaultId = id
@@ -132,6 +133,7 @@ class VaultHostManager(
         }
 
         pollJob = scope.launch { while (isActive) { delay(1_000); refresh() } }
+        return true
     }
 
     private fun refresh() {

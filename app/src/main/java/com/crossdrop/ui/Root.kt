@@ -234,8 +234,9 @@ fun Root(container: AppContainer) {
                 com.crossdrop.ui.drive.DriveHostScreen(
                     state = vaultHost,
                     onStart = { rw, pin, uri ->
-                        TransferService.start(container.contextForService())
-                        container.vaultHost.start(rw, pin, treeUri = uri)
+                        container.vaultHost.start(rw, pin, treeUri = uri).also { ok ->
+                            if (ok) TransferService.start(container.contextForService())
+                        }
                     },
                     onStop = container.vaultHost::stop,
                     onClose = { driveOpen = false },

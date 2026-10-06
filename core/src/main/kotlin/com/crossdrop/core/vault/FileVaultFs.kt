@@ -147,6 +147,9 @@ class FileVaultFs(rootDir: File) : VaultFs {
         if (s == root) throw VaultError(403, "cannot move vault root")
         if (!s.exists()) throw VaultError(404, "not found")
         val d = resolve(dst)
+        if (d == s) throw VaultError(400, "same source and destination")
+        if (d.path.startsWith(s.path + File.separator))
+            throw VaultError(409, "cannot move a folder into itself")
         if (d.exists()) {
             if (!overwrite) throw VaultError(412, "destination exists")
             if (!d.deleteRecursively()) throw VaultError(500, "cannot replace destination")
@@ -165,6 +168,9 @@ class FileVaultFs(rootDir: File) : VaultFs {
         val s = resolve(src)
         if (!s.exists()) throw VaultError(404, "not found")
         val d = resolve(dst)
+        if (d == s) throw VaultError(400, "same source and destination")
+        if (d.path.startsWith(s.path + File.separator))
+            throw VaultError(409, "cannot copy a folder into itself")
         if (d.exists()) {
             if (!overwrite) throw VaultError(412, "destination exists")
             if (!d.deleteRecursively()) throw VaultError(500, "cannot replace destination")

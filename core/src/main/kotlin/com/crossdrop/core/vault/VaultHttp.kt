@@ -83,6 +83,7 @@ internal class VaultHttp(
                 method == "POST" && rawPath == "/upload" -> {
                     requirePin(headers, params)
                     if (!writable) throw VaultError(403, "vault is read-only")
+                    continue100(out, headers)
                     handleUpload(out, input, headers, params["path"] ?: "/")
                 }
 
@@ -101,6 +102,7 @@ internal class VaultHttp(
                 method == "PUT" -> {
                     if (!writable) throw VaultError(403, "vault is read-only")
                     if (!authorized(headers, params, method)) { authChallenge(out); return }
+                    continue100(out, headers)
                     handlePut(out, input, urlDecode(rawPath), headers)
                 }
                 method == "MKCOL" -> {
@@ -330,6 +332,14 @@ internal class VaultHttp(
             p = if (slash >= 0) p.substring(slash) else "/"
         }
         return urlDecode(p.substringBefore('?'))
+    }
+
+    /** Finder/Explorer PUTs carry `Expect: 100-continue` — answer it so the body flows. */
+    private fun continue100(out: OutputStream, headers: Map<String, String>) {
+        if (headers["expect"]?.equals("100-continue", true) == true) {
+            out.write("HTTP/1.1 100 Continue\r\n\r\n".toByteArray(Charsets.ISO_8859_1))
+            out.flush()
+        }
     }
 
     /** Discard a bounded request body (PROPFIND/LOCK payloads are ignored). */
