@@ -93,7 +93,7 @@ class TransferService : LifecycleService() {
     )
 
     private fun initialNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(R.drawable.ic_launcher)
+        .setSmallIcon(R.drawable.ic_notification)
         .setContentTitle("CrossDrop transfer")
         .setContentText("Starting…")
         .setOngoing(true)
@@ -104,7 +104,7 @@ class TransferService : LifecycleService() {
         val title = if (session.direction == Direction.SENDING)
             "Sending to ${session.peerName}" else "Receiving from ${session.peerName}"
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentIntent(contentIntent())
             .setOnlyAlertOnce(true)
@@ -135,7 +135,7 @@ class TransferService : LifecycleService() {
             else -> "${share.files.size} file${if (share.files.size == 1) "" else "s"} · waiting for a scan"
         }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Sharing via browser link")
             .setContentText(text)
             .setOngoing(!share.delivered)
@@ -149,7 +149,7 @@ class TransferService : LifecycleService() {
     private fun updateVaultNotification(vault: com.crossdrop.net.VaultHostManager.State) {
         val clients = vault.clients.size
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Vault live — ${vault.vaultName}")
             .setContentText(
                 "${if (vault.writable) "read-write" else "read-only"} · " +

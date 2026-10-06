@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="38%" r="78%">
+      <stop offset="0" stop-color="#17113D"/>
+      <stop offset=".55" stop-color="#0B0724"/>
+      <stop offset="1" stop-color="#05070F"/>
+    </radialGradient>
+    <radialGradient id="glowMint" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#2EE6C8" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#2EE6C8" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowViolet" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#9D6BFF" stop-opacity=".15"/>
+      <stop offset="1" stop-color="#9D6BFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="orb" x1="30%" y1="12%" x2="78%" y2="96%">
+      <stop offset="0" stop-color="#3BFFB0"/>
+      <stop offset=".48" stop-color="#45E5FF"/>
+      <stop offset="1" stop-color="#9D6BFF"/>
+    </linearGradient>
+    <radialGradient id="core" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0%" y1="100%" x2="70%" y2="0%">
+      <stop offset="0" stop-color="#2EE6C8" stop-opacity=".14"/>
+      <stop offset="1" stop-color="#2EE6C8" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="108" height="108" fill="url(#bg)"/>
+  <ellipse cx="30" cy="26" rx="34" ry="26" fill="url(#glowMint)"/>
+  <ellipse cx="82" cy="88" rx="36" ry="28" fill="url(#glowViolet)"/>
+
+  <!-- radar beam toward peer -->
+  <path d="M54,54 L58.9,26.4 A28,28 0 0 1 80.9,46.3 Z" fill="url(#beam)"/>
+
+  <!-- outer sonar arcs: two 136° arcs, gaps at peer side and opposite -->
+  <path d="M79.2,41.7 A28,28 0 1 1 44.4,80.3" fill="none"
+        stroke="#2EE6C8" stroke-width="1.6" stroke-opacity=".42" stroke-linecap="round"/>
+  <path d="M28.8,66.3 A28,28 0 0 1 63.6,27.7" fill="none"
+        stroke="#2EE6C8" stroke-width="1.6" stroke-opacity=".42" stroke-linecap="round"/>
+
+  <!-- mid ring -->
+  <circle cx="54" cy="54" r="21" fill="none"
+          stroke="#2EE6C8" stroke-width="2" stroke-opacity=".8"/>
+
+  <!-- liquid orb -->
+  <circle cx="54" cy="54" r="14" fill="url(#orb)"/>
+  <path d="M40,54 a14,14 0 0 0 28,0 Z" fill="#241052" fill-opacity=".38"/>
+  <circle cx="50.5" cy="49.5" r="5.5" fill="url(#core)"/>
+  <path d="M42.2,50.8 A12.2,12.2 0 0 1 51.9,42.0" fill="none"
+        stroke="#DFFCF3" stroke-width="1.6" stroke-opacity=".85" stroke-linecap="round"/>
+
+  <!-- discovered peer -->
+  <circle cx="71.7" cy="34.3" r="4.6" fill="#FF4FD8" fill-opacity=".22"/>
+  <circle cx="71.7" cy="34.3" r="2.6" fill="#FF4FD8"/>
+</svg>
