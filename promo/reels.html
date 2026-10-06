@@ -61,18 +61,22 @@ canvas{display:block}
   to{opacity:1;transform:none}}
 
 /* kinetic caption — word pops */
-.kcap{position:absolute;left:70px;right:70px;bottom:190px;text-align:center;
-  font-size:64px;font-weight:800;line-height:1.28;letter-spacing:-.01em;
-  display:flex;flex-wrap:wrap;justify-content:center;gap:0 22px;
-  text-shadow:0 4px 40px rgba(3,0,20,.9)}
+.kcap{position:absolute;left:60px;right:60px;bottom:190px;text-align:center;
+  font-size:86px;font-weight:900;line-height:1.22;letter-spacing:-.015em;
+  display:flex;flex-wrap:wrap;justify-content:center;gap:0 26px;
+  text-shadow:0 6px 46px rgba(3,0,20,.95)}
 .kcap.wide{bottom:150px}
 .kcap i{font-style:normal;display:inline-block;opacity:0;
-  transform:translateY(46px) scale(1.7)}
+  transform:translateY(56px) scale(1.8) rotate(4deg)}
 .scene.active .kcap i{animation:wpop .3s cubic-bezier(.15,1.4,.3,1) both;
   animation-delay:calc(var(--wd,0s) + var(--toff,0s))}
-@keyframes wpop{to{opacity:1;transform:none}}
+.kcap i:nth-child(odd){--rot:-1.6deg}
+.kcap i:nth-child(even){--rot:1.4deg}
+@keyframes wpop{to{opacity:1;transform:rotate(var(--rot,0deg))}}
 .kcap .hl{background:var(--aurora);-webkit-background-clip:text;
   background-clip:text;color:transparent}
+.kcap .bx{color:var(--night);background:var(--aurora);border-radius:16px;
+  padding:0 22px;box-shadow:0 0 44px rgba(59,255,176,.5);text-shadow:none}
 .sub-cap{position:absolute;left:70px;right:70px;bottom:120px;text-align:center;
   font-family:var(--mono);font-size:26px;color:var(--dim);letter-spacing:.3em;
   text-transform:uppercase;opacity:0}
@@ -298,18 +302,18 @@ body.clean #audioBtn{display:none}
   <section class="scene s-hook" id="s-hook">
     <div class="burst pin" style="--sd:.05s"></div>
     <h1 class="logo" id="logo1">CrossDrop</h1>
-    <p class="tagline">file sharing, reimagined</p>
+    <p class="tagline">send files like magic ⚡</p>
   </section>
 
   <!-- 1 · manifesto -->
   <section class="scene s-mani" id="s-mani">
-    <div class="kicker pin" style="--sd:.05s">the rules</div>
+    <div class="kicker pin" style="--sd:.05s">no fine print</div>
     <div class="mlines">
       <div class="mline sl-l" style="--sd:.15s"><span>no cloud</span><i class="strike" style="--sd:1.36s"></i></div>
       <div class="mline sl-r" style="--sd:.3s"><span>no accounts</span><i class="strike" style="--sd:1.82s"></i></div>
       <div class="mline sl-l" style="--sd:.45s"><span>no ads</span><i class="strike" style="--sd:2.27s"></i></div>
       <div class="mline sl-r" style="--sd:.6s"><span>no tracking</span><i class="strike" style="--sd:2.73s"></i></div>
-      <div class="mline keep pin" style="--sd:3.18s"><span>just your devices.</span></div>
+      <div class="mline keep pin" style="--sd:3.18s"><span>just your stuff. that's it.</span></div>
     </div>
   </section>
 
@@ -450,14 +454,14 @@ const BPM=132,STEP=60/BPM/2;                 /* 8th-note grid, bar = 8 steps */
 const BASSR=[55,55,82.4,55,55,65.4,73.4,82.4];
 const STAB=[[220,277.2,329.6],[174.6,220,261.6],[196,246.9,293.7],[164.8,207.7,246.9]];
 const VO_SCRIPT=[
-  'This is CrossDrop!',
+  'Okay, watch this.',
   'No cloud. No accounts. No ads. No tracking.',
-  'Everyone nearby. One tap.',
-  'Drop a file. It\'s gone.',
-  'Resend? Only what changed moves.',
-  'No app? Just a browser.',
-  'Your phone becomes the drive.',
-  'Fifteen megs. Zero trackers.',
+  'Everyone nearby just shows up.',
+  'Drop a file. Gone!',
+  'Resend? Only the changes move.',
+  'No app? Literally any browser.',
+  'Your phone becomes a shared drive.',
+  'Under fifteen megs. Zero trackers. Free forever.',
   'Share like it should be!'];
 
 function initAudio(){
@@ -535,6 +539,7 @@ function stab(t,n){
     o.connect(g);g.connect(musicBus);o.start(t);o.stop(t+.32);
   }
 }
+let FILLS=new Set();          /* step index of each scene boundary */
 function schedStep(t,n){
   const s=n%8;
   if(s%2===0)kick(t);
@@ -542,6 +547,9 @@ function schedStep(t,n){
   if(s%2===1)hat(t,s===7?.14:.1);
   bass(BASSR[s],t);
   if(s===0)stab(t,n);
+  /* snare fill on the last beat before a cut — edited-video feel */
+  if(FILLS.has(n+2)){clap(t);clap(t+STEP*.5);}
+  if(FILLS.has(n+1)){clap(t);hat(t+STEP*.75,.17);}
 }
 /* ---- sfx ---- */
 function nz(t,dur,f0,f1,q,vol,type='bandpass'){
@@ -723,9 +731,9 @@ function cvs(cv){
 /* ================================================================= radar */
 const radarCv=document.getElementById('radarCv');
 const R_PEERS=[
-  {a:2.1, rad:.6, name:'Pixel 9',      born:.7},
-  {a:4.3, rad:.82,name:'MacBook Air',  born:1.5},
-  {a:5.5, rad:.45,name:'Studio Drive', born:2.3, vault:true, badge:'RW'},
+  {a:2.1, rad:.6, name:'Pixel 9',      born:.91},
+  {a:4.3, rad:.82,name:'MacBook Air',  born:1.82},
+  {a:5.5, rad:.45,name:'Studio Drive', born:2.73, vault:true, badge:'RW'},
 ];
 function paintRadar(t){
   const {ctx,w,h}=cvs(radarCv);
@@ -806,7 +814,7 @@ function paintRadar(t){
       ctx.fillStyle=PAL.mint;ctx.beginPath();ctx.arc(x,y,8*s,0,7);ctx.fill();
     }
     ctx.fillStyle=PAL.dim;ctx.font='500 24px "Cascadia Code",monospace';
-    ctx.fillText(p.name,x,y+52);
+    ctx.fillText(p.name,x,y+(p.vault?70:52));
   }
 }
 
@@ -936,7 +944,7 @@ function measureDelta(){
 function hidePkts(){for(const p of pkts)p.style.opacity='0';}
 function paintDelta(t){
   if(!geo&&t>.35)measureDelta();
-  const arrive=[1.1,1.5,1.9,2.3];
+  const arrive=[.909,1.364,1.818,2.273];
   for(let i=0;i<CHUNKS;i++){
     const el=chunkEls[i],miss=MISSING.indexOf(i);
     const born=.25+i*.03;
@@ -1036,55 +1044,61 @@ function paintStats(t){
 /* ========================================================== captions ==== */
 function buildCap(sceneEl,text){
   const old=sceneEl.querySelector('.kcap');if(old)old.remove();
+  if(!text)return;
   const cap=document.createElement('div');cap.className='kcap';
   const wide=sceneEl.classList.contains('s-qr')||sceneEl.classList.contains('s-vault');
   if(wide)cap.classList.add('wide');
   text.split(' ').forEach((wd,i)=>{
-    const s=document.createElement('i');s.textContent=wd;
-    s.style.setProperty('--wd',(0.15+i*.14)+'s');
-    if(/crossdrop|zero|100|browser|drive|gone|tap/i.test(wd))s.classList.add('hl');
+    const s=document.createElement('i');
+    const boxed=wd.startsWith('*');
+    s.textContent=boxed?wd.slice(1):wd;
+    s.style.setProperty('--wd',(0.12+i*.13)+'s');
+    if(boxed)s.classList.add('bx');
+    else if(/crossdrop|zero|100|browser|drive|gone|tap|free|magic|instant/i.test(wd))
+      s.classList.add('hl');
     cap.appendChild(s);
   });
   sceneEl.appendChild(cap);
 }
 const CAPTIONS=[
-  'This is CrossDrop',
-  'no cloud · no accounts · no ads · no tracking',
-  'everyone nearby. one tap.',
-  'drop a file. gone.',
-  'resend? only changes move.',
-  'no app? just a browser.',
-  'your phone is the drive.',
-  '<15 MB · zero trackers',
-  'share like it should be',
+  'okay, watch *this 👀',
+  null,                                 /* strikes ARE the text */
+  'everyone nearby just *shows up',
+  'drop a file. it\'s *gone ⚡',
+  'resend? only the changes move',
+  'no app? literally *any browser',
+  'your phone becomes a shared *drive',
+  'under *15mb · zero trackers · free forever',
+  null,                                 /* CTA pill IS the text */
 ];
 
 /* ============================================================== timeline  */
 const BEAT=60/BPM;
 const SCENES=[
   {id:'s-hook',  dur:BEAT*4,
-   cues:[[.1,'slam'],[.5,'chime'],[.15,'vo']]},
+   cues:[[.1,'slam'],[.45,'chime'],[.15,'vo']]},
   {id:'s-mani',  dur:BEAT*10,
    cues:[[1.36,'slam'],[1.82,'slam'],[2.27,'slam'],[2.73,'slam'],[3.18,'chime'],[.15,'vo'],
          [.15,'pop'],[.3,'pop'],[.45,'pop'],[.6,'pop']]},
   {id:'s-radar', dur:BEAT*8, paint:paintRadar,
-   cues:[[.7,'ping'],[1.5,'ping'],[2.3,'vping'],[3.1,'ping'],[.2,'vo']]},
+   cues:[[.91,'ping'],[1.82,'ping'],[2.73,'vping'],[3.18,'ping'],[.2,'vo']]},
   {id:'s-orb',   dur:BEAT*8, paint:paintOrb,
-   cues:[[2.0,'rise'],[2.55,'chime'],[2.58,'slam'],[3.2,'sparkle'],[.2,'vo']]},
+   cues:[[1.82,'rise'],[2.55,'chime'],[2.58,'slam'],[3.18,'sparkle'],[.2,'vo']]},
   {id:'s-delta', dur:BEAT*8, paint:paintDelta,
    enter:()=>{geo=null;}, exit:hidePkts,
-   cues:[[.25,'tick'],[1.1,'blip'],[1.5,'blip'],[1.9,'blip'],[2.3,'blip'],
+   cues:[[.25,'tick'],[.91,'blip'],[1.36,'blip'],[1.82,'blip'],[2.27,'blip'],
          [3.0,'sparkle'],[.2,'vo']]},
   {id:'s-qr',    dur:BEAT*8, paint:paintQr,
-   cues:[[.15,'zap'],[.8,'zap'],[.3,'tick'],[.45,'tick'],[.6,'tick'],[2.6,'zap'],[.2,'vo']]},
+   cues:[[.15,'zap'],[.91,'zap'],[.45,'tick'],[.68,'tick'],[.91,'tick'],[2.73,'zap'],[.2,'vo']]},
   {id:'s-vault', dur:BEAT*8,
-   cues:[[.2,'tick'],[.32,'tick'],[.44,'tick'],[.56,'tick'],[.9,'ping'],[2.8,'zap'],[.2,'vo']]},
+   cues:[[.45,'tick'],[.68,'tick'],[.91,'tick'],[1.14,'tick'],[.91,'ping'],[2.73,'zap'],[.2,'vo']]},
   {id:'s-stats', dur:BEAT*8, paint:paintStats,
    cues:[[.1,'sparkle'],[.25,'sparkle'],[.4,'sparkle'],[.55,'sparkle'],
-         [3.0,'rise'],[.2,'vo']]},
+         [3.0,'rise'],[.05,'vo']]},
   {id:'s-outro', dur:BEAT*6,
-   cues:[[.05,'slam'],[.5,'chime'],[1.3,'sparkle'],[.15,'vo']]},
+   cues:[[.05,'slam'],[.45,'chime'],[1.36,'sparkle'],[.15,'vo']]},
 ];
+{let _b=0;SCENES.forEach(s=>{_b+=Math.round(s.dur/BEAT*2);FILLS.add(_b);});}
 const els=Object.fromEntries(SCENES.map(s=>[s.id,document.getElementById(s.id)]));
 const TOTAL=SCENES.reduce((a,s)=>a+s.dur,0);
 SCENES.forEach((s,i)=>buildCap(els[s.id],CAPTIONS[i]));
