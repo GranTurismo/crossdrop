@@ -1,5 +1,6 @@
 package com.crossdrop.di
 
+import androidx.core.content.edit
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.wifi.WifiManager
@@ -52,7 +53,7 @@ class AppContainer(private val app: Context) {
 
     fun setDeviceName(name: String) {
         val clean = name.trim().ifBlank { return }
-        prefs.edit().putString("device_name", clean).apply()
+        prefs.edit { putString("device_name", clean) }
         _deviceName.value = clean
     }
 
@@ -112,14 +113,14 @@ class AppContainer(private val app: Context) {
     val bleEnabled: StateFlow<Boolean> = _bleEnabled
 
     fun setNsdEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("nsd_enabled", enabled).apply()
+        prefs.edit { putBoolean("nsd_enabled", enabled) }
         _nsdEnabled.value = enabled
         runCatching { if (enabled) nsdDiscovery.start() else nsdDiscovery.stop() }
         runCatching { if (enabled) vaultDiscovery.start() else vaultDiscovery.stop() }
     }
 
     fun setBleEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("ble_enabled", enabled).apply()
+        prefs.edit { putBoolean("ble_enabled", enabled) }
         _bleEnabled.value = enabled
         runCatching { if (enabled) bleDiscovery.start() else bleDiscovery.stop() }
     }

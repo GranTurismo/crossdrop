@@ -31,7 +31,7 @@ class VaultTest {
     private val blob = ByteArray(700_000) { ((it * 31) xor (it ushr 3)).toByte() }
 
     @Before fun setUp() {
-        root = Files.createTempDirectory("vault-test").toFile()
+        root = Files.createTempDirectory("vault-test").toFile().canonicalFile
         File(root, "docs").mkdirs()
         File(root, "docs/readme.txt").writeText("hello vault")
         File(root, "media").mkdirs()

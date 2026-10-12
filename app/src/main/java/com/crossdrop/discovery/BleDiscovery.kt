@@ -70,6 +70,8 @@ class BleDiscovery(
         startExpiryLoop()
     }
 
+    @SuppressLint("MissingPermission")
+
     override fun stop() {
         started = false
         scanCallback?.let { cb -> runCatching { scanner?.stopScan(cb) } }

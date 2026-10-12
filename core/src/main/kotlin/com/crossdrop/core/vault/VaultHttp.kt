@@ -52,6 +52,8 @@ internal class VaultHttp(
         val out = socket.getOutputStream()
         try {
             val head = readHead(input) ?: return
+            peerIp = (socket.remoteSocketAddress as? java.net.InetSocketAddress)
+                ?.address?.hostAddress ?: "?"
             val (method, rawTarget) = head.first
             val headers = head.second
 
@@ -155,8 +157,37 @@ internal class VaultHttp(
     private fun requirePin(headers: Map<String, String>, params: Map<String, String>) {
         val p = pin ?: return
         val sent = headers["x-vault-pin"] ?: params["pin"]
-        if (sent != p) throw VaultError(401, "pin required")
+        if (sent == null || !pinMatches(sent, p)) throw VaultError(401, "pin required")
     }
+
+    // ----------------------------------------------- brute-force throttle --
+
+    /** Remote IP of the request being handled (one thread per socket). */
+    private val peerIpLocal = ThreadLocal<String>()
+    private var peerIp: String
+        get() = peerIpLocal.get() ?: "?"
+        set(v) = peerIpLocal.set(v)
+
+    private class Strikes(var count: Int = 0, var lockedUntil: Long = 0)
+    private val strikes = java.util.concurrent.ConcurrentHashMap<String, Strikes>()
+
+    /** Records a credential check: lockout after repeated misses from one IP. */
+    private fun recordAttempt(ok: Boolean): Boolean {
+        val st = strikes.getOrPut(peerIp) { Strikes() }
+        synchronized(st) {
+            val now = System.currentTimeMillis()
+            if (now < st.lockedUntil) throw VaultError(429, "too many attempts — wait a minute")
+            if (ok) { st.count = 0; return true }
+            if (++st.count >= MAX_PIN_STRIKES) {
+                st.count = 0; st.lockedUntil = now + PIN_LOCKOUT_MS
+            }
+            return false
+        }
+    }
+
+    private fun pinMatches(sent: String, p: String): Boolean =
+        recordAttempt(java.security.MessageDigest.isEqual(
+            sent.toByteArray(Charsets.UTF_8), p.toByteArray(Charsets.UTF_8)))
 
     // --------------------------------------------------------------- auth --
 
@@ -174,7 +205,8 @@ internal class VaultHttp(
     private fun authorized(headers: Map<String, String>, params: Map<String, String>,
                            method: String): Boolean {
         val p = pin ?: return true
-        if (headers["x-vault-pin"] == p || params["pin"] == p) return true
+        val sent = headers["x-vault-pin"] ?: params["pin"]
+        if (sent != null) return pinMatches(sent, p)
         return checkDigest(headers["authorization"], method, p)
     }
 
@@ -204,9 +236,9 @@ internal class VaultHttp(
         val expected = if (kv["qop"] != null) {
             md5Hex("$ha1:$davNonce:${kv["nc"]}:${kv["cnonce"]}:${kv["qop"]}:$ha2")
         } else md5Hex("$ha1:$davNonce:$ha2")
-        return java.security.MessageDigest.isEqual(
+        return recordAttempt(java.security.MessageDigest.isEqual(
             expected.toByteArray(Charsets.ISO_8859_1),
-            response.lowercase().toByteArray(Charsets.ISO_8859_1))
+            response.lowercase().toByteArray(Charsets.ISO_8859_1)))
     }
 
     private fun md5Hex(s: String): String =
@@ -641,7 +673,7 @@ internal class VaultHttp(
             if (matched == 4) break
         }
         if (matched < 4) throw BadRequest("head too large")
-        val lines = bytes.toString(Charsets.ISO_8859_1).split("\r\n")
+        val lines = String(bytes.toByteArray(), Charsets.ISO_8859_1).split("\r\n")
         val req = lines[0].split(' ')
         if (req.size < 2) throw BadRequest("bad request line")
         val headers = mutableMapOf<String, String>()
@@ -708,7 +740,7 @@ internal class VaultHttp(
         400 -> "Bad Request"; 401 -> "Unauthorized"; 403 -> "Forbidden"
         404 -> "Not Found"; 405 -> "Method Not Allowed"; 409 -> "Conflict"
         411 -> "Length Required"; 412 -> "Precondition Failed"
-        413 -> "Payload Too Large"; 416 -> "Range Not Satisfiable"
+        413 -> "Payload Too Large"; 429 -> "Too Many Requests"; 416 -> "Range Not Satisfiable"
         500 -> "Internal Server Error"; else -> "?"
     }
 
@@ -743,7 +775,7 @@ internal class VaultHttp(
             else bytes.write(c.code and 0xFF)   // bytes are utf-8 decoded below
             i++
         }
-        return bytes.toString(Charsets.UTF_8)
+        return String(bytes.toByteArray(), Charsets.UTF_8)
     }
 
     private fun urlEncode(s: String): String = buildString {
@@ -757,6 +789,8 @@ internal class VaultHttp(
     }
 
     companion object {
+        private const val MAX_PIN_STRIKES = 5
+        private const val PIN_LOCKOUT_MS = 60_000L
         private const val MAX_HEAD = 16 * 1024
         private const val PUSHBACK = 128 * 1024
         private const val MAX_FILES_PER_UPLOAD = 256

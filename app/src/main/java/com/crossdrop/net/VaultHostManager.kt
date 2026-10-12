@@ -113,7 +113,7 @@ class VaultHostManager(
             .apply { setReferenceCounted(false); acquire() }
         wakeLock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "crossdrop:drive")
-            .apply { acquire() }
+            .apply { acquire(DRIVE_WAKE_TIMEOUT_MS) }
 
         val ip = LocalIp.wifiIpv4()
         val url = if (ip != null) "http://$ip:${srv.port}/" else null
@@ -162,5 +162,7 @@ class VaultHostManager(
     private companion object {
         const val TAG = "VaultHost"
         const val PREFERRED_PORT = 8080
+        /** Safety net so a crashed host can never hold the CPU awake forever. */
+        const val DRIVE_WAKE_TIMEOUT_MS = 6 * 60 * 60 * 1000L
     }
 }

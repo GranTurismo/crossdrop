@@ -47,7 +47,7 @@ class VaultMediaBridge(private val client: VaultClient) : Closeable {
         "http://127.0.0.1:$port/raw?path=${encPath(path)}"
 
     private fun encPath(p: String) =
-        java.net.URLEncoder.encode(p, Charsets.UTF_8).replace("+", "%20")
+        java.net.URLEncoder.encode(p, "UTF-8").replace("+", "%20")
 
     private fun serve(socket: Socket) {
         try {
@@ -129,7 +129,7 @@ class VaultMediaBridge(private val client: VaultClient) : Closeable {
                 else if (b == end[0].toInt()) 1 else 0
             if (matched == 4) break
         }
-        val lines = bytes.toString(Charsets.ISO_8859_1).split("\r\n")
+        val lines = String(bytes.toByteArray(), Charsets.ISO_8859_1).split("\r\n")
         val headers = mutableMapOf<String, String>()
         for (line in lines.drop(1)) {
             val c = line.indexOf(':')
@@ -163,7 +163,7 @@ class VaultMediaBridge(private val client: VaultClient) : Closeable {
                     ?: bytes.write('%'.code).also { i++ }
             } else { bytes.write(c.code and 0xFF); i++ }
         }
-        return bytes.toString(Charsets.UTF_8)
+        return String(bytes.toByteArray(), Charsets.UTF_8)
     }
 
     override fun close() {

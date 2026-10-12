@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -8,6 +11,19 @@ plugins {
 android {
     namespace = "com.crossdrop"
     compileSdk = 36
+
+    val keystoreProps = Properties()
+    val keystorePropsFile = rootProject.file("key.properties")
+    if (keystorePropsFile.exists()) keystoreProps.load(FileInputStream(keystorePropsFile))
+
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProps.getProperty("keyAlias")
+            keyPassword = keystoreProps.getProperty("keyPassword")
+            storeFile = keystoreProps.getProperty("storeFile")?.let { rootProject.file(it) }
+            storePassword = keystoreProps.getProperty("storePassword")
+        }
+    }
 
     defaultConfig {
         applicationId = "com.crossdrop"
@@ -28,6 +44,11 @@ android {
     }
     kotlin.compilerOptions.jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
 
+    lint {
+        // mipmap-anydpi-v26 must keep its qualifier: AAPT2 does not resolve a bare mipmap-anydpi here.
+        disable += listOf("ObsoleteSdkInt", "UnusedAttribute")
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -36,6 +57,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (keystorePropsFile.exists()) signingConfig = signingConfigs.getByName("release")
         }
     }
 }

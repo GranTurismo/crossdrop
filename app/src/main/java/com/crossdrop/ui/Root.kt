@@ -1,5 +1,7 @@
 package com.crossdrop.ui
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -29,7 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.di.AppContainer
 import com.crossdrop.service.TransferService
@@ -79,7 +81,9 @@ fun Root(container: AppContainer) {
     // Files may land while we're anywhere in the app — keep badges fresh.
     LaunchedEffect(session) { inboxCount = container.inbox.list().size }
 
-    val wide = LocalConfiguration.current.screenWidthDp >= 600
+    val wide = with(LocalDensity.current) {
+        LocalWindowInfo.current.containerSize.width.toDp() >= 600.dp
+    }
 
     val content: @Composable () -> Unit = {
         when (tab) {

@@ -1,5 +1,6 @@
 package com.crossdrop.storage
 
+import androidx.core.content.edit
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
@@ -48,7 +49,7 @@ class HistoryStore(context: Context) {
         save(next)
     }
 
-    fun clear() = prefs.edit().remove(KEY).apply()
+    fun clear() = prefs.edit { remove(KEY) }
 
     private fun save(entries: List<Entry>) {
         val arr = JSONArray()
@@ -63,7 +64,7 @@ class HistoryStore(context: Context) {
                 put("status", e.status)
             })
         }
-        prefs.edit().putString(KEY, arr.toString()).apply()
+        prefs.edit { putString(KEY, arr.toString()) }
     }
 
     private companion object {

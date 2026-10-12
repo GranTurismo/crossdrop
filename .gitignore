@@ -19,6 +19,7 @@ captures/
 .cxx/
 *.keystore
 *.jks
+key.properties
 signing.properties
 google-services.json
 proguard-mapping.txt
