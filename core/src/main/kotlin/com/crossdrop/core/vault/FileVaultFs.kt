@@ -11,15 +11,19 @@ import java.nio.file.StandardCopyOption
 /**
  * The built-in vault backend: a java.io.File tree under `filesDir/vault`,
  * jailed by canonical-path comparison. Upload staging is a hidden
- * `.staging` dir inside the jail.
+ * `.staging` dir inside the jail unless a separate staging root is given.
  */
-class FileVaultFs(rootDir: File) : VaultFs {
+class FileVaultFs(rootDir: File, private val stagingRoot: File? = null) : VaultFs {
 
     /** Canonical jail root — created on first use. */
     val root: File = rootDir.canonicalFile.apply { mkdirs() }
 
-    /** Upload staging area — lives inside the jail but is never listable. */
-    val stagingDir: File get() = File(root, ".staging").apply { mkdirs() }
+    /**
+     * Upload staging area. By default a hidden dir inside the jail (never
+     * listable); hosts that share a user's own folder pass [stagingRoot] so
+     * nothing but the user's files ever appears in it.
+     */
+    val stagingDir: File get() = (stagingRoot ?: File(root, ".staging")).apply { mkdirs() }
 
     private val rootPrefix = root.path + File.separator
 
@@ -150,6 +154,10 @@ class FileVaultFs(rootDir: File) : VaultFs {
         if (d == s) throw VaultError(400, "same source and destination")
         if (d.path.startsWith(s.path + File.separator))
             throw VaultError(409, "cannot move a folder into itself")
+        // overwrite=true would delete the destination first — never the root or an ancestor of the source.
+        if (d == root) throw VaultError(403, "cannot replace vault root")
+        if (s.path.startsWith(d.path + File.separator))
+            throw VaultError(409, "destination contains the source")
         if (d.exists()) {
             if (!overwrite) throw VaultError(412, "destination exists")
             if (!d.deleteRecursively()) throw VaultError(500, "cannot replace destination")
@@ -171,6 +179,9 @@ class FileVaultFs(rootDir: File) : VaultFs {
         if (d == s) throw VaultError(400, "same source and destination")
         if (d.path.startsWith(s.path + File.separator))
             throw VaultError(409, "cannot copy a folder into itself")
+        if (d == root) throw VaultError(403, "cannot replace vault root")
+        if (s.path.startsWith(d.path + File.separator))
+            throw VaultError(409, "destination contains the source")
         if (d.exists()) {
             if (!overwrite) throw VaultError(412, "destination exists")
             if (!d.deleteRecursively()) throw VaultError(500, "cannot replace destination")
