@@ -5,6 +5,10 @@ import Darwin
 /// hotspot bridge or any private-range address — never loopback, link-local or CGNAT space.
 public enum LocalIp {
     public static func wifiIPv4() -> String? {
+        #if DEBUG
+        // Screenshots must not show the developer's real LAN address (`-dev_fake_ip 192.168.1.24`).
+        if let fake = UserDefaults.standard.string(forKey: "dev_fake_ip") { return fake }
+        #endif
         var head: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&head) == 0, let first = head else { return nil }
         defer { freeifaddrs(head) }

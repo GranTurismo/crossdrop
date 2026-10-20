@@ -37,6 +37,15 @@ struct CrossDropApp: App {
         #if targetEnvironment(macCatalyst)
         for scene in UIApplication.shared.connectedScenes {
             (scene as? UIWindowScene)?.sizeRestrictions?.minimumSize = CGSize(width: 420, height: 640)
+            #if DEBUG
+            // Store screenshots: `-dev_window 1280x800` pins the window to an exact size.
+            if let v = UserDefaults.standard.string(forKey: "dev_window") {
+                let p = v.split(separator: "x").compactMap { Double($0) }
+                if p.count == 2, let r = (scene as? UIWindowScene)?.sizeRestrictions {
+                    r.minimumSize = CGSize(width: p[0], height: p[1]); r.maximumSize = CGSize(width: p[0], height: p[1])
+                }
+            }
+            #endif
         }
         #endif
     }

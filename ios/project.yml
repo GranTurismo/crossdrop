@@ -39,6 +39,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         LSApplicationCategoryType: public.app-category.utilities
+        ITSAppUsesNonExemptEncryption: false   # encryption only via Apple CryptoKit; matches the export-compliance answer in App Store Connect
         UIUserInterfaceStyle: Dark
         NSLocalNetworkUsageDescription: CrossDrop uses your local network to find nearby devices and send files directly to them — nothing leaves your Wi-Fi.
         NSBonjourServices:

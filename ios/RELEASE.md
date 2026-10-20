@@ -40,7 +40,7 @@ xcodebuild -project CrossDrop.xcodeproj -scheme CrossDrop -configuration Release
   (`CrossDrop/PrivacyInfo.xcprivacy`: UserDefaults CA92.1, file timestamps C617.1/3B52.1, system boot time
   35F9.1, disk space E174.1). Privacy policy URL: host `PRIVACY.md` (add a short iOS/Mac paragraph:
   Local Network + Photos permissions, no Bluetooth on Apple platforms).
-- **Export compliance:** `ITSAppUsesNonExemptEncryption` is deliberately **not** set, so App Store Connect asks.
+- **Export compliance:** `ITSAppUsesNonExemptEncryption` is now `false` (answer given in App Store Connect: "None of the algorithms mentioned above" — the app only uses encryption through Apple CryptoKit). Revisit if that ever changes.
   The app uses standard algorithms via Apple CryptoKit (X25519, HKDF-SHA256, ChaCha20-Poly1305) for
   file-transfer confidentiality. Decide the self-classification yourself; once decided, add
   `ITSAppUsesNonExemptEncryption: true|false` to `project.yml` to stop the per-upload question.

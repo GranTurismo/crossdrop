@@ -226,6 +226,14 @@ final class AppContainer: ObservableObject {
         }
         if args.bool(forKey: "dev_share") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.qrShare.startDebug() } }
         if args.bool(forKey: "dev_autoaccept") { coordinator.autoAcceptAll = true }
+        // Screenshot drivers.
+        if args.bool(forKey: "dev_seed_inbox") { inbox.seedDebug() }
+        if let kind = args.string(forKey: "dev_fake_session") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.coordinator.debugFakeSession(kind) }
+        }
+        if args.bool(forKey: "dev_fake_offer") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.coordinator.debugFakeOffer() }
+        }
         // Vault client: `-dev_vault_peer host:port` puts a beacon on the radar; `-dev_vault_mount host:port`
         // mounts straight away (`-dev_vault_pin 1234` supplies the PIN).
         if let v = args.string(forKey: "dev_vault_peer"), let (h, p) = hostPort(v) {

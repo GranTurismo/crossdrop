@@ -117,3 +117,27 @@ final class HandleSink: OutputSink {
     func write(_ bytes: [UInt8]) throws { try h.write(contentsOf: Data(bytes)) }
     func close() { try? h.close() }
 }
+
+
+#if DEBUG
+extension InboxStore {
+    /// Screenshot seed (`-dev_seed_inbox YES`): sparse files with believable names, sizes and dates.
+    func seedDebug() {
+        let items: [(String, Int64, TimeInterval)] = [
+            ("Holiday in Tbilisi.mov", 412_000_000, 120), ("IMG_4021.heic", 3_100_000, 900),
+            ("Boarding pass.pdf", 312_000, 3_600), ("Project Files.zip", 84_000_000, 7_200),
+            ("Podcast ep 12.m4a", 27_000_000, 26_000), ("Résumé 2026.docx", 58_000, 90_000),
+        ]
+        let fm = FileManager.default
+        for (name, size, ago) in items {
+            let url = dir.appendingPathComponent(name)
+            if !fm.fileExists(atPath: url.path) {
+                fm.createFile(atPath: url.path, contents: nil)
+                if let h = try? FileHandle(forWritingTo: url) { try? h.truncate(atOffset: UInt64(size)); try? h.close() }
+            }
+            try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-ago)], ofItemAtPath: url.path)
+        }
+        refresh()
+    }
+}
+#endif

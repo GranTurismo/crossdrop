@@ -92,9 +92,13 @@ struct HistoryEntry: Codable, Identifiable {
 }
 
 enum Fmt {
-    static func bytes(_ n: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
-    }
+    private static let byteFormatter: ByteCountFormatter = {
+        let f = ByteCountFormatter()
+        f.countStyle = .file
+        f.allowsNonnumericFormatting = false   // "0 KB", not "Zero KB"
+        return f
+    }()
+    static func bytes(_ n: Int64) -> String { byteFormatter.string(fromByteCount: n) }
     static func rate(_ bps: Int64) -> String { bytes(bps) + "/s" }
 }
 

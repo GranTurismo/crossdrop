@@ -245,3 +245,29 @@ final class TransferCoordinator: ObservableObject {
         tempURLs = []
     }
 }
+
+
+#if DEBUG
+/// Screenshot drivers: fake a live session / pending offer without touching the network.
+extension TransferCoordinator {
+    func debugFakeSession(_ kind: String) {
+        let files = [FileMeta(name: "Holiday in Tbilisi.mov", size: 412_000_000, mime: "video/quicktime"),
+                     FileMeta(name: "IMG_4021.heic", size: 3_100_000, mime: "image/heic")]
+        let total = files.reduce(0) { $0 + $1.size }
+        var s = SessionState(direction: kind == "receiving" ? .receiving : .sending,
+                             peerName: kind == "receiving" ? "MacBook Air" : "Pixel 9 Pro",
+                             sas: "482913", offer: Offer(transferId: "debug", files: files),
+                             bytesDone: Int64(Double(total) * 0.62), bytesTotal: total,
+                             bytesPerSec: 38_000_000, currentFileName: files[0].name, status: .transferring)
+        if kind == "done" { s.bytesDone = total; s.bytesPerSec = 0; s.status = .completed }
+        session = s
+    }
+
+    func debugFakeOffer() {
+        let files = [FileMeta(name: "Holiday in Tbilisi.mov", size: 412_000_000, mime: "video/quicktime"),
+                     FileMeta(name: "Boarding pass.pdf", size: 312_000, mime: "application/pdf"),
+                     FileMeta(name: "IMG_4021.heic", size: 3_100_000, mime: "image/heic")]
+        incomingOffer = IncomingOffer(peerName: "Pixel 9 Pro", offer: Offer(transferId: "debug-offer", files: files))
+    }
+}
+#endif

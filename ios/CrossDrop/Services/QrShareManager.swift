@@ -136,9 +136,15 @@ final class QrShareManager: ObservableObject {
     #if DEBUG
     /// Debug hook: share a generated 4 MiB payload (`-dev_share 1`).
     func startDebug() {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("qr-share-test.bin")
-        try? Data((0..<(4 * 1024 * 1024)).map { UInt8($0 % 251) }).write(to: url)
-        start(urls: [url])
+        // Believable payload (sparse files — nothing is read until a browser downloads them).
+        let fm = FileManager.default
+        func sparse(_ name: String, _ size: UInt64) -> URL {
+            let u = fm.temporaryDirectory.appendingPathComponent(name)
+            if !fm.fileExists(atPath: u.path) { fm.createFile(atPath: u.path, contents: nil) }
+            if let h = try? FileHandle(forWritingTo: u) { try? h.truncate(atOffset: size); try? h.close() }
+            return u
+        }
+        start(urls: [sparse("Holiday in Tbilisi.mov", 412_000_000), sparse("Boarding pass.pdf", 312_000), sparse("IMG_4021.heic", 3_100_000)])
     }
     #endif
 }

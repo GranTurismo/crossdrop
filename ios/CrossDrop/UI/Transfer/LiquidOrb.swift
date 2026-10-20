@@ -51,9 +51,12 @@ struct LiquidOrb: View {
 
     var body: some View {
         // Reduce Motion: no sloshing waves — the fluid level itself still rises with progress.
+        // Read the animated state here, in `body`, so a change re-evaluates the body and hands the Canvas
+        // fresh values — a Canvas closure that reads @State itself keeps the copy it captured at first render.
+        let lvl = level, tb = turb, fl = flare
         TimelineView(.animation(minimumInterval: nil, paused: reduceMotion)) { timeline in
             let t = timeline.date.timeIntervalSinceReferenceDate
-            Canvas { gc, sz in draw(&gc, sz, t) }
+            Canvas { gc, sz in draw(&gc, sz, t, level: lvl, turb: tb, flare: fl) }
         }
         .frame(width: size, height: size)
         .onAppear { sync() }
@@ -68,7 +71,7 @@ struct LiquidOrb: View {
         withAnimation(.easeInOut(duration: 0.9)) { flare = completed ? 1 : 0 }
     }
 
-    private func draw(_ gc: inout GraphicsContext, _ sz: CGSize, _ time: Double) {
+    private func draw(_ gc: inout GraphicsContext, _ sz: CGSize, _ time: Double, level: Double, turb: Double, flare: Double) {
         let tA = (time / 3.0).truncatingRemainder(dividingBy: 1) * 2 * .pi
         let tB = (time / 4.7).truncatingRemainder(dividingBy: 1) * 2 * .pi
         let bubbleT = (time / 9.0).truncatingRemainder(dividingBy: 1)
@@ -103,7 +106,7 @@ struct LiquidOrb: View {
                                          startPoint: CGPoint(x: center.x, y: surfaceY - amp * 2), endPoint: CGPoint(x: center.x, y: center.y + r)))
                 }
             }
-            if turb > 0.22 { bubbles(&layer, center, r, surfaceY, bubbleT) }
+            if turb > 0.22 { bubbles(&layer, center, r, surfaceY, bubbleT, turb) }
         }
 
         if flare > 0 {
@@ -137,7 +140,7 @@ struct LiquidOrb: View {
         gc.fill(p, with: shading)
     }
 
-    private func bubbles(_ gc: inout GraphicsContext, _ center: CGPoint, _ r: CGFloat, _ surfaceY: CGFloat, _ t: Double) {
+    private func bubbles(_ gc: inout GraphicsContext, _ center: CGPoint, _ r: CGFloat, _ surfaceY: CGFloat, _ t: Double, _ turb: Double) {
         let count = Int(6 + turb * 14)
         for i in 0..<count {
             let seed = Double(i) * 137.5
