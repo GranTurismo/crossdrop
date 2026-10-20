@@ -88,6 +88,12 @@ xcuserdata/
 *.moved-aside
 *.xcuserdatad
 
+# ---------- iOS generated (project.yml → xcodegen) ----------
+ios/CrossDrop.xcodeproj/
+ios/CrossDrop/Info.plist
+.build/
+.swiftpm/
+
 # ---------- Env / secrets ----------
 .env
 .env.*
