@@ -38,6 +38,12 @@ interface DeltaReceiver {
      *  against it without re-chunking. [root] = whole-file BLAKE3 hex. */
     fun publishIndex(file: File, chunks: List<ChunkEntry>, root: String)
 
+    /** True when nothing local could shorten this offer — no baseline file for
+     *  any of [files] and an empty staging pool. The sender then streams
+     *  chunks right away (push mode) instead of hashing the whole file for a
+     *  manifest first. Conservative default: stay on the manifest path. */
+    fun canPush(files: List<FileMeta>): Boolean = false
+
     /** Drop any cached index for [meta]'s file — called when content fails
      *  verification so the next attempt re-chunks the baseline instead of
      *  trusting a stale index forever. */
@@ -99,6 +105,42 @@ object ChunkCodec {
         if (count < 0 || payload.size != 8 + count * 4 || fi < 0)
             throw ProtocolException("bad CHUNK_REQ count $count")
         return Request(fi, IntArray(count) { buf.int })
+    }
+
+    // ---- PUSH_CHUNK : [u32 fileIndex][32B blake3][payload] -------------------
+
+    fun encodePush(fileIndex: Int, hash: ByteArray, payload: ByteArray): ByteArray {
+        val buf = ByteBuffer.allocate(4 + 32 + payload.size)
+        buf.putInt(fileIndex); buf.put(hash); buf.put(payload)
+        return buf.array()
+    }
+
+    class PushChunk(val fileIndex: Int, val hash: ByteArray, val payload: ByteArray)
+
+    fun decodePush(payload: ByteArray): PushChunk {
+        if (payload.size <= 36) throw ProtocolException("short PUSH_CHUNK")
+        val buf = ByteBuffer.wrap(payload)
+        val fi = buf.int
+        if (fi < 0) throw ProtocolException("bad PUSH_CHUNK header")
+        val hash = ByteArray(32).also { buf.get(it) }
+        val data = ByteArray(buf.remaining()).also { buf.get(it) }
+        if (data.size > FastCdc.MAX) throw ProtocolException("oversized PUSH_CHUNK")
+        return PushChunk(fi, hash, data)
+    }
+
+    // ---- PUSH_END : [u32 fileIndex][u32 chunkCount][32B whole-file blake3] ---
+
+    fun encodePushEnd(fileIndex: Int, count: Int, root: ByteArray): ByteArray =
+        ByteBuffer.allocate(40).putInt(fileIndex).putInt(count).put(root).array()
+
+    class PushEnd(val fileIndex: Int, val count: Int, val root: ByteArray)
+
+    fun decodePushEnd(payload: ByteArray): PushEnd {
+        if (payload.size != 40) throw ProtocolException("bad PUSH_END")
+        val buf = ByteBuffer.wrap(payload)
+        val fi = buf.int; val count = buf.int
+        if (fi < 0 || count < 0) throw ProtocolException("bad PUSH_END header")
+        return PushEnd(fi, count, ByteArray(32).also { buf.get(it) })
     }
 
     // ---- CHUNK : [u32 fileIndex][u32 chunkIndex][payload] --------------------

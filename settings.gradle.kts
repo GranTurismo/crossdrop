@@ -14,4 +14,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "CrossDrop"
-include(":app", ":core")
+include(":app", ":core", ":desktop")

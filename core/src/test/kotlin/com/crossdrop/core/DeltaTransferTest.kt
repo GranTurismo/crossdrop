@@ -24,11 +24,13 @@ import kotlin.random.Random
 
 class DeltaTransferTest {
 
-    private fun engine(name: String) = TransferEngine(
-        identity = SessionIdentity(),
-        deviceName = { name },
-        instanceId = UUID.randomUUID().toString().take(8),
-    )
+    private fun engine(name: String, version: Int = com.crossdrop.core.protocol.PROTOCOL_VERSION) =
+        TransferEngine(
+            identity = SessionIdentity(),
+            deviceName = { name },
+            instanceId = UUID.randomUUID().toString().take(8),
+            protocolVersion = version,
+        )
 
     /** Deterministic pseudo-random content (seeded) — repeatable across runs. */
     private fun content(size: Int, seed: Int = 7) = Random(seed).nextBytes(size)
@@ -79,16 +81,18 @@ class DeltaTransferTest {
     /** One loopback send→receive through the v2 delta path. Returns client events. */
     private fun runDelta(
         inboxDir: File, files: List<OutgoingFile>,
+        senderVersion: Int = com.crossdrop.core.protocol.PROTOCOL_VERSION,
+        receiverVersion: Int = com.crossdrop.core.protocol.PROTOCOL_VERSION,
+        store: com.crossdrop.core.delta.DeltaReceiver = FileDeltaStore(inboxDir),
     ): Pair<List<TransferEvent>, List<TransferEvent>> = runBlocking {
         val listener = ServerSocket(0)
-        val store = FileDeltaStore(inboxDir)
         val sink = Sink()
         val serverJob = async {
-            engine("receiver").receive(listener.accept()) { _, _ ->
+            engine("receiver", receiverVersion).receive(listener.accept()) { _, _ ->
                 ReceiveDecision.Accept(sink.factory, delta = store)
             }.toList()
         }
-        val clientEvents = engine("sender").send(
+        val clientEvents = engine("sender", senderVersion).send(
             Endpoint("127.0.0.1", listener.localPort), files).toList()
         val serverEvents = serverJob.await()
         listener.close()
@@ -159,9 +163,11 @@ class DeltaTransferTest {
         val c0 = FastCdc.split(content(300_000)).first().first
         val payload = c0 + c0 + content(100_000, seed = 99)
         val meta = FileMeta("dup.bin", payload.size.toLong())
+        // Intra-file dedupe is a manifest-path feature (v2) — push mode streams
+        // blind, so pin both ends to v2 here.
         val (client, _) = runDelta(dir, listOf(
             OutgoingFile(meta) { ByteArrayInputStream(payload) },
-        ))
+        ), senderVersion = 2, receiverVersion = 2)
         assertTrue(client.last() is TransferEvent.Completed)
         assertArrayEquals(payload, File(dir, "dup.bin").readBytes())
         val last = client.filterIsInstance<TransferEvent.Progress>().last()
@@ -328,6 +334,138 @@ class DeltaTransferTest {
         assertEquals(seededBytes.toLong(), last.bytesSkipped)
         assertArrayEquals(payload, File(dir, "resume.bin").readBytes())
         assertTrue(client.last() is TransferEvent.Completed)
+    }
+
+    // ------------------------------------------------------------- v3 push --
+
+    /** Wraps a store to record whether the receiver chose push mode. */
+    private class SpyStore(private val inner: FileDeltaStore) : com.crossdrop.core.delta.DeltaReceiver by inner {
+        var pushChosen: Boolean? = null
+        override fun canPush(files: List<FileMeta>) = inner.canPush(files).also { pushChosen = it }
+    }
+
+    @Test
+    fun `first-time multi-file send takes the push path and lands identical bytes`() {
+        val dir = Files.createTempDirectory("push").toFile()
+        val a = content(900_000, seed = 1)
+        val b = content(0)                                  // zero-byte file
+        val c = content(300_000, seed = 3)
+        val spy = SpyStore(FileDeltaStore(dir))
+        val (client, server) = runDelta(dir, listOf(
+            OutgoingFile(FileMeta("a.bin", a.size.toLong())) { ByteArrayInputStream(a) },
+            OutgoingFile(FileMeta("empty.bin", 0)) { ByteArrayInputStream(b) },
+            OutgoingFile(FileMeta("c.bin", c.size.toLong())) { ByteArrayInputStream(c) },
+        ), store = spy)
+        assertEquals(true, spy.pushChosen)
+        assertTrue(client.last() is TransferEvent.Completed)
+        assertTrue(server.last() is TransferEvent.Completed)
+        assertArrayEquals(a, File(dir, "a.bin").readBytes())
+        assertEquals(0L, File(dir, "empty.bin").length())
+        assertArrayEquals(c, File(dir, "c.bin").readBytes())
+        // No half-written leftovers and the pool stays untouched on success.
+        assertTrue(dir.listFiles()!!.none { it.name.endsWith(".part") })
+        assertTrue(File(dir, ".staging").listFiles().orEmpty().isEmpty())
+    }
+
+    @Test
+    fun `push output is indexed so a re-share sends zero bytes`() {
+        val dir = Files.createTempDirectory("push").toFile()
+        val payload = content(500_000)
+        val meta = FileMeta("again.bin", payload.size.toLong())
+        val file = { OutgoingFile(meta) { ByteArrayInputStream(payload) } }
+        runDelta(dir, listOf(file()))                       // push (nothing local)
+        val spy = SpyStore(FileDeltaStore(dir))
+        val (client, _) = runDelta(dir, listOf(file()), store = spy)
+        assertEquals(false, spy.pushChosen)                 // baseline exists → manifest path
+        assertEquals(meta.size, client.filterIsInstance<TransferEvent.Progress>().last().bytesSkipped)
+        assertTrue(client.last() is TransferEvent.Completed)
+    }
+
+    @Test
+    fun `first byte does not wait for the whole file to be hashed`() {
+        val dir = Files.createTempDirectory("push").toFile()
+        val payload = content(24_000_000)
+        val meta = FileMeta("big.bin", payload.size.toLong())
+        var firstProgressAt = 0L
+        var startedAt = 0L
+        val (client, _) = runBlocking {
+            val listener = ServerSocket(0)
+            val store = FileDeltaStore(dir)
+            val serverJob = async {
+                engine("receiver").receive(listener.accept()) { _, _ ->
+                    ReceiveDecision.Accept({ ByteArrayOutputStream() }, delta = store)
+                }.toList()
+            }
+            startedAt = System.nanoTime()
+            val events = mutableListOf<TransferEvent>()
+            engine("sender").send(Endpoint("127.0.0.1", listener.localPort),
+                listOf(OutgoingFile(meta) { ByteArrayInputStream(payload) })).collect {
+                if (it is TransferEvent.Progress && firstProgressAt == 0L) firstProgressAt = System.nanoTime()
+                events += it
+            }
+            listener.close()
+            events to serverJob.await()
+        }
+        assertTrue(client.last() is TransferEvent.Completed)
+        val total = System.nanoTime() - startedAt
+        val ttfb = firstProgressAt - startedAt
+        println("push TTFB=${ttfb / 1_000_000}ms of ${total / 1_000_000}ms total")
+        assertTrue("first progress should land early, was ${ttfb / 1_000_000}ms of ${total / 1_000_000}ms",
+            ttfb < total / 3)
+    }
+
+    /** Stream that serves [limit] bytes then fails — simulates a dying sender. */
+    private class DyingStream(data: ByteArray, private val limit: Int) : java.io.InputStream() {
+        private val inner = ByteArrayInputStream(data)
+        private var served = 0
+        override fun read(): Int = throw UnsupportedOperationException()
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (served >= limit) throw java.io.IOException("simulated disconnect")
+            val n = inner.read(b, off, minOf(len, limit - served))
+            if (n > 0) served += n
+            return n
+        }
+    }
+
+    @Test
+    fun `interrupted push is salvaged into the pool and resumes on retry`() {
+        val dir = Files.createTempDirectory("push").toFile()
+        val payload = content(1_200_000)
+        val meta = FileMeta("dies.bin", payload.size.toLong())
+
+        val (c1, _) = runDelta(dir, listOf(
+            OutgoingFile(meta) { DyingStream(payload, 700_000) }))
+        assertTrue(c1.last() is TransferEvent.Failed)
+        assertFalse(File(dir, "dies.bin").exists())
+        assertTrue(dir.listFiles()!!.none { it.name.endsWith(".part") })
+        val pooled = File(dir, ".staging").listFiles().orEmpty().count { it.name.endsWith(".bin") }
+        assertTrue("expected salvaged chunks in the pool", pooled > 0)
+
+        val spy = SpyStore(FileDeltaStore(dir))
+        val (c2, _) = runDelta(dir, listOf(
+            OutgoingFile(meta) { ByteArrayInputStream(payload) }), store = spy)
+        assertEquals(false, spy.pushChosen)                 // pool non-empty → resume path
+        assertTrue(c2.last() is TransferEvent.Completed)
+        assertArrayEquals(payload, File(dir, "dies.bin").readBytes())
+        val skipped = c2.filterIsInstance<TransferEvent.Progress>().last().bytesSkipped
+        assertTrue("expected the salvaged prefix to be skipped, got $skipped", skipped > 400_000)
+    }
+
+    @Test
+    fun `v2 peers on either side fall back to the manifest path`() {
+        val payload = content(400_000)
+        val meta = FileMeta("mixed.bin", payload.size.toLong())
+        for ((sv, rv) in listOf(2 to 3, 3 to 2)) {
+            val dir = Files.createTempDirectory("mixed").toFile()
+            val spy = SpyStore(FileDeltaStore(dir))
+            val (client, server) = runDelta(dir, listOf(
+                OutgoingFile(meta) { ByteArrayInputStream(payload) }),
+                senderVersion = sv, receiverVersion = rv, store = spy)
+            assertNotEquals("sender v$sv / receiver v$rv must not push", true, spy.pushChosen)
+            assertTrue(client.last() is TransferEvent.Completed)
+            assertTrue(server.last() is TransferEvent.Completed)
+            assertArrayEquals(payload, File(dir, "mixed.bin").readBytes())
+        }
     }
 
     private fun ByteArray.toHex() = joinToString("") { "%02x".format(it) }

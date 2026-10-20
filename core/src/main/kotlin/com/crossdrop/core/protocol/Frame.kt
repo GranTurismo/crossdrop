@@ -13,6 +13,8 @@ enum class FrameType(val code: Int) {
     DATA(5), DONE(6), CANCEL(7), ERROR(8),
     /** v2 delta path: chunked manifest, missing-index request, chunk payload. */
     CHUNK_MAP(9), CHUNK_REQ(10), CHUNK(11),
+    /** v3 push path: chunks stream straight out with no manifest round trip. */
+    PUSH_CHUNK(12), PUSH_END(13),
     /** LAN vault: browse/stat/pull/push + PIN auth (see core/vault/). */
     VAULT_LS(0x10), VAULT_DIR(0x11), VAULT_STAT(0x12), VAULT_ATTR(0x13),
     VAULT_PULL(0x14), VAULT_DATA(0x15), VAULT_PUSH_INIT(0x16),
