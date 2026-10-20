@@ -2,7 +2,7 @@
 
 One target, three platforms: iPhone + iPad natively, Mac via **Mac Catalyst**
 (`supportedDestinations: [iOS, macCatalyst]` in `project.yml`). Same bundle id
-(`com.crossdrop.app`) ⇒ one App Store Connect record with *Universal Purchase*.
+(`com.granturismo.crossdrop`) ⇒ one App Store Connect record with *Universal Purchase*.
 The existing `:desktop` Compose app (DMG) is unaffected and independent.
 
 ## One-time setup
@@ -11,7 +11,7 @@ The existing `:desktop` Compose app (DMG) is unaffected and independent.
    `cd ios && xcodegen generate` — the `.xcodeproj` and `Info.plist` are generated and gitignored.
 2. Put your Apple Developer **Team ID** in `ios/project.yml` → `settings.base.DEVELOPMENT_TEAM`
    (or pick the team in Xcode → target → Signing; automatic signing is on). Regenerate.
-3. App Store Connect → new app, bundle id `com.crossdrop.app`, platforms iOS (+ macOS via Catalyst:
+3. App Store Connect → new app, bundle id `com.granturismo.crossdrop`, platforms iOS (+ macOS via Catalyst:
    add the macOS platform to the same record).
 4. Bump `MARKETING_VERSION` / `CURRENT_PROJECT_VERSION` in `project.yml` for every upload.
 
