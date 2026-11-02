@@ -44,9 +44,10 @@
 
   <Capabilities>
     <!-- A JVM desktop app: packaged as a full-trust (Win32) app. The Store asks you to justify this
-         restricted capability in the submission form. -->
+         restricted capability in the submission form.
+         No internetClient on purpose: CrossDrop never uses the internet, and the Store listing would
+         otherwise tell customers it does. privateNetworkClientServer = "home or work networks". -->
     <rescap:Capability Name="runFullTrust" />
-    <Capability Name="internetClient" />
     <Capability Name="privateNetworkClientServer" />
   </Capabilities>
 </Package>
