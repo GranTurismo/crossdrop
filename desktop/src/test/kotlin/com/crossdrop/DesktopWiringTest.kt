@@ -18,7 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.AfterClass
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -35,8 +35,18 @@ class DesktopWiringTest {
     companion object {
         private val home: File = Files.createTempDirectory("crossdrop-test").toFile()
 
+        /**
+         * Where folders that must count as shareable live. On Windows the system temp dir sits under
+         * %LOCALAPPDATA%, which isShareable() rightly refuses (AppData), so there they go under the
+         * user's home instead; elsewhere temp is fine.
+         */
+        private val shareRoot: File =
+            (if (com.crossdrop.platform.Platform.isWindows)
+                Files.createTempDirectory(File(System.getProperty("user.home")).toPath(), "crossdrop-share")
+            else Files.createTempDirectory("crossdrop-share")).toFile()
+
         @JvmStatic @BeforeClass fun setup() { System.setProperty("crossdrop.home", File(home, "support").path) }
-        @JvmStatic @AfterClass fun teardown() { home.deleteRecursively() }
+        @JvmStatic @AfterClass fun teardown() { home.deleteRecursively(); shareRoot.deleteRecursively() }
     }
 
     private class Node(name: String, root: File) {
@@ -57,11 +67,12 @@ class DesktopWiringTest {
         fun close() { server.stop(); scope.cancel() }
     }
 
-    private suspend fun <T> awaitNotNull(what: String, block: () -> T?): T = withTimeout(20_000) {
-        var v = block()
-        while (v == null) { delay(50); v = block() }
-        v!!
-    }
+    private suspend fun <T> awaitNotNull(what: String, block: () -> T?): T =
+        withTimeoutOrNull(20_000) {
+            var v = block()
+            while (v == null) { delay(50); v = block() }
+            v!!
+        } ?: error("timed out after 20s waiting for: $what")
 
     @Test fun sendsAFileEndToEndAndRecordsHistory() = runBlocking {
         val a = Node("alice", File(home, "a")); val b = Node("bob", File(home, "b"))
@@ -100,7 +111,7 @@ class DesktopWiringTest {
     }
 
     @Test fun hostsAFolderAsAReadOnlyDriveWithoutTouchingIt() = runBlocking {
-        val shared = File(home, "shared").apply { mkdirs() }
+        val shared = File(shareRoot, "shared").apply { mkdirs() }
         File(shared, "hello.txt").writeText("hi from the mac")
         val hub = MdnsHub()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -135,6 +146,6 @@ class DesktopWiringTest {
         assertFalse(host.isShareable(File(userHome, "Library/Mobile Documents")))
         assertFalse(host.isShareable(File(home, "does-not-exist")))
         assertFalse(host.isShareable(File(home, "support")))                     // CrossDrop's own state
-        assertTrue(host.isShareable(File(home, "a").apply { mkdirs() }))
+        assertTrue(host.isShareable(File(shareRoot, "a").apply { mkdirs() }))
     }
 }

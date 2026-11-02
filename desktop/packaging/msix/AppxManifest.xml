@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Package manifest for the Microsoft Store (MSIX). The Identity values come from Partner Center
+  (product 9PBRFPV9GD7P -> Product management -> Product identity) and must match it exactly,
+  or the Store rejects the upload. @VERSION@ is filled in by CI from APP_VERSION in Main.kt
+  (0.x.y -> 1.x.y.0; the Store reserves the 4th part, so it stays 0).
+-->
+<Package
+    xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+    xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+    xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+    IgnorableNamespaces="uap rescap">
+
+  <Identity Name="GranTurismoGroup.CrossDrop-PrivateFileSharing"
+            Publisher="CN=E80475DA-60AA-42C3-B13E-64D5B7484F0F"
+            Version="@VERSION@"
+            ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>CrossDrop - Private File Sharing</DisplayName>
+    <PublisherDisplayName>GranTurismoGroup</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="CrossDrop" Executable="CrossDrop.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="CrossDrop"
+                          Description="Private, ad-free local file sharing between nearby devices"
+                          BackgroundColor="#05070D"
+                          Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+      </uap:VisualElements>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- A JVM desktop app: packaged as a full-trust (Win32) app. The Store asks you to justify this
+         restricted capability in the submission form. -->
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+    <Capability Name="privateNetworkClientServer" />
+  </Capabilities>
+</Package>

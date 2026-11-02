@@ -123,10 +123,20 @@ class HttpShareServerTest {
         start()
         get("/$token/f/0")
         get("/$token/f/1")
-        val (code, body) = get("/$token/status.json")
+        // The server bumps "done" just after it writes the last byte, so a fast client can read the
+        // whole body and ask for the status before the counter moves (seen on Windows runners). Wait
+        // for it, bounded, instead of racing it.
+        var code = 0
+        var json = ""
+        val deadline = System.nanoTime() + 3_000_000_000L
+        while (true) {
+            val (c, body) = get("/$token/status.json")
+            code = c; json = String(body)
+            if (json.contains("\"done\":2") || System.nanoTime() > deadline) break
+            Thread.sleep(25)
+        }
         assertEquals(200, code)
-        val json = String(body)
-        assertTrue(json.contains("\"done\":2"))
+        assertTrue(json, json.contains("\"done\":2"))
         assertTrue(json.contains("\"bytes\":${payloadA.size + payloadB.size}"))
     }
 
