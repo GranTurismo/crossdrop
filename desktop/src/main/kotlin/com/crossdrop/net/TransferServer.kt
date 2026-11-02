@@ -3,6 +3,7 @@ package com.crossdrop.net
 import com.crossdrop.platform.Log
 import com.crossdrop.core.transfer.TransferEngine
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.net.ServerSocket
@@ -28,7 +29,11 @@ class TransferServer(
 
     fun start() {
         if (listener != null) return
-        scope.launch {
+        // accept() blocks its thread for the life of the app. On Dispatchers.Default (one thread per
+        // CPU core, shared process-wide) that permanently costs a core's worth of the pool and can
+        // starve everything else on a 2-core PC — it deadlocked a two-node test on a 2-vCPU runner.
+        // Dispatchers.IO exists for exactly this kind of blocking call.
+        scope.launch(Dispatchers.IO) {
             runCatching {
                 val server = ServerSocket(0)
                 listener = server

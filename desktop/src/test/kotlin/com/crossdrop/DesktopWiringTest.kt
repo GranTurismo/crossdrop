@@ -67,12 +67,12 @@ class DesktopWiringTest {
         fun close() { server.stop(); scope.cancel() }
     }
 
-    private suspend fun <T> awaitNotNull(what: String, block: () -> T?): T =
+    private suspend fun <T> awaitNotNull(what: String, diag: () -> String = { "" }, block: () -> T?): T =
         withTimeoutOrNull(20_000) {
             var v = block()
             while (v == null) { delay(50); v = block() }
             v!!
-        } ?: error("timed out after 20s waiting for: $what")
+        } ?: error("timed out after 20s waiting for: $what ${diag()}".trim())
 
     @Test fun sendsAFileEndToEndAndRecordsHistory() = runBlocking {
         val a = Node("alice", File(home, "a")); val b = Node("bob", File(home, "b"))
@@ -84,7 +84,7 @@ class DesktopWiringTest {
             a.coordinator.sendTo(
                 Peer("bob", "bob", Endpoint("127.0.0.1", b.server.port)), listOf(src))
 
-            val offer = awaitNotNull("offer") { b.coordinator.incomingOffer.value }
+            val offer = awaitNotNull("offer", { "(sender: ${a.coordinator.session.value})" }) { b.coordinator.incomingOffer.value }
             assertEquals("payload.bin", offer.offer.files.single().name)
             b.coordinator.respondToOffer(true)
 
@@ -103,7 +103,7 @@ class DesktopWiringTest {
             awaitNotNull("listener") { b.server.port.takeIf { it != 0 } }
             val src = File(home, "nope.txt").apply { writeText("hello") }
             a.coordinator.sendTo(Peer("bob2", "bob2", Endpoint("127.0.0.1", b.server.port)), listOf(src))
-            awaitNotNull("offer") { b.coordinator.incomingOffer.value }
+            awaitNotNull("offer", { "(sender: ${a.coordinator.session.value})" }) { b.coordinator.incomingOffer.value }
             b.coordinator.respondToOffer(false)
             awaitNotNull("declined") { a.coordinator.session.value?.takeIf { it.status == SessionStatus.DECLINED } }
             assertTrue(b.inbox.list().isEmpty())
