@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CrossDrop Privacy Policy</title>
+<meta name="description" content="CrossDrop collects no personal data. Files move directly between your own devices on your local network.">
+<style>
+  :root { --bg:#ffffff; --fg:#14181f; --dim:#4a5361; --line:#dfe3ea; --accent:#0a7d6e; --card:#f5f7fa; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0b0e13; --fg:#e8ecf2; --dim:#9aa4b2; --line:#232a35; --accent:#3fd3be; --card:#121721; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 20px 72px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 1.2rem; margin: 36px 0 8px; }
+  p, li { color: var(--fg); }
+  .meta { color: var(--dim); margin: 0 0 28px; }
+  .summary { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+             border-radius: 8px; padding: 16px 18px; }
+  .summary p { margin: 0; }
+  ul { padding-left: 1.2rem; }
+  li { margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: .95rem; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 600; }
+  a { color: var(--accent); }
+  code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: .9em; }
+  footer { margin-top: 40px; color: var(--dim); font-size: .9rem; }
+  @media (max-width: 520px) { th:nth-child(1), td:nth-child(1) { width: 38%; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>CrossDrop Privacy Policy</h1>
+  <p class="meta">Last updated: November 2, 2026 &middot; Publisher: GranTurismoGroup</p>
+
+  <div class="summary">
+    <p><strong>The short version:</strong> CrossDrop collects <strong>no personal data</strong>. It has no accounts,
+    no servers, no analytics, no ads, and no third-party code that talks to the internet. Your files travel
+    directly between your own devices over your local network and never pass through us or anyone else.</p>
+  </div>
+
+  <h2>Who this covers</h2>
+  <p>This policy applies to the CrossDrop apps for Windows, macOS, Android and iOS. CrossDrop is a tool for sending
+  files between nearby devices that are on the same local network (Wi&#8209;Fi or Ethernet).</p>
+
+  <h2>What CrossDrop does on your device</h2>
+  <ul>
+    <li><strong>Finding nearby devices.</strong> To let your devices see each other, CrossDrop announces itself on your
+    local network (mDNS / Bonjour) and, on phones, over Bluetooth Low Energy. The announcement contains a random
+    identifier that changes every time the app starts, plus a display name. The display name defaults to your
+    device&rsquo;s name (on a PC, its computer name) and you can change it in Settings. These announcements stay on your
+    local network; they are not sent to the internet.</li>
+    <li><strong>Sending files.</strong> Files you choose are sent straight to the device you pick over a direct local
+    connection. They are encrypted end to end (X25519 key exchange with ChaCha20&#8209;Poly1305), and both devices show
+    the same 6&#8209;digit code so you can confirm you are talking to the right device.</li>
+    <li><strong>Send to anyone (QR code).</strong> You can share files with a device that does not have CrossDrop. The app
+    starts a temporary web page on your local network, protected by a long random link that is shown as a QR code.
+    Anyone on your network who has that link can download the files until you stop sharing. This page uses plain HTTP
+    on your local network (not HTTPS), so share it only on networks you trust.</li>
+    <li><strong>Wireless drive.</strong> If you turn on the drive feature, the folder you choose is made available to
+    devices on your local network, read-only unless you allow editing, optionally behind a 4&#8209;digit passcode. It
+    stops when you press &ldquo;Stop sharing&rdquo; or quit the app.</li>
+    <li><strong>Receiving files.</strong> Incoming files wait in CrossDrop&rsquo;s private Inbox until you open, move or
+    delete them. You accept or decline every transfer.</li>
+  </ul>
+
+  <h2>What is stored, and where</h2>
+  <p>Everything CrossDrop keeps is stored only on your device:</p>
+  <ul>
+    <li>files you have received (the Inbox);</li>
+    <li>a local list of past transfers (device name, file names, sizes, time, and the outcome);</li>
+    <li>your display name and app settings.</li>
+  </ul>
+  <p>On Windows this lives in the app&rsquo;s local data folder for your user account. You can delete received files
+  and the transfer list from inside the app (Inbox and Transfers). Uninstalling the Microsoft Store version on Windows,
+  or the app on Android or iOS, also removes its data.</p>
+
+  <h2>What CrossDrop does not do</h2>
+  <ul>
+    <li>It does not collect, sell or share personal data &mdash; nothing leaves your local network.</li>
+    <li>It has no accounts, sign-in, email address or phone number requirement.</li>
+    <li>It contains no analytics, crash-reporting, tracking or advertising code.</li>
+    <li>It does not connect to the internet for any of its features.</li>
+  </ul>
+
+  <h2>Permissions</h2>
+  <table>
+    <thead><tr><th>Permission</th><th>Why CrossDrop needs it</th></tr></thead>
+    <tbody>
+      <tr><td>Windows: access to home or work networks (private network client and server)</td>
+          <td>To find other devices and to send and receive files directly with them on your local network.</td></tr>
+      <tr><td>Windows: runs as a desktop app (&ldquo;full trust&rdquo;)</td>
+          <td>CrossDrop is a desktop program, so it needs normal desktop access to read the files you pick and to
+              listen for incoming connections. It only touches files you choose or accept. Windows Firewall may ask
+              whether to let CrossDrop use your private network; allow it for private networks only.</td></tr>
+      <tr><td>Android / iOS: nearby devices, Bluetooth, local network</td>
+          <td>To discover and connect to devices near you. CrossDrop does not read or store your location.</td></tr>
+      <tr><td>Notifications</td>
+          <td>To show transfer progress and tell you when a device wants to send you something.</td></tr>
+      <tr><td>Files and photos (system pickers)</td>
+          <td>You choose exactly which files to send, each time.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Children</h2>
+  <p>CrossDrop does not collect any personal information from anyone, including children, and is not directed at
+  children.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>If this policy changes, the new version will be posted at this address with an updated date. Because CrossDrop
+  does not collect your data, we have no way to notify you directly, so please check back if you are concerned.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or concerns? Open an issue at
+  <a href="https://github.com/GranTurismo/crossdrop/issues">github.com/GranTurismo/crossdrop/issues</a>.</p>
+
+  <footer>&copy; 2026 GranTurismoGroup. CrossDrop is provided as is.</footer>
+</main>
+</body>
+</html>
