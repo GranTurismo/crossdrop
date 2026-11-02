@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.platform.Platform
 import com.crossdrop.platform.SystemActions
 import com.crossdrop.storage.InboxStore
 import com.crossdrop.ui.FileTypeTile
@@ -42,7 +43,7 @@ import com.crossdrop.ui.transfer.formatBytes
 
 /**
  * Full-screen inbox: received files staged in the app sandbox.
- * Open with the default app, reveal in Finder, or shred (zero-fill + unlink).
+ * Open with the default app, reveal in Finder / File Explorer, or shred (zero-fill + unlink).
  */
 @Composable
 fun InboxScreen(
@@ -117,7 +118,7 @@ fun InboxScreen(
                                 )
                             }
                             TextButton(onClick = { SystemActions.reveal(item.file) }) {
-                                Text("Show in Finder", color = TextDim, fontSize = 13.sp)
+                                Text("Show in ${Platform.current.fileManager}", color = TextDim, fontSize = 13.sp)
                             }
                             TextButton(onClick = { SystemActions.open(item.file) }) {
                                 Text("Open", color = RippleTeal, fontSize = 13.sp)

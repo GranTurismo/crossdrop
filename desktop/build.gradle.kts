@@ -17,6 +17,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.swing)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.jmdns)
+    implementation(libs.jna)
     runtimeOnly(libs.slf4j.nop)
 
     testImplementation(libs.junit)
@@ -62,20 +63,64 @@ sourceSets.main {
 }
 tasks.named("compileKotlin") { dependsOn(syncSharedUi) }
 
+// Installers can only be built on the OS they target (jpackage needs the native
+// toolchain: hdiutil on macOS, WiX on Windows), so the packaging tasks that exist
+// follow the machine running Gradle. Compose registers only the formats that are
+// valid for the host, so listing all of them below is safe on either OS.
+val hostIsMac = System.getProperty("os.name").startsWith("Mac")
+
+// Windows Installer refuses to "upgrade" to an MSI whose ProductVersion equals the installed one
+// (same upgradeUuid + same version = "another version is already installed"), so the Windows
+// version must move with each release. It follows APP_VERSION in Main.kt, mapped 0.x.y -> 1.x.y
+// to keep the "must start at 1" rule macOS already has. Read through a provider so Gradle's
+// configuration cache notices when Main.kt changes.
+val windowsPackageVersion: Provider<String> = providers
+    .fileContents(layout.projectDirectory.file("src/main/kotlin/com/crossdrop/Main.kt")).asText
+    .map { src ->
+        val m = Regex("""APP_VERSION\s*=\s*"(\d+)\.(\d+)\.(\d+)"""").find(src)
+            ?: error("APP_VERSION not found in Main.kt")
+        val (major, minor, patch) = m.destructured
+        "${maxOf(major.toInt(), 1)}.$minor.$patch"
+    }
+
 compose.desktop {
     application {
         mainClass = "com.crossdrop.MainKt"
-        jvmArgs += listOf("-Xdock:name=CrossDrop", "-Xmx512m", "-Dapple.awt.application.appearance=NSAppearanceNameDarkAqua")
+        jvmArgs += listOf("-Xmx512m")
+        if (hostIsMac) {
+            // -Xdock:* is a macOS-launcher option; any other JVM refuses to start on it.
+            jvmArgs += listOf("-Xdock:name=CrossDrop", "-Dapple.awt.application.appearance=NSAppearanceNameDarkAqua")
+        }
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg)
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe)
             packageName = "CrossDrop"
-            // macOS bundle versions must start at 1.x; the in-app version (0.2.0,
-            // see Main.kt) follows the Android app.
+            // macOS bundle versions must start at 1.x (Windows MSI is fine with it
+            // too); the in-app version, APP_VERSION in Main.kt, follows the Android app.
             packageVersion = "1.0.0"
             description = "Private, ad-free local file sharing"
             vendor = "CrossDrop"
-            modules("java.net.http", "jdk.unsupported", "java.prefs")
+            // java.logging: JNA (Windows keep-awake) logs through java.util.logging and fails to
+            // initialise without it; nothing else on the runtime classpath pulls it into the jlink image.
+            modules("java.net.http", "jdk.unsupported", "java.prefs", "java.logging")
+
+            windows {
+                iconFile.set(project.file("packaging/CrossDrop.ico"))
+                menuGroup = "CrossDrop"       // Start-menu folder
+                shortcut = true               // desktop shortcut
+                menu = true                   // Start-menu entry
+                // Installs to %LOCALAPPDATA%\CrossDrop — no admin prompt, which also
+                // suits an unsigned build. Windows Firewall still asks once, on first
+                // launch, whether to let CrossDrop accept connections on private networks.
+                perUserInstall = true
+                dirChooser = true
+                msiPackageVersion = windowsPackageVersion.get()
+                exePackageVersion = windowsPackageVersion.get()
+                // Identifies this product to Windows Installer so a newer MSI (higher version —
+                // see windowsPackageVersion) upgrades in place instead of installing beside it.
+                // Generated once; NEVER change.
+                upgradeUuid = "B960A8B1-78D0-4343-B88D-123040141EAD"
+            }
 
             macOS {
                 bundleID = "com.crossdrop.desktop"

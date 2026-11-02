@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.platform.Platform
 import com.crossdrop.ui.DeviceNameDialog
 import com.crossdrop.ui.theme.DeepSpace
 import com.crossdrop.ui.theme.DeepSpaceRaised
@@ -103,7 +104,9 @@ fun SettingsScreen(
             RowDivider()
             SettingRow(
                 title = "Rescan network",
-                subtitle = "use after switching Wi-Fi or approving CrossDrop in Local Network settings",
+                subtitle = if (Platform.isWindows)
+                    "use after switching Wi-Fi or allowing CrossDrop through Windows Firewall"
+                else "use after switching Wi-Fi or approving CrossDrop in Local Network settings",
                 onClick = onRescan,
             )
         }
@@ -117,7 +120,7 @@ fun SettingsScreen(
                 subtitle = if (hosting)
                     "${vaultState!!.rootLabel} · ${vaultState!!.url} · " +
                         "${vaultState!!.clients.size} connected"
-                else "share this Mac's files with any device on the Wi-Fi",
+                else "share this ${Platform.current.computerNoun}'s files with any device on the Wi-Fi",
                 titleColor = if (hosting) Phosphor else TextPrimary,
                 onClick = onOpenDrive,
             )

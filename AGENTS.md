@@ -14,7 +14,7 @@ installed size, ambient "sonar + liquid orb" UX.
   BLE both implement `PeerDiscovery`; sightings merge by `instanceId`
   (rotating per-launch token) in `AppContainer.peers`.
 
-- `:desktop` — macOS app (Compose Multiplatform Desktop on `:core`). Same wire
+- `:desktop` — macOS + Windows app (Compose Multiplatform Desktop on `:core`). Same wire
   protocol, same QR share, same Wireless Drive (HTTP/WebDAV/AEAD), same radar UI.
   See "Desktop (macOS)" below.
 
@@ -129,6 +129,59 @@ DMG is unsigned (right-click → Open on first launch; Developer ID + notarizati
 needed for distribution). macOS bundle version is `1.0.0` (must be ≥1); the in-app
 version constant is `APP_VERSION` in `Main.kt`. First launch triggers the macOS
 Local Network prompt — "Rescan network" in Settings re-binds mDNS after approving.
+
+## Desktop (Windows)
+
+Same `:desktop` module, one codebase. Everything OS-specific sits behind
+`platform/Platform.kt` (`Platform.current` = MAC / WINDOWS / OTHER; `computerNoun` and
+`fileManager` feed the UI strings: "Turn this PC into a drive", "Show in File Explorer").
+
+- **State**: `%LOCALAPPDATA%\CrossDrop` (`AppDirs.baseDir`; local, not roaming).
+- **Discovery**: unchanged JmDNS path. Windows Firewall asks once on first launch (allow
+  *private* networks); "Rescan network" in Settings re-binds mDNS afterwards. `LocalIp.choose`
+  skips Hyper-V/WSL/VMware/TAP/VPN/Bluetooth adapters by display name — but keeps the
+  guest-side NIC inside a Hyper-V VM ("Microsoft Hyper-V Network Adapter"), or CrossDrop would
+  see no network in Azure/Hyper-V VMs.
+- **Platform bits** (`platform/`): Explorer `/select,` reveal; a system-look-and-feel Swing
+  folder chooser (AWT `FileDialog` has no folder mode on Windows); `SleepGuard` =
+  `SetThreadExecutionState(ES_CONTINUOUS|ES_SYSTEM_REQUIRED)` via JNA on a dedicated thread
+  (the flag is per-thread, so set and clear must share it — a crash releases it); tray icon +
+  toast via AWT `SystemTray` (when the tray is unsupported, closing the window quits instead
+  of stranding the app); `SingleInstance` (exclusive `instance.lock` + loopback `show` signal)
+  so launching again raises the tray-hidden window instead of starting a second copy.
+- **Names from peers are untrusted** — Windows adds rules beyond `..` and `/`:
+  `InboxStore.sanitizeName` (no `:` = NTFS alternate data stream, no `CON`/`NUL`/`COM1`… device
+  names, no trailing dot/space) and `FileVaultFs(windowsNames = …)` (default on exactly when
+  `File.separatorChar == '\\'`): `VaultFs.isWindowsUnsafeSegment` on every segment, plus a
+  hidden-entry re-check *after* canonicalization because Win32 expands 8.3 short names
+  (`STAGIN~1` → `.staging`). `VaultHostManager.isForbiddenRoot` refuses drive roots, the
+  profile and its ancestors, `AppData`, `Windows`/`Program Files`/`ProgramData`,
+  `$Recycle.Bin`, `System Volume Information`, `Windows.old`, `Recovery`, other users' profiles
+  (`Public` is allowed). A drive hosted from Windows rejects names Windows can't store with a 400
+  naming the segment (like SMB/IIS) rather than silently renaming; case-only renames
+  (`photo.jpg` → `Photo.jpg`) work via a temp name because canonicalization collapses the two.
+- **Build** — installers can only be built *on Windows* (jpackage + WiX 3.x):
+
+```sh
+./gradlew :desktop:packageMsi :desktop:packageExe   # -> desktop/build/compose/binaries/main/{msi,exe}
+./gradlew :desktop:run                              # dev run (JDK 17+)
+```
+
+  CI does this: `.github/workflows/desktop-windows.yml` (manual run, or push a `desktop-v*` tag),
+  after running `:core:test` and `:desktop:test` on the Windows runner. The installer is a
+  per-user install (no admin prompt) and **unsigned** — SmartScreen warns until it is
+  code-signed. `upgradeUuid` in `desktop/build.gradle.kts` identifies the product to Windows
+  Installer: **never change it** or upgrades install side by side. The MSI/EXE version is derived
+  from `APP_VERSION` in `Main.kt` (0.x.y → 1.x.y): Windows Installer refuses to upgrade to the
+  same ProductVersion, so **bump `APP_VERSION` for every Windows release**. `modules(...)` must
+  keep `java.logging` — JNA needs it and nothing else drags it into the jlink image. The `-Xdock:*` JVM flags are
+  macOS-launcher options that make any other JVM refuse to start, so the build adds them only
+  when the build host is a Mac. For the Microsoft Store an MSIX (and a signing identity) is
+  still needed on top of this MSI.
+- **Not yet proven on a real Windows machine**: `SleepGuard`'s actual kernel32 call, the
+  firewall prompt flow, mDNS interop on port 5353 alongside Windows' own responder, tray
+  toasts, and the Explorer reveal. They are unit-tested through injected platform values and a
+  fake kernel32; the Windows CI run executes the same suites natively.
 
 ## iOS
 

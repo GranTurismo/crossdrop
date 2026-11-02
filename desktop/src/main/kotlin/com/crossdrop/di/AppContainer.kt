@@ -15,6 +15,7 @@ import com.crossdrop.net.TransferServer
 import com.crossdrop.net.VaultExplorerManager
 import com.crossdrop.net.VaultHostManager
 import com.crossdrop.net.isTerminal
+import com.crossdrop.platform.Platform
 import com.crossdrop.platform.Prefs
 import com.crossdrop.platform.SleepGuard
 import com.crossdrop.storage.HistoryStore
@@ -63,7 +64,7 @@ class AppContainer {
         prefs.getString("device_name")
             ?: runCatching { InetAddress.getLocalHost().hostName.removeSuffix(".local") }.getOrNull()
                 ?.takeIf { it.isNotBlank() }
-            ?: "Mac"
+            ?: Platform.current.computerNoun
 
     val identity = SessionIdentity()
     val engine = TransferEngine(identity, deviceName::value, instanceId)
@@ -119,7 +120,7 @@ class AppContainer {
         }.stateIn(scope, SharingStarted.Eagerly, emptyMap())
     }
 
-    /** Re-bind Bonjour — e.g. after switching networks or the macOS Local Network prompt. */
+    /** Re-bind Bonjour — e.g. after switching networks or approving the macOS Local Network / Windows Firewall prompt. */
     fun restartDiscovery() {
         if (_nsdEnabled.value) hub.restart()
     }

@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.net.VaultHostManager
+import com.crossdrop.platform.Platform
 import com.crossdrop.ui.theme.FluidCyan
 import com.crossdrop.ui.theme.GlassEdge
 import com.crossdrop.ui.theme.Phosphor
@@ -46,7 +47,7 @@ fun DriveGuideScreen(
     state: VaultHostManager.State,
     onClose: () -> Unit,
 ) {
-    var tab by remember { mutableStateOf(GuideTab.MAC) }
+    var tab by remember { mutableStateOf(if (Platform.isWindows) GuideTab.WINDOWS else GuideTab.MAC) }
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
     ) {
