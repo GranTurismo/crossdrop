@@ -41,12 +41,19 @@ jobs:
 
       # --configure-on-demand: only :core and :desktop are configured, so the Android
       # module (and the Android SDK it needs) is not involved.
+      # --continue runs every suite even if one fails; --info plus the app's debug logging puts each
+      # failing test's stdout/stderr (and the app's own log lines) into the job log.
       - name: Test
         shell: pwsh
-        run: .\gradlew.bat --configure-on-demand :core:test :desktop:test --stacktrace
+        env:
+          JAVA_TOOL_OPTIONS: "-Dcrossdrop.debug=1"
+        run: .\gradlew.bat --configure-on-demand :core:test :desktop:test --continue --info --stacktrace
 
+      # The steps below run even when a test failed (the job still ends red), so a candidate installer
+      # exists while the failure is investigated. Nothing is published from here either way.
       # jpackage needs WiX 3.x (candle.exe / light.exe) on PATH to build an MSI.
       - name: Put WiX on PATH
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $bin = if ($env:WIX) { Join-Path $env:WIX "bin" } else { $null }
@@ -59,17 +66,54 @@ jobs:
           Write-Host "WiX: $bin"
 
       - name: Package MSI and EXE
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: .\gradlew.bat --configure-on-demand :desktop:packageMsi :desktop:packageExe --stacktrace
 
-      - name: Installer sizes
+      # MSIX for the Microsoft Store. Unlike the MSI/EXE this needs no signing certificate: the Store
+      # re-signs what you upload. The identity in AppxManifest.xml must match Partner Center exactly.
+      - name: Build MSIX (Microsoft Store)
+        if: ${{ !cancelled() }}
         shell: pwsh
-        run: Get-ChildItem desktop/build/compose/binaries/main/msi, desktop/build/compose/binaries/main/exe -Include *.msi,*.exe -Recurse | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+        run: |
+          .\gradlew.bat --configure-on-demand :desktop:createDistributable --stacktrace
+          $exe = Get-ChildItem desktop/build/compose/binaries/main/app -Recurse -Filter CrossDrop.exe | Select-Object -First 1
+          if (-not $exe) { throw "app image (CrossDrop.exe) not found under desktop/build/compose/binaries/main/app" }
+          $app = $exe.Directory.FullName
+
+          # MSIX version follows APP_VERSION, 0.x.y -> 1.x.y.0 (the Store reserves the 4th part).
+          $src = Get-Content desktop/src/main/kotlin/com/crossdrop/Main.kt -Raw
+          $m = [regex]::Match($src, 'APP_VERSION\s*=\s*"(\d+)\.(\d+)\.(\d+)"')
+          if (-not $m.Success) { throw "APP_VERSION not found in Main.kt" }
+          $version = "{0}.{1}.{2}.0" -f [Math]::Max([int]$m.Groups[1].Value, 1), $m.Groups[2].Value, $m.Groups[3].Value
+
+          $layout = Join-Path $PWD "build/msix-layout"
+          if (Test-Path $layout) { Remove-Item $layout -Recurse -Force }
+          Copy-Item $app $layout -Recurse
+          Copy-Item desktop/packaging/msix/Assets (Join-Path $layout "Assets") -Recurse
+          (Get-Content desktop/packaging/msix/AppxManifest.xml -Raw).Replace("@VERSION@", $version) |
+            Set-Content (Join-Path $layout "AppxManifest.xml") -Encoding utf8
+
+          $makeappx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter makeappx.exe |
+            Where-Object { $_.FullName -match '\\x64\\' } | Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $makeappx) { throw "makeappx.exe not found (Windows SDK)" }
+          New-Item -ItemType Directory -Force desktop/build/msix | Out-Null
+          $out = Join-Path $PWD "desktop/build/msix/CrossDrop_${version}_x64.msix"
+          & $makeappx.FullName pack /d $layout /p $out /o
+          if ($LASTEXITCODE -ne 0) { throw "makeappx failed ($LASTEXITCODE)" }
+          Write-Host "MSIX: $out"
+
+      - name: Installer sizes
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        run: Get-ChildItem desktop/build/compose/binaries/main/msi, desktop/build/compose/binaries/main/exe, desktop/build/msix -Include *.msi,*.exe,*.msix -Recurse | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
 
       - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
           name: CrossDrop-windows
           if-no-files-found: error
           path: |
             desktop/build/compose/binaries/main/msi/*.msi
             desktop/build/compose/binaries/main/exe/*.exe
+            desktop/build/msix/*.msix
