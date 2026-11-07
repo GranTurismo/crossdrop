@@ -67,3 +67,7 @@ orb does the rest.
 | `app/.../ui/transfers/`, `ui/inbox/`, `ui/settings/` | tab screens |
 | `app/.../storage/` | `InboxStore` (staging + shred), `HistoryStore` (transfer log) |
 | `promo/` | Self-contained animated promo — open `index.html`, plays like a ~55s video loop |
+
+## License
+
+CrossDrop is released under the [Apache License 2.0](LICENSE).
