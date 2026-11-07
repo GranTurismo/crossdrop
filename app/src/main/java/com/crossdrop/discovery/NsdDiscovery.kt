@@ -9,12 +9,16 @@ import com.crossdrop.core.CrossDrop
 import com.crossdrop.core.DiscoverySource
 import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
+import com.crossdrop.core.UNNAMED_PEER
 import com.crossdrop.core.discovery.PeerDiscovery
+import com.crossdrop.core.discovery.ServiceNames
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -42,9 +46,12 @@ class NsdDiscovery(
     private val _peers = MutableStateFlow<Map<String, Peer>>(emptyMap())
     override val peers: StateFlow<Map<String, Peer>> = _peers
 
-    private val serviceNameToInstance = ConcurrentHashMap<String, String>()
+    private val names = ServiceNames()
     private val infoCallbacks = ConcurrentHashMap.newKeySet<NsdManager.ServiceInfoCallback>()
     private var registration: NsdManager.RegistrationListener? = null
+    /** An earlier registration NSD has been asked to drop but hasn't confirmed yet. */
+    private var unregistering: NsdManager.RegistrationListener? = null
+    private var publishPending = false
     private var discovery: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
@@ -66,15 +73,18 @@ class NsdDiscovery(
         }
     }
 
+    @Synchronized
     override fun stop() {
         started = false
-        registration?.let { runCatching { nsd.unregisterService(it) } }
+        publishPending = false
+        dropRegistration()
         discovery?.let { runCatching { nsd.stopServiceDiscovery(it) } }
         if (Build.VERSION.SDK_INT >= 34) {
             infoCallbacks.forEach { runCatching { nsd.unregisterServiceInfoCallback(it) } }
             infoCallbacks.clear()
         }
-        registration = null; discovery = null
+        discovery = null
+        names.clear()
         multicastLock?.let { runCatching { if (it.isHeld) it.release() } }
         multicastLock = null
         _peers.value = emptyMap()
@@ -82,15 +92,43 @@ class NsdDiscovery(
 
     // ------------------------------------------------------------ register --
 
+    /**
+     * (Re)publish our record. Registering under the same name while the previous registration is
+     * still being torn down makes NSD rename ours to "crossdrop-<id> (2)" and leaves both
+     * advertised — other devices then list this phone twice — so [publish] waits for the old one
+     * to be confirmed gone. Covers a port change as well as stop() → start().
+     */
+    @Synchronized
     private fun registerService() {
         if (!started) return
-        registration?.let { runCatching { nsd.unregisterService(it) } }
+        dropRegistration()
+        publish()
+    }
+
+    @Synchronized
+    private fun dropRegistration() {
+        val old = registration ?: return
+        registration = null
+        unregistering = old
+        runCatching { nsd.unregisterService(old) }.onFailure { unregistering = null }
+    }
+
+    @Synchronized
+    private fun publish() {
+        if (!started) return
+        if (unregistering != null) {
+            publishPending = true
+            // NSD confirms an unregister, but never stay invisible if it somehow doesn't.
+            scope.launch { delay(UNREGISTER_GRACE_MS); stillWaiting() }
+            return
+        }
         val info = NsdServiceInfo().apply {
             serviceType = CrossDrop.NSD_SERVICE_TYPE.trimEnd('.')
             serviceName = "crossdrop-$instanceId"
             port = advertisedPort
             setAttribute("id", instanceId)
             setAttribute("name", deviceName().take(48))
+            setAttribute(CrossDrop.TXT_PROBE, "1")
         }
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
@@ -99,12 +137,27 @@ class NsdDiscovery(
             override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
                 Log.w(TAG, "registration failed: $errorCode")
             }
-            override fun onServiceUnregistered(info: NsdServiceInfo) {}
-            override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {}
+            override fun onServiceUnregistered(info: NsdServiceInfo) = unregistered(this)
+            override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) = unregistered(this)
         }
         registration = listener
         runCatching { nsd.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener) }
             .onFailure { Log.w(TAG, "registerService threw", it) }
+    }
+
+    @Synchronized
+    private fun stillWaiting() {
+        if (!publishPending) return
+        unregistering = null
+        publishPending = false
+        publish()
+    }
+
+    @Synchronized
+    private fun unregistered(listener: NsdManager.RegistrationListener) {
+        if (unregistering !== listener) return
+        unregistering = null
+        if (publishPending) { publishPending = false; publish() }
     }
 
     // ------------------------------------------------------------ discover --
@@ -116,9 +169,7 @@ class NsdDiscovery(
                 scope.launch { resolve(info) }
             }
             override fun onServiceLost(info: NsdServiceInfo) {
-                serviceNameToInstance.remove(info.serviceName)?.let { id ->
-                    _peers.value = _peers.value - id
-                }
+                names.remove(info.serviceName)?.let { id -> _peers.update { it - id } }
             }
             override fun onDiscoveryStarted(serviceType: String) {
                 Log.i(TAG, "discovery started on $serviceType")
@@ -165,9 +216,7 @@ class NsdDiscovery(
                     onResolved(resolved, resolved.port, hosts)
                 }
                 override fun onServiceLost() {
-                    serviceNameToInstance.remove(info.serviceName)?.let { id ->
-                        _peers.value = _peers.value - id
-                    }
+                    names.remove(info.serviceName)?.let { id -> _peers.update { it - id } }
                 }
                 override fun onServiceInfoCallbackUnregistered() {}
             }
@@ -182,15 +231,25 @@ class NsdDiscovery(
             ?: resolved.serviceName.removePrefix("crossdrop-")
         if (id == instanceId) return
         val host = hosts.firstOrNull { it.contains('.') } ?: hosts.firstOrNull() ?: return
-        val name = attrs["name"]?.let { String(it, Charsets.UTF_8) } ?: resolved.serviceName
-        serviceNameToInstance[resolved.serviceName] = id
-        _peers.value = _peers.value + (id to Peer(
+        // onServiceUpdated fires before the TXT record is in on a fresh resolve — keep what an earlier,
+        // complete update told us rather than showing the raw `crossdrop-<id>` service name.
+        val prev = _peers.value[id]
+        val name = attrs["name"]?.let { String(it, Charsets.UTF_8) }?.takeIf { it.isNotBlank() }
+            ?: prev?.name ?: UNNAMED_PEER
+        val probeable = attrs[CrossDrop.TXT_PROBE]?.let { String(it, Charsets.UTF_8) == "1" }
+            ?: prev?.probeable ?: false
+        names.add(resolved.serviceName, id)
+        _peers.update { it + (id to Peer(
             instanceId = id,
             name = name,
             endpoint = Endpoint(host, port),
             sources = setOf(DiscoverySource.NSD),
-        ))
+            probeable = probeable,
+        )) }
     }
 
-    private companion object { const val TAG = "NsdDiscovery" }
+    private companion object {
+        const val TAG = "NsdDiscovery"
+        const val UNREGISTER_GRACE_MS = 2_000L
+    }
 }

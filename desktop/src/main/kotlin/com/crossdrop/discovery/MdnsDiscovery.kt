@@ -4,12 +4,14 @@ import com.crossdrop.core.CrossDrop
 import com.crossdrop.core.DiscoverySource
 import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
+import com.crossdrop.core.UNNAMED_PEER
 import com.crossdrop.core.VaultDescriptor
 import com.crossdrop.core.discovery.PeerDiscovery
+import com.crossdrop.core.discovery.ServiceNames
 import com.crossdrop.platform.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.flow.update
 import javax.jmdns.JmDNS
 import javax.jmdns.ServiceEvent
 import javax.jmdns.ServiceInfo
@@ -19,7 +21,7 @@ private fun String.asJmdnsType() = trimEnd('.') + ".local."
 
 /**
  * Wire-compatible with the Android NSD side: registers `_crossdrop._tcp.` as
- * `crossdrop-<instanceId>` with TXT `id`/`name`, and resolves peers advertising
+ * `crossdrop-<instanceId>` with TXT `id`/`name`/`probe`, and resolves peers advertising
  * the same type. Android phones see this Mac on their radar and vice versa.
  */
 class MdnsDiscovery(
@@ -32,7 +34,7 @@ class MdnsDiscovery(
     private val _peers = MutableStateFlow<Map<String, Peer>>(emptyMap())
     override val peers: StateFlow<Map<String, Peer>> = _peers
 
-    private val nameToId = ConcurrentHashMap<String, String>()
+    private val names = ServiceNames()
     private var current: JmDNS? = null
     private var ours: ServiceInfo? = null
     @Volatile private var started = false
@@ -51,7 +53,7 @@ class MdnsDiscovery(
             e.dns.requestServiceInfo(e.type, e.name, true)
         }
         override fun serviceRemoved(e: ServiceEvent) {
-            nameToId.remove(e.name)?.let { _peers.value = _peers.value - it }
+            names.remove(e.name)?.let { id -> _peers.update { it - id } }
         }
         override fun serviceResolved(e: ServiceEvent) = onResolved(e.info)
     }
@@ -81,7 +83,7 @@ class MdnsDiscovery(
         ours?.let { runCatching { dns.unregisterService(it) } }
         ours = null
         current = null
-        nameToId.clear()
+        names.clear()
         _peers.value = emptyMap()
     }
 
@@ -92,7 +94,7 @@ class MdnsDiscovery(
         ours?.let { runCatching { dns.unregisterService(it) } }
         val info = ServiceInfo.create(
             type, "crossdrop-$instanceId", advertisedPort, 0, 0,
-            mapOf("id" to instanceId, "name" to deviceName().take(48)),
+            mapOf("id" to instanceId, "name" to deviceName().take(48), CrossDrop.TXT_PROBE to "1"),
         )
         ours = info
         runCatching { dns.registerService(info) }
@@ -105,14 +107,19 @@ class MdnsDiscovery(
         if (id == instanceId) return
         val host = info.inet4Addresses.firstOrNull()?.hostAddress
             ?: info.hostAddresses.firstOrNull() ?: return
-        val name = info.getPropertyString("name")?.takeIf { it.isNotBlank() } ?: info.name
-        nameToId[info.name] = id
-        _peers.value = _peers.value + (id to Peer(
+        // A resolve can land before the TXT record does — keep what an earlier, complete one told us
+        // rather than showing the raw `crossdrop-<id>` service name.
+        val prev = _peers.value[id]
+        val name = info.getPropertyString("name")?.takeIf { it.isNotBlank() } ?: prev?.name ?: UNNAMED_PEER
+        val probeable = info.getPropertyString(CrossDrop.TXT_PROBE)?.let { it == "1" } ?: prev?.probeable ?: false
+        names.add(info.name, id)
+        _peers.update { it + (id to Peer(
             instanceId = id,
             name = name,
             endpoint = Endpoint(host, info.port),
             sources = setOf(DiscoverySource.NSD),
-        ))
+            probeable = probeable,
+        )) }
     }
 
     private companion object { const val TAG = "MdnsDiscovery" }
@@ -133,7 +140,7 @@ class VaultDiscovery(
     private val _peers = MutableStateFlow<Map<String, Peer>>(emptyMap())
     override val peers: StateFlow<Map<String, Peer>> = _peers
 
-    private val nameToId = ConcurrentHashMap<String, String>()
+    private val names = ServiceNames()
     @Volatile private var started = false
 
     private val listener = object : ServiceListener {
@@ -141,7 +148,7 @@ class VaultDiscovery(
             e.dns.requestServiceInfo(e.type, e.name, true)
         }
         override fun serviceRemoved(e: ServiceEvent) {
-            nameToId.remove(e.name)?.let { _peers.value = _peers.value - it }
+            names.remove(e.name)?.let { id -> _peers.update { it - id } }
         }
         override fun serviceResolved(e: ServiceEvent) = onResolved(e.info)
     }
@@ -164,7 +171,7 @@ class VaultDiscovery(
 
     override fun detach(dns: JmDNS) {
         runCatching { dns.removeServiceListener(type, listener) }
-        nameToId.clear()
+        names.clear()
         _peers.value = emptyMap()
     }
 
@@ -174,8 +181,8 @@ class VaultDiscovery(
         val host = info.inet4Addresses.firstOrNull()?.hostAddress
             ?: info.hostAddresses.firstOrNull() ?: return
         val name = info.getPropertyString("name")?.takeIf { it.isNotBlank() } ?: "Vault"
-        nameToId[info.name] = id
-        _peers.value = _peers.value + (id to Peer(
+        names.add(info.name, id)
+        _peers.update { it + (id to Peer(
             instanceId = id,
             name = name,
             endpoint = Endpoint(host, info.port),
@@ -185,7 +192,8 @@ class VaultDiscovery(
                 writable = info.getPropertyString("mode") == "rw",
                 needsPin = info.getPropertyString("auth") == "pin",
             ),
-        ))
+            probeable = true,      // the vault listener drops a bare connect silently, in every build
+        )) }
     }
 }
 

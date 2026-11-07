@@ -8,6 +8,7 @@ import com.crossdrop.core.delta.ChunkCodec
 import com.crossdrop.core.delta.ChunkEntry
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.delta.FastCdc
+import java.io.EOFException
 import java.io.File
 import com.crossdrop.core.protocol.*
 import kotlinx.coroutines.CoroutineDispatcher
@@ -374,7 +375,13 @@ class TransferEngine(
             val io = io!!
 
             // -- handshake
-            val (helloType, helloPayload) = io.read()
+            val (helloType, helloPayload) = try {
+                io.read()
+            } catch (_: EOFException) {
+                // Connected, said nothing, left: a liveness probe (see PeerLiveness) or a port scan.
+                // Not a session — surfacing it would flash a failed transfer on the UI.
+                return@flow
+            }
             if (helloType != FrameType.HELLO) throw ProtocolException("expected HELLO, got $helloType")
             val hello = helloPayload.decode<Hello>()
             if (hello.version < 1)

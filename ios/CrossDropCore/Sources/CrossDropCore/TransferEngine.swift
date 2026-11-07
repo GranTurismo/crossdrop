@@ -397,7 +397,14 @@ public final class TransferEngine {
         cancel.attach { [weak fio] in fio?.cancelAndShutdown(reason: "receiver cancelled") }
         do {
             s.setTimeout(TransferEngine.controlTimeout)
-            let (helloType, helloPayload) = try fio.read()
+            let first: (FrameType, [UInt8])
+            do { first = try fio.read() }
+            catch is EOFError {
+                // Connected, said nothing, left: a liveness probe (peers check we're still there) or a
+                // port scan. Not a session — reporting it would flash a failed transfer in the UI.
+                return
+            }
+            let (helloType, helloPayload) = first
             guard helloType == .hello else { throw ProtocolError("expected HELLO, got \(helloType)") }
             let hello = try helloPayload.decodeJSON(Hello.self)
             guard hello.version >= 1 else { throw ProtocolError("protocol v\(hello.version) unsupported") }

@@ -46,6 +46,7 @@ final class AppContainer: ObservableObject {
     private var bonjour: [String: Peer] = [:]
     private var vaultBeacons: [String: Peer] = [:]
     private var vaultDiscovery: VaultDiscovery!
+    private let liveness = PeerLiveness()
     private var started = false
     private let pathMonitor = NWPathMonitor()
     private var lastPathSignature = ""
@@ -76,6 +77,9 @@ final class AppContainer: ObservableObject {
             self?.vaultBeacons = map
             self?.mergePeers()
         }
+        // Radar only shows peers whose listener still answers (mDNS alone keeps a vanished device for an hour).
+        liveness.onChange = { [weak self] in self?.mergePeers() }
+        liveness.start { [weak self] in self?.sightedPeers() ?? [] }
     }
 
     /// The name other devices see until the user picks one. iOS hides the user-given device name from apps
@@ -299,12 +303,19 @@ final class AppContainer: ObservableObject {
         mergePeers()
     }
 
-    private func mergePeers() {
+    private func sightedPeers() -> [Peer] {
         var merged = bonjour
         for (k, v) in vaultBeacons { merged[k] = v }
         for (k, v) in manual { merged[k] = v }
-        peers = merged.values.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return Array(merged.values)
+    }
+
+    private func mergePeers() {
+        let sighted = sightedPeers()
+        peers = sighted.filter(liveness.admits)
+            .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         if !peers.isEmpty { networkNotice = nil }       // discovery clearly works now
+        if sighted.contains(where: { $0.probeable && !liveness.admits($0) }) { liveness.poke() }   // verify newcomers now
     }
 
     // MARK: notifications

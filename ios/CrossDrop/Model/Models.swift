@@ -21,8 +21,14 @@ struct Peer: Identifiable, Equatable {
     var sources: Set<DiscoverySource> = [.bonjour]
     var lastSeen = Date()
     var vault: VaultDescriptor?
+    /// The peer's listener ignores a bare connect-and-close, so `PeerLiveness` may use one to check it is
+    /// still there (older builds report a failed session for such a connection — opt-in via the peer's TXT).
+    var probeable = false
     var id: String { instanceId }
     var isReachable: Bool { host != nil && port > 0 }
+
+    /// Shown when a sighting carries no name of its own (partial resolve).
+    static let unnamed = "Nearby device"
 }
 
 enum Direction: String { case sending = "SENDING", receiving = "RECEIVING" }

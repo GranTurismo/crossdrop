@@ -11,11 +11,13 @@ import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
 import com.crossdrop.core.VaultDescriptor
 import com.crossdrop.core.discovery.PeerDiscovery
+import com.crossdrop.core.discovery.ServiceNames
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 
@@ -36,7 +38,7 @@ class VaultDiscovery(
     private val _peers = MutableStateFlow<Map<String, Peer>>(emptyMap())
     override val peers: StateFlow<Map<String, Peer>> = _peers
 
-    private val serviceNameToId = ConcurrentHashMap<String, String>()
+    private val names = ServiceNames()
     private val infoCallbacks = ConcurrentHashMap.newKeySet<NsdManager.ServiceInfoCallback>()
     private var discovery: NsdManager.DiscoveryListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -55,9 +57,7 @@ class VaultDiscovery(
                     scope.launch { resolve(info) }
                 }
                 override fun onServiceLost(info: NsdServiceInfo) {
-                    serviceNameToId.remove(info.serviceName)?.let {
-                        _peers.value = _peers.value - it
-                    }
+                    names.remove(info.serviceName)?.let { id -> _peers.update { it - id } }
                 }
                 override fun onDiscoveryStarted(serviceType: String) {
                     Log.i(TAG, "vault discovery started")
@@ -84,6 +84,7 @@ class VaultDiscovery(
         }
         multicastLock?.let { runCatching { if (it.isHeld) it.release() } }
         multicastLock = null
+        names.clear()
         _peers.value = emptyMap()
     }
 
@@ -112,9 +113,7 @@ class VaultDiscovery(
                         r.hostAddresses.mapNotNull { it.hostAddress })
                 }
                 override fun onServiceLost() {
-                    serviceNameToId.remove(info.serviceName)?.let {
-                        _peers.value = _peers.value - it
-                    }
+                    names.remove(info.serviceName)?.let { id -> _peers.update { it - id } }
                 }
                 override fun onServiceInfoCallbackUnregistered() {}
             }
@@ -131,8 +130,8 @@ class VaultDiscovery(
         val host = hosts.firstOrNull { it.contains('.') } ?: hosts.firstOrNull() ?: return
         val name = attrs["name"]?.let { String(it, Charsets.UTF_8) }
             ?.takeIf { it.isNotBlank() } ?: "Vault"
-        serviceNameToId[r.serviceName] = id
-        _peers.value = _peers.value + (id to Peer(
+        names.add(r.serviceName, id)
+        _peers.update { it + (id to Peer(
             instanceId = id,
             name = name,
             endpoint = Endpoint(host, port),
@@ -142,7 +141,8 @@ class VaultDiscovery(
                 writable = attrs["mode"]?.let { String(it, Charsets.UTF_8) } == "rw",
                 needsPin = attrs["auth"]?.let { String(it, Charsets.UTF_8) } == "pin",
             ),
-        ))
+            probeable = true,      // the vault listener drops a bare connect silently, in every build
+        )) }
     }
 
     private companion object { const val TAG = "VaultDiscovery" }

@@ -7,6 +7,20 @@ final class EngineHardeningTests: XCTestCase {
 
     private func meta(_ name: String, _ size: Int64) -> FileMeta { FileMeta(name: name, size: size) }
 
+    // MARK: liveness probes
+
+    /// Peers check we're still listening by connecting and hanging up. That must not look like a transfer.
+    func testBareConnectAndCloseIsNotASession() throws {
+        let r = TestReceiver()
+        let probe = try TCPSocket.connect(host: "127.0.0.1", port: r.port, timeout: 2)
+        probe.close()
+        XCTAssertFalse(r.rec.wait(1.5), "a liveness probe surfaced as \(r.rec.events)")
+        XCTAssertTrue(r.rec.events.isEmpty)
+        // ...and the listener is still serving afterwards.
+        let again = try TCPSocket.connect(host: "127.0.0.1", port: r.port, timeout: 2)
+        again.close()
+    }
+
     // MARK: offer validation
 
     func testReceiverRefusesInvalidOffersWithoutAskingTheUser() throws {
@@ -254,11 +268,14 @@ final class EngineHardeningTests: XCTestCase {
         XCTAssertFalse(r.rec.events.contains { if case .failed = $0 { return true }; return false },
                        "refused connections must not surface as session events")
         stalled.forEach { $0.close() }; ninth.close()
-        // slots come back once those sessions end (the stalled hellos fail on EOF)
-        XCTAssertTrue(r.rec.wait(20))
-        usleep(500_000)
-        let ok = try EvilPeer(port: r.port)
-        ok.close()
+        // slots come back once those sessions end (the stalled hellos hit EOF and finish quietly)
+        var ok: EvilPeer?
+        for _ in 0..<50 where ok == nil {
+            ok = try? EvilPeer(port: r.port)
+            if ok == nil { usleep(100_000) }
+        }
+        XCTAssertNotNil(ok, "receive slots never came back")
+        ok?.close()
     }
 
     func testCancelReturnsInstantlyAndEndsASenderBlockedOnAStalledReceiver() throws {

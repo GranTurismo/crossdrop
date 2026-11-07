@@ -41,7 +41,7 @@ final class VaultDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDeleg
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
         resolving[service.name]?.stop()
         resolving[service.name] = nil
-        if let id = nameToId.removeValue(forKey: service.name) {
+        if let id = nameToId.removeValue(forKey: service.name), !nameToId.values.contains(id) {
             peers[id] = nil
             onPeersChanged?(peers)
         }
@@ -59,7 +59,8 @@ final class VaultDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDeleg
         nameToId[sender.name] = id
         peers[id] = Peer(
             instanceId: id, name: name, host: host, port: sender.port,
-            vault: VaultDescriptor(vaultName: name, writable: str("mode") == "rw", needsPin: str("auth") == "pin"))
+            vault: VaultDescriptor(vaultName: name, writable: str("mode") == "rw", needsPin: str("auth") == "pin"),
+            probeable: true)       // the vault listener drops a bare connect silently, in every build
         onPeersChanged?(peers)
     }
 

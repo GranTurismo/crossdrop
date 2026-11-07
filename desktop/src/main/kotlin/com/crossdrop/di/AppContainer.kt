@@ -4,6 +4,8 @@ import com.crossdrop.core.CrossDrop
 import com.crossdrop.core.Peer
 import com.crossdrop.core.crypto.SessionIdentity
 import com.crossdrop.core.discovery.PeerDiscovery
+import com.crossdrop.core.discovery.PeerLiveness
+import com.crossdrop.core.discovery.mergePeers
 import com.crossdrop.core.transfer.TransferEngine
 import com.crossdrop.discovery.MdnsDiscovery
 import com.crossdrop.discovery.MdnsHub
@@ -15,6 +17,7 @@ import com.crossdrop.net.TransferServer
 import com.crossdrop.net.VaultExplorerManager
 import com.crossdrop.net.VaultHostManager
 import com.crossdrop.net.isTerminal
+import com.crossdrop.platform.Platform
 import com.crossdrop.platform.Prefs
 import com.crossdrop.platform.SleepGuard
 import com.crossdrop.storage.HistoryStore
@@ -63,7 +66,7 @@ class AppContainer {
         prefs.getString("device_name")
             ?: runCatching { InetAddress.getLocalHost().hostName.removeSuffix(".local") }.getOrNull()
                 ?.takeIf { it.isNotBlank() }
-            ?: "Mac"
+            ?: Platform.current.computerNoun
 
     val identity = SessionIdentity()
     val engine = TransferEngine(identity, deviceName::value, instanceId)
@@ -103,23 +106,14 @@ class AppContainer {
     /** Port our transfer listener bound to. */
     val listenerPort = MutableStateFlow(0)
 
-    /** All sightings merged by instanceId. */
+    /** All sightings merged by instanceId, minus peers whose listener no longer answers. */
     val peers: StateFlow<Map<String, Peer>> = run {
-        combine(discoveries.map { it.peers }) { arrays ->
-            val merged = linkedMapOf<String, Peer>()
-            for (map in arrays) for ((id, p) in map) {
-                val existing = merged[id]
-                merged[id] = if (existing == null) p else p.copy(
-                    endpoint = p.endpoint ?: existing.endpoint,
-                    sources = p.sources + existing.sources,
-                    lastSeenMs = maxOf(p.lastSeenMs, existing.lastSeenMs),
-                )
-            }
-            merged
-        }.stateIn(scope, SharingStarted.Eagerly, emptyMap())
+        val sighted = combine(discoveries.map { it.peers }) { mergePeers(it.asList()) }
+            .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+        PeerLiveness(scope, sighted).peers
     }
 
-    /** Re-bind Bonjour — e.g. after switching networks or the macOS Local Network prompt. */
+    /** Re-bind Bonjour — e.g. after switching networks or approving the macOS Local Network / Windows Firewall prompt. */
     fun restartDiscovery() {
         if (_nsdEnabled.value) hub.restart()
     }

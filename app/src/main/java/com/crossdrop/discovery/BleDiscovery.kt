@@ -19,6 +19,7 @@ import androidx.core.content.getSystemService
 import com.crossdrop.core.CrossDrop
 import com.crossdrop.core.DiscoverySource
 import com.crossdrop.core.Peer
+import com.crossdrop.core.UNNAMED_PEER
 import com.crossdrop.core.discovery.PeerDiscovery
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -108,7 +109,7 @@ class BleDiscovery(
         if (id == instanceId) return
         _peers.value = _peers.value + (id to Peer(
             instanceId = id,
-            name = result.scanRecord?.deviceName ?: "Nearby device",
+            name = result.scanRecord?.deviceName ?: UNNAMED_PEER,
             endpoint = null,
             sources = setOf(DiscoverySource.BLE),
             rssi = result.rssi,

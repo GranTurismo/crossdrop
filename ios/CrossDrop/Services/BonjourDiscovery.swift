@@ -51,6 +51,7 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
         NetService.data(fromTXTRecord: [
             "id": Data(instanceId.utf8),
             "name": Data(deviceName().clippedUTF8(48).utf8),
+            "probe": Data("1".utf8),          // our listener ignores a bare connect-and-close (liveness probe)
         ])
     }
 
@@ -75,7 +76,9 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
     func netServiceBrowser(_ browser: NetServiceBrowser, didRemove service: NetService, moreComing: Bool) {
         resolving[service.name]?.stop()
         resolving[service.name] = nil
-        if let id = nameToId.removeValue(forKey: service.name) {
+        // A peer can be advertised under several names (mDNS renames a conflict to "name (2)"):
+        // it is gone only when the last one is.
+        if let id = nameToId.removeValue(forKey: service.name), !nameToId.values.contains(id) {
             peers[id] = nil
             onPeersChanged?(peers)
         }
@@ -97,7 +100,12 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
         if id == instanceId { return }
         guard let host = Self.pickHost(sender.addresses ?? []) else { return }
         nameToId[sender.name] = id
-        peers[id] = Peer(instanceId: id, name: str("name") ?? sender.name, host: host, port: sender.port)
+        // A resolve can land before the TXT record does — keep what an earlier, complete one told us
+        // rather than showing the raw `crossdrop-<id>` service name.
+        let prev = peers[id]
+        let name = str("name").flatMap { $0.isEmpty ? nil : $0 } ?? prev?.name ?? Peer.unnamed
+        let probeable = str("probe").map { $0 == "1" } ?? prev?.probeable ?? false
+        peers[id] = Peer(instanceId: id, name: name, host: host, port: sender.port, probeable: probeable)
         onPeersChanged?(peers)
     }
 
