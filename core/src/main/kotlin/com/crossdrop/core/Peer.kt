@@ -3,6 +3,9 @@ package com.crossdrop.core
 /** How a peer was sighted. Multiple sources can converge on the same [Peer.instanceId]. */
 enum class DiscoverySource { NSD, BLE }
 
+/** Shown when a sighting carries no name of its own (BLE without a device name, partial mDNS resolve). */
+const val UNNAMED_PEER = "Nearby device"
+
 /** A reachable (or at least visible) CrossDrop instance on the local network. */
 data class Endpoint(val host: String, val port: Int) {
     override fun toString() = "$host:$port"
@@ -20,6 +23,12 @@ data class Peer(
     val lastSeenMs: Long = System.currentTimeMillis(),
     /** Non-null when this node is a LAN vault beacon (not a transfer peer). */
     val vault: VaultDescriptor? = null,
+    /**
+     * True when [endpoint] tolerates a bare connect-and-close, so [com.crossdrop.core.discovery.PeerLiveness]
+     * may use one to check the peer is still there. Older builds report a failed session for such a
+     * connection, so this is opt-in via the peer's own advertisement.
+     */
+    val probeable: Boolean = false,
 ) {
     /** Approximate distance in metres from RSSI, for radar placement. */
     val estimatedDistanceMeters: Double?

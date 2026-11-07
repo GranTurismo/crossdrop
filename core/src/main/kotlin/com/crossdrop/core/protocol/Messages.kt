@@ -8,8 +8,9 @@ val protocolJson = Json {
     encodeDefaults = true
 }
 
-/** v2 adds content-defined-chunk delta/resume (CHUNK_MAP/CHUNK_REQ/CHUNK). */
-const val PROTOCOL_VERSION = 2
+/** v2 adds content-defined-chunk delta/resume (CHUNK_MAP/CHUNK_REQ/CHUNK).
+ *  v3 adds push mode (PUSH_CHUNK/PUSH_END) — no hashing before the first byte. */
+const val PROTOCOL_VERSION = 3
 
 @Serializable
 data class Hello(
@@ -45,6 +46,9 @@ data class Accept(
     val transferId: String,
     /** Receiver opts into the v2 chunked delta path (it has a DeltaReceiver). */
     val delta: Boolean = false,
+    /** v3: receiver holds nothing reusable for this offer, so the sender
+     *  streams chunks immediately instead of sending a manifest first. */
+    val push: Boolean = false,
 )
 
 @Serializable

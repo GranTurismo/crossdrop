@@ -12,13 +12,18 @@ import java.io.InputStream
  */
 class Blake3 {
 
-    private var cv = IV.copyOf()
+    private val cv = IV.copyOf()
     private val block = ByteArray(64)
     private var blockLen = 0
     private var blocksCompressed = 0
     private var chunkCounter = 0L
     private var chunksSoFar = 0L
     private val stack = ArrayDeque<IntArray>()   // subtree CVs, oldest → newest
+
+    // Hot-path scratch — compressBlock() runs once per 64 bytes and must not allocate.
+    private val state = IntArray(16)
+    private val msg = IntArray(16)
+    private val outWords = IntArray(16)
 
     // ------------------------------------------------------------- public --
 
@@ -55,8 +60,9 @@ class Blake3 {
 
     /** Compress the current full 64-byte block as a NON-final chunk block. */
     private fun compressBlock() {
-        cv = compress(cv, words(block, blockLen), chunkCounter, blockLen,
-            flags()).copyOfRange(0, 8)
+        loadWords(block, blockLen, msg)
+        compressInto(cv, msg, chunkCounter, blockLen, flags(), state, outWords)
+        outWords.copyInto(cv, 0, 0, 8)
         blocksCompressed++
         blockLen = 0
     }
@@ -75,7 +81,7 @@ class Blake3 {
             tc = tc shr 1
         }
         stack.addLast(cvOut)
-        cv = IV.copyOf()
+        IV.copyInto(cv)
         blocksCompressed = 0
         blockLen = 0
         chunkCounter++
@@ -115,11 +121,7 @@ class Blake3 {
 
     // ----------------------------------------------------------- internals --
 
-    private fun words(b: ByteArray, len: Int): IntArray {
-        val w = IntArray(16)
-        for (i in 0 until len) w[i / 4] = w[i / 4] or ((b[i].toInt() and 0xFF) shl (8 * (i % 4)))
-        return w
-    }
+    private fun words(b: ByteArray, len: Int): IntArray = IntArray(16).also { loadWords(b, len, it) }
 
     companion object {
         private val IV = intArrayOf(
@@ -153,23 +155,56 @@ class Blake3 {
             s[b] = (s[b] xor s[c]).rotateRight(7)
         }
 
+        /** Message-word order per round: SCHED[r][i] indexes the original block,
+         *  so no per-round permuted copy is needed. */
+        private val SCHED: Array<IntArray> = run {
+            val rounds = Array(7) { IntArray(16) }
+            for (i in 0 until 16) rounds[0][i] = i
+            for (r in 1 until 7) for (i in 0 until 16) rounds[r][i] = rounds[r - 1][PERM[i]]
+            rounds
+        }
+
+        /** Little-endian bytes → words; words past [len] are zero. */
+        private fun loadWords(b: ByteArray, len: Int, dst: IntArray) {
+            val full = len ushr 2
+            for (i in 0 until full) {
+                val j = i shl 2
+                dst[i] = (b[j].toInt() and 0xFF) or ((b[j + 1].toInt() and 0xFF) shl 8) or
+                    ((b[j + 2].toInt() and 0xFF) shl 16) or ((b[j + 3].toInt() and 0xFF) shl 24)
+            }
+            var next = full
+            val rem = len and 3
+            if (rem != 0) {
+                var w = 0
+                for (k in 0 until rem) w = w or ((b[(full shl 2) + k].toInt() and 0xFF) shl (8 * k))
+                dst[next++] = w
+            }
+            while (next < 16) dst[next++] = 0
+        }
+
         private fun compress(cv: IntArray, block: IntArray, counter: Long, blockLen: Int, flags: Int): IntArray {
-            val s = IntArray(16)
-            cv.copyInto(s, 0)
+            val out = IntArray(16)
+            compressInto(cv, block, counter, blockLen, flags, IntArray(16), out)
+            return out
+        }
+
+        /** [s] and [out] are caller-owned 16-word scratch; nothing is allocated. */
+        private fun compressInto(
+            cv: IntArray, block: IntArray, counter: Long, blockLen: Int, flags: Int,
+            s: IntArray, out: IntArray,
+        ) {
+            cv.copyInto(s, 0, 0, 8)
             s[8] = IV[0]; s[9] = IV[1]; s[10] = IV[2]; s[11] = IV[3]
             s[12] = counter.toInt(); s[13] = (counter ushr 32).toInt()
             s[14] = blockLen; s[15] = flags
-            var m = block
-            repeat(7) {
-                g(s, 0, 4, 8, 12, m[0], m[1]); g(s, 1, 5, 9, 13, m[2], m[3])
-                g(s, 2, 6, 10, 14, m[4], m[5]); g(s, 3, 7, 11, 15, m[6], m[7])
-                g(s, 0, 5, 10, 15, m[8], m[9]); g(s, 1, 6, 11, 12, m[10], m[11])
-                g(s, 2, 7, 8, 13, m[12], m[13]); g(s, 3, 4, 9, 14, m[14], m[15])
-                m = IntArray(16) { m[PERM[it]] }
+            for (r in 0 until 7) {
+                val m = SCHED[r]
+                g(s, 0, 4, 8, 12, block[m[0]], block[m[1]]); g(s, 1, 5, 9, 13, block[m[2]], block[m[3]])
+                g(s, 2, 6, 10, 14, block[m[4]], block[m[5]]); g(s, 3, 7, 11, 15, block[m[6]], block[m[7]])
+                g(s, 0, 5, 10, 15, block[m[8]], block[m[9]]); g(s, 1, 6, 11, 12, block[m[10]], block[m[11]])
+                g(s, 2, 7, 8, 13, block[m[12]], block[m[13]]); g(s, 3, 4, 9, 14, block[m[14]], block[m[15]])
             }
-            val out = IntArray(16)
             for (i in 0 until 8) { out[i] = s[i] xor s[i + 8]; out[i + 8] = s[i + 8] xor cv[i] }
-            return out
         }
 
         // ------------------------------------------------------------ util --

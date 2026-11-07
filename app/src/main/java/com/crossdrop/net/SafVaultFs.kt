@@ -219,6 +219,9 @@ class SafVaultFs(
         val dstClean = sanitize(dst)
         if (dstClean == srcClean || dstClean.startsWith("$srcClean/"))
             throw VaultError(409, "cannot move a folder into itself")
+        // overwrite deletes the destination first — never the root or an ancestor of the source
+        if (dstClean.isEmpty()) throw VaultError(403, "cannot replace drive root")
+        if (srcClean.startsWith("$dstClean/")) throw VaultError(409, "destination contains the source")
         val s = must(src)
         if (s.uri == root.uri) throw VaultError(403, "cannot move drive root")
         val (dstParent, dstLeaf) = parentOf(dst)
@@ -238,6 +241,8 @@ class SafVaultFs(
         val dstClean = sanitize(dst)
         if (dstClean == srcClean || dstClean.startsWith("$srcClean/"))
             throw VaultError(409, "cannot copy a folder into itself")
+        if (dstClean.isEmpty()) throw VaultError(403, "cannot replace drive root")
+        if (srcClean.startsWith("$dstClean/")) throw VaultError(409, "destination contains the source")
         val s = must(src)
         val (dstParent, dstLeaf) = parentOf(dst)
         dstParent.findFile(dstLeaf)?.let { existing ->

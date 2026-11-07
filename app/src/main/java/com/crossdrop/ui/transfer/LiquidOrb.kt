@@ -13,7 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -113,16 +112,6 @@ fun LiquidOrb(
             ),
             radius = r, center = center, style = Stroke(2.4f),
         )
-        // specular crescent
-        rotate(-38f, center) {
-            drawArc(
-                Brush.horizontalGradient(listOf(Color(0x99FFFFFF), Color.Transparent)),
-                startAngle = 180f, sweepAngle = 64f, useCenter = false,
-                topLeft = center - Offset(r * 0.72f, r * 0.86f),
-                size = Size(r * 1.44f, r * 0.66f),
-                style = Stroke(width = r * 0.075f),
-            )
-        }
 
         // -- liquid (counter-rotates against tilt → slosh)
         val orbPath = Path().apply {

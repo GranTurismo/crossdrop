@@ -47,6 +47,10 @@ class FileDeltaStore(
         return Baseline(file, indexed.chunks, indexed.root)
     }
 
+    override fun canPush(files: List<FileMeta>): Boolean =
+        (pool.listFiles() ?: emptyArray()).none { it.name.endsWith(".bin") } &&
+            files.none { targetFor(it).exists() }
+
     override fun publishIndex(file: File, chunks: List<ChunkEntry>, root: String) {
         writeIndex(indexFileFor(file), file, chunks, root)
     }

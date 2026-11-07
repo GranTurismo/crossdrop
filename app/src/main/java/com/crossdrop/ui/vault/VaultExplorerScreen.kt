@@ -1,5 +1,6 @@
 package com.crossdrop.ui.vault
 
+import androidx.core.net.toUri
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -182,7 +183,7 @@ fun VaultExplorerScreen(
                                     onStream(joinKey(state.path, e.name))?.let { url ->
                                         val i = Intent(Intent.ACTION_VIEW).apply {
                                             setDataAndType(
-                                                android.net.Uri.parse(url),
+                                                url.toUri(),
                                                 e.mime ?: "video/*")
                                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                         }

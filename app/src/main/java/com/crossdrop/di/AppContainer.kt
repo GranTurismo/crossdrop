@@ -1,5 +1,6 @@
 package com.crossdrop.di
 
+import androidx.core.content.edit
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.wifi.WifiManager
@@ -11,6 +12,8 @@ import com.crossdrop.core.CrossDrop
 import com.crossdrop.core.Peer
 import com.crossdrop.core.crypto.SessionIdentity
 import com.crossdrop.core.discovery.PeerDiscovery
+import com.crossdrop.core.discovery.PeerLiveness
+import com.crossdrop.core.discovery.mergePeers
 import com.crossdrop.core.transfer.TransferEngine
 import com.crossdrop.discovery.BleDiscovery
 import com.crossdrop.discovery.ManualDiscovery
@@ -52,7 +55,7 @@ class AppContainer(private val app: Context) {
 
     fun setDeviceName(name: String) {
         val clean = name.trim().ifBlank { return }
-        prefs.edit().putString("device_name", clean).apply()
+        prefs.edit { putString("device_name", clean) }
         _deviceName.value = clean
     }
 
@@ -112,14 +115,14 @@ class AppContainer(private val app: Context) {
     val bleEnabled: StateFlow<Boolean> = _bleEnabled
 
     fun setNsdEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("nsd_enabled", enabled).apply()
+        prefs.edit { putBoolean("nsd_enabled", enabled) }
         _nsdEnabled.value = enabled
         runCatching { if (enabled) nsdDiscovery.start() else nsdDiscovery.stop() }
         runCatching { if (enabled) vaultDiscovery.start() else vaultDiscovery.stop() }
     }
 
     fun setBleEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("ble_enabled", enabled).apply()
+        prefs.edit { putBoolean("ble_enabled", enabled) }
         _bleEnabled.value = enabled
         runCatching { if (enabled) bleDiscovery.start() else bleDiscovery.stop() }
     }
@@ -139,22 +142,14 @@ class AppContainer(private val app: Context) {
             writable = true, pin = false)
     }
 
-    /** All sightings merged by instanceId — a peer seen on BLE + NSD is one node. */
+    /**
+     * All sightings merged by instanceId — a peer seen on BLE + NSD is one node — minus peers
+     * whose listener no longer answers.
+     */
     val peers: StateFlow<Map<String, Peer>> = run {
-        val flows = discoveries.map { it.peers }
-        combine(flows) { arrays ->
-            val merged = linkedMapOf<String, Peer>()
-            for (map in arrays) for ((id, p) in map) {
-                val existing = merged[id]
-                merged[id] = if (existing == null) p else p.copy(
-                    endpoint = p.endpoint ?: existing.endpoint,
-                    sources = p.sources + existing.sources,
-                    rssi = p.rssi ?: existing.rssi,
-                    lastSeenMs = maxOf(p.lastSeenMs, existing.lastSeenMs),
-                )
-            }
-            merged
-        }.stateIn(scope, SharingStarted.Eagerly, emptyMap())
+        val sighted = combine(discoveries.map { it.peers }) { mergePeers(it.asList()) }
+            .stateIn(scope, SharingStarted.Eagerly, emptyMap())
+        PeerLiveness(scope, sighted).peers
     }
 
     /** Context accessor for places (Root UI) that need it for intents/services. */

@@ -1,0 +1,75 @@
+name: Desktop (Windows)
+
+# Builds the Windows installers for the :desktop app. jpackage can only produce an
+# MSI/EXE on Windows (it needs WiX), so this is how the Windows build is made and
+# verified — the same :core and :desktop test suites that pass on macOS run here too.
+#
+# Run it by hand (Actions -> "Desktop (Windows)" -> Run workflow) or push a tag named
+# desktop-v*. Either way the installers are only attached to the run as a downloadable
+# artifact (kept 90 days) — nothing is published or released automatically. They are
+# UNSIGNED: Windows SmartScreen warns on first run until they are code-signed.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "core/**"
+      - "gradle/**"
+      - "app/src/main/java/com/crossdrop/ui/**"   # shared UI is copied into :desktop at build time
+      - ".github/workflows/desktop-windows.yml"
+
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"          # a full JDK: jpackage ships with it
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # --configure-on-demand: only :core and :desktop are configured, so the Android
+      # module (and the Android SDK it needs) is not involved.
+      - name: Test
+        shell: pwsh
+        run: .\gradlew.bat --configure-on-demand :core:test :desktop:test --stacktrace
+
+      # jpackage needs WiX 3.x (candle.exe / light.exe) on PATH to build an MSI.
+      - name: Put WiX on PATH
+        shell: pwsh
+        run: |
+          $bin = if ($env:WIX) { Join-Path $env:WIX "bin" } else { $null }
+          if (-not ($bin -and (Test-Path (Join-Path $bin "candle.exe")))) {
+            choco install wixtoolset --no-progress -y
+            $bin = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+          }
+          if (-not (Test-Path (Join-Path $bin "candle.exe"))) { throw "WiX not found at $bin" }
+          $bin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "WiX: $bin"
+
+      - name: Package MSI and EXE
+        shell: pwsh
+        run: .\gradlew.bat --configure-on-demand :desktop:packageMsi :desktop:packageExe --stacktrace
+
+      - name: Installer sizes
+        shell: pwsh
+        run: Get-ChildItem desktop/build/compose/binaries/main/msi, desktop/build/compose/binaries/main/exe -Include *.msi,*.exe -Recurse | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CrossDrop-windows
+          if-no-files-found: error
+          path: |
+            desktop/build/compose/binaries/main/msi/*.msi
+            desktop/build/compose/binaries/main/exe/*.exe

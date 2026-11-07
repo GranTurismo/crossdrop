@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CrossDrop Promo</title>
+<link rel="stylesheet" href="css/promo.css">
+</head>
+<body>
+<div id="stage"></div>
+<script src="node_modules/qrcode-generator/qrcode.js"></script>
+<script src="js/vo.js"></script>
+<script src="js/timeline.js"></script>
+<script src="js/core.js"></script>
+<script src="js/draw.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/scenes1.js"></script>
+<script src="js/screens.js"></script>
+<script src="js/scenes2.js"></script>
+<script src="js/scenes3.js"></script>
+<script>
+  // Dev preview: index.html?play (real-time) or index.html?t=27.4 (single frame).
+  (function () {
+    const q = new URLSearchParams(location.search);
+    if (!q.has('play') && !q.has('t')) return;
+    window.ready().then(() => {
+      if (q.has('t')) { seek(parseFloat(q.get('t'))); return; }
+      const t0 = performance.now() - (parseFloat(q.get('from') || '0') * 1000);
+      const tick = () => { seek(((performance.now() - t0) / 1000) % DURATION); requestAnimationFrame(tick); };
+      tick();
+    });
+  })();
+</script>
+</body>
+</html>

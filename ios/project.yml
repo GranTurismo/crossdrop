@@ -1,0 +1,75 @@
+name: CrossDrop
+options:
+  bundleIdPrefix: com.granturismo
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+  developmentLanguage: en
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: C58ABB3474
+    CODE_SIGN_STYLE: Automatic
+packages:
+  CrossDropCore:
+    path: CrossDropCore
+targets:
+  CrossDrop:
+    type: application
+    supportedDestinations: [iOS, macCatalyst]
+    sources:
+      - path: CrossDrop
+    dependencies:
+      - package: CrossDropCore
+    info:
+      path: CrossDrop/Info.plist
+      properties:
+        CFBundleDisplayName: CrossDrop
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        LSApplicationCategoryType: public.app-category.utilities
+        ITSAppUsesNonExemptEncryption: false   # encryption only via Apple CryptoKit; matches the export-compliance answer in App Store Connect
+        UIUserInterfaceStyle: Dark
+        NSLocalNetworkUsageDescription: CrossDrop uses your local network to find nearby devices and send files directly to them — nothing leaves your Wi-Fi.
+        NSBonjourServices:
+          - _crossdrop._tcp
+          - _crossdrop-vault._tcp
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Any file
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - public.item
+              - public.data
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.crossdrop
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_PREVIEWS: YES
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: CrossDrop/CrossDrop-Mac.entitlements
+        ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
+schemes:
+  CrossDrop:
+    build:
+      targets:
+        CrossDrop: all
+    run:
+      config: Debug

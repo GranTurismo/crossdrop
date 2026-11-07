@@ -257,7 +257,7 @@ class HttpShareServer(
             if (b == '\n'.code && buf.size() >= 2 &&
                 buf.toByteArray()[buf.size() - 2] == '\n'.code.toByte()) break
         }
-        return buf.toString(Charsets.ISO_8859_1).takeIf { it.isNotBlank() }
+        return String(buf.toByteArray(), Charsets.ISO_8859_1).takeIf { it.isNotBlank() }
     }
 
     private fun urlDecode(s: String): String {
@@ -272,7 +272,7 @@ class HttpShareServer(
                     .onFailure { out.write(c.code); i++ }
             } else { out.write(c.code); i++ }
         }
-        return out.toString(Charsets.UTF_8)
+        return String(out.toByteArray(), Charsets.UTF_8)
     }
 
     private fun rfc5987(name: String): String {

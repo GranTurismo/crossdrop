@@ -11,17 +11,41 @@ import java.nio.file.StandardCopyOption
 /**
  * The built-in vault backend: a java.io.File tree under `filesDir/vault`,
  * jailed by canonical-path comparison. Upload staging is a hidden
- * `.staging` dir inside the jail.
+ * `.staging` dir inside the jail unless a separate staging root is given.
  */
-class FileVaultFs(rootDir: File) : VaultFs {
+class FileVaultFs(
+    rootDir: File,
+    private val stagingRoot: File? = null,
+    /**
+     * Also enforce Windows' naming rules (see [VaultFs.isWindowsUnsafeSegment]) and
+     * defeat 8.3 short-name aliases of hidden entries. On by default exactly when
+     * the host path separator is `\`; a parameter so the rules are testable anywhere.
+     */
+    private val windowsNames: Boolean = File.separatorChar == '\\',
+) : VaultFs {
 
     /** Canonical jail root — created on first use. */
     val root: File = rootDir.canonicalFile.apply { mkdirs() }
 
-    /** Upload staging area — lives inside the jail but is never listable. */
-    val stagingDir: File get() = File(root, ".staging").apply { mkdirs() }
+    /**
+     * Upload staging area. By default a hidden dir inside the jail (never
+     * listable); hosts that share a user's own folder pass [stagingRoot] so
+     * nothing but the user's files ever appears in it.
+     */
+    val stagingDir: File get() = (stagingRoot ?: File(root, ".staging")).apply { mkdirs() }
 
-    private val rootPrefix = root.path + File.separator
+    // A filesystem/drive root ("/" or "C:\") already ends in the separator.
+    private val rootPrefix = if (root.path.endsWith(File.separator)) root.path else root.path + File.separator
+
+    override fun sanitize(rawPath: String): String {
+        val clean = VaultFs.sanitizePath(rawPath)
+        if (windowsNames) {
+            clean.split('/').firstOrNull { VaultFs.isWindowsUnsafeSegment(it) }?.let {
+                throw VaultError(400, "\"$it\" is not a valid file name on a Windows host")
+            }
+        }
+        return clean
+    }
 
     /**
      * Resolve a client-supplied relative path to a jailed [File].
@@ -32,6 +56,14 @@ class FileVaultFs(rootDir: File) : VaultFs {
         val target = if (clean.isEmpty()) root else File(root, clean).canonicalFile
         if (target != root && !target.path.startsWith(rootPrefix)) {
             throw VaultError(403, "path escapes vault root")
+        }
+        // Win32 canonicalization expands 8.3 short names, so `STAGIN~1` reaches the
+        // hidden `.staging` dir that the dot-segment rule on the raw path never saw.
+        // Re-check hidden-ness on what the path actually resolved to.
+        if (windowsNames && target != root &&
+            target.path.removePrefix(rootPrefix).split(File.separatorChar).any { it.startsWith(".") }
+        ) {
+            throw VaultError(403, "hidden path")
         }
         return target
     }
@@ -147,9 +179,16 @@ class FileVaultFs(rootDir: File) : VaultFs {
         if (s == root) throw VaultError(403, "cannot move vault root")
         if (!s.exists()) throw VaultError(404, "not found")
         val d = resolve(dst)
-        if (d == s) throw VaultError(400, "same source and destination")
+        if (d == s) {
+            if (renameCaseOnly(s, src, dst)) return
+            throw VaultError(400, "same source and destination")
+        }
         if (d.path.startsWith(s.path + File.separator))
             throw VaultError(409, "cannot move a folder into itself")
+        // overwrite=true would delete the destination first — never the root or an ancestor of the source.
+        if (d == root) throw VaultError(403, "cannot replace vault root")
+        if (s.path.startsWith(d.path + File.separator))
+            throw VaultError(409, "destination contains the source")
         if (d.exists()) {
             if (!overwrite) throw VaultError(412, "destination exists")
             if (!d.deleteRecursively()) throw VaultError(500, "cannot replace destination")
@@ -171,6 +210,9 @@ class FileVaultFs(rootDir: File) : VaultFs {
         if (d == s) throw VaultError(400, "same source and destination")
         if (d.path.startsWith(s.path + File.separator))
             throw VaultError(409, "cannot copy a folder into itself")
+        if (d == root) throw VaultError(403, "cannot replace vault root")
+        if (s.path.startsWith(d.path + File.separator))
+            throw VaultError(409, "destination contains the source")
         if (d.exists()) {
             if (!overwrite) throw VaultError(412, "destination exists")
             if (!d.deleteRecursively()) throw VaultError(500, "cannot replace destination")
@@ -179,6 +221,27 @@ class FileVaultFs(rootDir: File) : VaultFs {
         val parent = d.parentFile
         if (parent == null || !parent.isDirectory) throw VaultError(409, "parent missing")
         if (s.isDirectory) s.copyRecursively(d, true) else s.copyTo(d, true)
+    }
+
+    /**
+     * On a case-insensitive filesystem (NTFS, default APFS) canonicalization maps `photo.jpg` and
+     * `Photo.jpg` to one File, so a case-only rename looks like "same source and destination" even
+     * though it is a legitimate rename. Renaming a file onto itself is a no-op there, so go through
+     * a temporary sibling name. Returns false when [src]→[dst] is not a case-only rename.
+     */
+    private fun renameCaseOnly(s: File, src: String, dst: String): Boolean {
+        val from = sanitize(src)
+        val to = sanitize(dst)
+        val newName = to.substringAfterLast('/')
+        if (from == to || !from.equals(to, ignoreCase = true) || newName == s.name) return false
+        val parent = s.parentFile ?: return false
+        val tmp = File(parent, ".rename-" + java.lang.Long.toHexString(System.nanoTime()))
+        if (!s.renameTo(tmp)) throw VaultError(500, "rename failed")
+        if (!tmp.renameTo(File(parent, newName))) {
+            tmp.renameTo(s)                      // put it back; never leave the file under a temp name
+            throw VaultError(500, "rename failed")
+        }
+        return true
     }
 
     /** Parent must stay inside the jail too (symlinked parents). */

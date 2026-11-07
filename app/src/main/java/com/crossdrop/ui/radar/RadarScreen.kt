@@ -108,8 +108,9 @@ fun RadarScreen(
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { dispatch(it) }
+    // Default maxItems = the system picker's own ceiling (100+ on Android 13+).
     val mediaPicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.PickMultipleVisualMedia(maxItems = 10)
+        ActivityResultContracts.PickMultipleVisualMedia()
     ) { dispatch(it) }
 
     /** Peer tap → send chooser, or the vault mount sheet for beacons. */

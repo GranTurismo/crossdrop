@@ -8,6 +8,8 @@ import com.crossdrop.core.delta.ChunkCodec
 import com.crossdrop.core.delta.ChunkEntry
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.delta.FastCdc
+import java.io.EOFException
+import java.io.File
 import com.crossdrop.core.protocol.*
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +78,8 @@ class TransferEngine(
     private val deviceName: () -> String,
     private val instanceId: String,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Advertised protocol version — tests pin this to simulate older peers. */
+    private val protocolVersion: Int = PROTOCOL_VERSION,
 ) {
     // ------------------------------------------------------------- sender --
 
@@ -94,7 +98,7 @@ class TransferEngine(
             val offer = Offer(UUID.randomUUID().toString(), files.map { it.meta })
 
             // -- handshake
-            io.write(FrameType.HELLO, Hello(version = PROTOCOL_VERSION, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
             val (ackType, ackPayload) = io.read()
             if (ackType != FrameType.HELLO_ACK) throw ProtocolException("expected HELLO_ACK, got $ackType")
             val ack = ackPayload.decode<HelloAck>()
@@ -115,8 +119,11 @@ class TransferEngine(
                 else -> throw ProtocolException("expected ACCEPT/DECLINE")
             }
 
-            // Receiver opts in: v2 delta only when both sides agreed.
-            if (ack.version >= 2 && ansPayload.decode<Accept>().delta)
+            // Receiver opts in: v2 delta / v3 push only when both sides agreed.
+            val accept = ansPayload.decode<Accept>()
+            if (ack.version >= 3 && accept.delta && accept.push)
+                sendPush(io, offer, files, started) { emit(it) }
+            else if (ack.version >= 2 && accept.delta)
                 sendDelta(io, offer, files, started) { emit(it) }
             else sendMonolithic(io, offer, files, started) { emit(it) }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -260,6 +267,63 @@ class TransferEngine(
         // -- completion: receiver verifies assembled roots, echoes its own
         emit(TransferEvent.Progress(sent + cached, total, 0,
             files.lastOrNull()?.meta ?: FileMeta("", 0), cached))
+        finishSend(io, offer, roots, started, emit)
+    }
+
+    /**
+     * v3: no manifest, no hashing before the first byte. Each file is chunked
+     * and hashed in a single streaming pass and every chunk goes out the moment
+     * it is cut, so hashing overlaps the network instead of preceding it. The
+     * receiver proved it holds nothing reusable (Accept.push), so the up-front
+     * dedupe pass would only have cost time.
+     */
+    private suspend fun sendPush(
+        io: FrameIO, offer: Offer, files: List<OutgoingFile>, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
+        val total = files.sumOf { it.meta.size }.coerceAtLeast(1)
+        val roots = ArrayList<String>(files.size)
+        var sent = 0L
+        var lastEmit = 0L
+        var windowStart = System.nanoTime()
+        var windowBytes = 0L
+
+        for ((index, file) in files.withIndex()) {
+            val fileHasher = Blake3()
+            var count = 0
+            var fileBytes = 0L
+            file.open().use { input ->
+                for ((bytes, _) in FastCdc.chunks(input)) {
+                    val hash = Blake3.hash(bytes)
+                    fileHasher.update(bytes)
+                    io.write(FrameType.PUSH_CHUNK, ChunkCodec.encodePush(index, hash, bytes))
+                    count++; fileBytes += bytes.size
+                    sent += bytes.size; windowBytes += bytes.size
+                    val now = System.currentTimeMillis()
+                    val windowNs = System.nanoTime() - windowStart
+                    if (now - lastEmit >= 100) {
+                        val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
+                        emit(TransferEvent.Progress(sent, total, bps, file.meta))
+                        lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
+                    }
+                }
+            }
+            if (fileBytes != file.meta.size)
+                throw ProtocolException("${file.meta.name} changed mid-transfer")
+            val root = fileHasher.digest()
+            io.write(FrameType.PUSH_END, ChunkCodec.encodePushEnd(index, count, root))
+            roots += root.toHex()
+        }
+
+        emit(TransferEvent.Progress(sent, total, 0, files.lastOrNull()?.meta ?: FileMeta("", 0)))
+        finishSend(io, offer, roots, started, emit)
+    }
+
+    /** Shared v2/v3 tail: send our BLAKE3 roots, compare the receiver's echo. */
+    private suspend fun finishSend(
+        io: FrameIO, offer: Offer, roots: List<String>, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
         io.write(FrameType.DONE, Done(offer.transferId, "", roots).encode())
         val (doneType, donePayload) = io.read()
         if (doneType == FrameType.CANCEL) { emit(TransferEvent.Cancelled); return }
@@ -303,6 +367,7 @@ class TransferEngine(
     fun receive(socket: Socket, decide: suspend (peerName: String, offer: Offer) -> ReceiveDecision): Flow<TransferEvent> = flow {
         val started = System.currentTimeMillis()
         var io: FrameIO? = null
+        var pushMode = false
         try {
             socket.tcpNoDelay = true
             socket.soTimeout = CONTROL_TIMEOUT_MS
@@ -310,14 +375,20 @@ class TransferEngine(
             val io = io!!
 
             // -- handshake
-            val (helloType, helloPayload) = io.read()
+            val (helloType, helloPayload) = try {
+                io.read()
+            } catch (_: EOFException) {
+                // Connected, said nothing, left: a liveness probe (see PeerLiveness) or a port scan.
+                // Not a session — surfacing it would flash a failed transfer on the UI.
+                return@flow
+            }
             if (helloType != FrameType.HELLO) throw ProtocolException("expected HELLO, got $helloType")
             val hello = helloPayload.decode<Hello>()
             if (hello.version < 1)
                 throw ProtocolException("protocol v${hello.version} unsupported")
             // A newer peer clamps down to what we speak rather than failing.
-            val negotiated = minOf(hello.version, PROTOCOL_VERSION)
-            io.write(FrameType.HELLO_ACK, HelloAck(version = PROTOCOL_VERSION, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            val negotiated = minOf(hello.version, protocolVersion)
+            io.write(FrameType.HELLO_ACK, HelloAck(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
             val keys = SessionCrypto.deriveSession(identity, unb64(hello.publicKeyB64), isInitiator = false)
             io.writeCipher = com.crossdrop.core.crypto.RecordCipher(keys.sendKey)
             io.readCipher = com.crossdrop.core.crypto.RecordCipher(keys.recvKey)
@@ -335,12 +406,18 @@ class TransferEngine(
                     emit(TransferEvent.DeclinedByPeer)
                     return@flow
                 }
-                is ReceiveDecision.Accept -> io.write(FrameType.ACCEPT,
-                    Accept(offer.transferId, delta = negotiated >= 2 && decision.delta != null).encode())
+                is ReceiveDecision.Accept -> {
+                    val delta = negotiated >= 2 && decision.delta != null
+                    val push = negotiated >= 3 && decision.delta?.canPush(offer.files) == true
+                    io.write(FrameType.ACCEPT,
+                        Accept(offer.transferId, delta = delta, push = push).encode())
+                    pushMode = push
+                }
             }
 
             if (negotiated >= 2 && decision.delta != null) {
-                receiveDelta(socket, io, offer, decision.delta, started) { emit(it) }
+                if (pushMode) receivePush(io, offer, decision.delta, started) { emit(it) }
+                else receiveDelta(socket, io, offer, decision.delta, started) { emit(it) }
             } else {
                 receiveMonolithic(io, offer, decision.sinkFor, started) { emit(it) }
             }
@@ -581,6 +658,119 @@ class TransferEngine(
         }
 
         // -- 6. final DONE with our BLAKE3 roots; sender compares
+        finishReceive(io, offer, delta, roots, started, emit)
+    }
+
+    /**
+     * v3 push: chunks arrive unannounced, straight into a `.part` file. Each is
+     * hash-verified as it lands; PUSH_END carries the sender's whole-file root.
+     * Verified files are moved into place and indexed like v2 output, so later
+     * re-shares delta against them. If the session dies mid-file, the chunks
+     * received so far are salvaged into the staging pool — the next attempt
+     * sees a non-empty pool, stays on the manifest path, and resumes.
+     */
+    private suspend fun receivePush(
+        io: FrameIO, offer: Offer, delta: DeltaReceiver, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
+        val total = offer.files.sumOf { it.size }.coerceAtLeast(1)
+        val roots = ArrayList<String>(offer.files.size)
+        var received = 0L
+        var lastEmit = 0L
+        var windowStart = System.nanoTime()
+        var windowBytes = 0L
+
+        for ((index, meta) in offer.files.withIndex()) {
+            val target = delta.targetFor(meta)
+            val part = File(target.parentFile, "${target.name}.${System.nanoTime()}.part")
+            val manifest = ArrayList<ChunkEntry>()
+            val fileHasher = Blake3()
+            var fileBytes = 0L
+            var done = false
+            val out = part.outputStream().buffered(CHUNK_SIZE)
+            try {
+                loop@ while (true) {
+                    val (type, payload) = io.read()
+                    when (type) {
+                        FrameType.PUSH_CHUNK -> {
+                            val c = ChunkCodec.decodePush(payload)
+                            if (c.fileIndex != index)
+                                throw ProtocolException("unexpected push chunk for file ${c.fileIndex}")
+                            if (fileBytes + c.payload.size > meta.size)
+                                throw ProtocolException("${meta.name} overruns its offered size")
+                            val hash = Blake3.hash(c.payload)
+                            if (!hash.contentEquals(c.hash))
+                                throw ProtocolException("push chunk failed hash check")
+                            out.write(c.payload)
+                            fileHasher.update(c.payload)
+                            manifest += ChunkEntry(c.payload.size, hash)
+                            fileBytes += c.payload.size
+                            received += c.payload.size; windowBytes += c.payload.size
+                            val now = System.currentTimeMillis()
+                            val windowNs = System.nanoTime() - windowStart
+                            if (now - lastEmit >= 100) {
+                                val bps = if (windowNs > 0) (windowBytes * 1_000_000_000L / windowNs) else 0
+                                emit(TransferEvent.Progress(received, total, bps, meta))
+                                lastEmit = now; windowStart = System.nanoTime(); windowBytes = 0
+                            }
+                        }
+                        FrameType.PUSH_END -> {
+                            val end = ChunkCodec.decodePushEnd(payload)
+                            if (end.fileIndex != index || end.count != manifest.size || fileBytes != meta.size)
+                                throw ProtocolException("${meta.name} ended inconsistently")
+                            val root = fileHasher.digest()
+                            if (!root.contentEquals(end.root))
+                                throw ProtocolException("${meta.name} failed integrity check")
+                            out.close()
+                            java.nio.file.Files.move(part.toPath(), target.toPath(),
+                                java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                            val hex = root.toHex()
+                            delta.publishIndex(target, manifest, hex)
+                            roots += hex
+                            done = true
+                            break@loop
+                        }
+                        FrameType.CANCEL -> { emit(TransferEvent.Cancelled); return }
+                        else -> throw ProtocolException("expected PUSH_CHUNK, got $type")
+                    }
+                }
+            } finally {
+                runCatching { out.close() }
+                if (!done) salvage(part, manifest, delta.stagingPool())
+                part.delete()
+            }
+        }
+
+        emit(TransferEvent.Progress(received, total, 0, offer.files.lastOrNull() ?: FileMeta("", 0)))
+        finishReceive(io, offer, delta, roots, started, emit)
+    }
+
+    /** Move the verified chunks of an interrupted push into the staging pool,
+     *  hash-named, so a retry resumes instead of starting over. Best effort. */
+    private fun salvage(part: File, chunks: List<ChunkEntry>, pool: File) {
+        if (chunks.isEmpty()) return
+        runCatching {
+            pool.mkdirs()
+            part.inputStream().buffered(CHUNK_SIZE).use { input ->
+                for (e in chunks) {
+                    val bytes = ByteArray(e.len)
+                    readFully(input, bytes)
+                    val bin = File(pool, "${e.key}.bin")
+                    if (bin.exists()) continue
+                    val tmp = File(pool, "${e.key}.${System.nanoTime()}.tmp")
+                    tmp.writeBytes(bytes)
+                    java.nio.file.Files.move(tmp.toPath(), bin.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                }
+            }
+        }
+    }
+
+    /** Shared v2/v3 tail: await the sender's roots, echo ours, compare. */
+    private suspend fun finishReceive(
+        io: FrameIO, offer: Offer, delta: DeltaReceiver, roots: List<String>, started: Long,
+        emit: suspend (TransferEvent) -> Unit,
+    ) {
         val (type, payload) = io.read()
         if (type == FrameType.CANCEL) { emit(TransferEvent.Cancelled); return }
         if (type != FrameType.DONE) throw ProtocolException("expected DONE, got $type")

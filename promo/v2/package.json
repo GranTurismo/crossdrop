@@ -1,0 +1,10 @@
+{
+  "name": "crossdrop-promo-v2",
+  "private": true,
+  "type": "module",
+  "description": "Frame-exact promo video renderer for CrossDrop (HTML scenes -> headless Chromium -> ffmpeg)",
+  "dependencies": {
+    "playwright-core": "1.64.1",
+    "qrcode-generator": "1.4.4"
+  }
+}
