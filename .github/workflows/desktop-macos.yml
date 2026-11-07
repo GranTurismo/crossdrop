@@ -1,0 +1,120 @@
+name: Desktop (macOS)
+
+# Builds the macOS DMG for the :desktop app on GitHub-hosted Macs — one per CPU architecture,
+# because a JVM app bundles an arch-specific Java runtime and Skia (an Apple Silicon DMG does not
+# run on Intel, and vice versa).
+#
+# With the MACOS_* secrets below configured, the app is signed with a "Developer ID Application"
+# certificate, notarized by Apple and the ticket stapled to the DMG. Without them (forks, first runs)
+# the DMG is built UNSIGNED, exactly like a local `./gradlew :desktop:packageDmg`. See desktop/RELEASE.md
+# for how to create each secret.
+#
+# Run it by hand (Actions -> "Desktop (macOS)" -> Run workflow) or push a tag named desktop-v*.
+# Either way the DMGs are only attached to the run as a downloadable artifact (kept 90 days) —
+# nothing is published or released automatically.
+#
+# Deliberately not triggered by pull requests: macOS minutes bill at 10x on private repositories.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["desktop-v*"]
+
+# Nothing here writes to the repository.
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Runner labels change as GitHub retires images; if a job never starts, check
+          # https://docs.github.com/actions/using-github-hosted-runners for the current names.
+          - { os: macos-14, arch: arm64 }
+          - { os: macos-15-intel, arch: x64 }
+    env:
+      # Mapped to job-level env so steps can test "is this secret configured?" (the secrets
+      # context is not available in `if:`). Empty on forks => unsigned build.
+      MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+      MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+      MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+      MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"          # a full JDK: jpackage ships with it
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # --configure-on-demand: only :core and :desktop are configured, so the Android
+      # module (and the Android SDK it needs) is not involved.
+      - name: Test
+        run: ./gradlew --configure-on-demand :core:test :desktop:test --stacktrace
+
+      # The certificate lives only in a throw-away keychain that is deleted at the end of the job.
+      - name: Import Developer ID certificate
+        if: env.MACOS_CERTIFICATE != ''
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/release.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          # Let codesign use the key without an interactive "allow access" prompt.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          # Put it first in the search list so jpackage/codesign find the identity.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$KEYCHAIN"
+          echo "MACOS_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Package DMG
+        run: ./gradlew --configure-on-demand :desktop:packageDmg --stacktrace
+
+      # Submits to Apple's notary service, waits for the verdict, then staples the ticket.
+      - name: Notarize DMG
+        if: env.MACOS_CERTIFICATE != '' && env.MACOS_NOTARY_APPLE_ID != ''
+        run: ./gradlew --configure-on-demand :desktop:notarizeDmg --stacktrace
+
+      - name: Verify
+        if: env.MACOS_CERTIFICATE != '' && env.MACOS_NOTARY_APPLE_ID != ''
+        run: |
+          set -euo pipefail
+          DMG="$(ls desktop/build/compose/binaries/main/dmg/*.dmg)"
+          xcrun stapler validate "$DMG"
+          MOUNT="$(hdiutil attach "$DMG" -nobrowse -readonly | tail -1 | cut -f3-)"
+          trap 'hdiutil detach "$MOUNT" -quiet || true' EXIT
+          spctl --assess --type execute --verbose=2 "$MOUNT/CrossDrop.app"
+          codesign --verify --deep --strict --verbose=2 "$MOUNT/CrossDrop.app"
+
+      # Both architectures produce "CrossDrop-<version>.dmg"; tell them apart.
+      - name: Name the DMG by architecture
+        run: |
+          set -euo pipefail
+          cd desktop/build/compose/binaries/main/dmg
+          for f in *.dmg; do mv "$f" "${f%.dmg}-${{ matrix.arch }}.dmg"; done
+          ls -lh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CrossDrop-macos-${{ matrix.arch }}
+          if-no-files-found: error
+          path: desktop/build/compose/binaries/main/dmg/*.dmg
+
+      - name: Remove the signing keychain
+        if: always() && env.MACOS_KEYCHAIN != ''
+        run: security delete-keychain "$MACOS_KEYCHAIN" || true

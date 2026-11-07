@@ -1,7 +1,7 @@
 # CrossDrop
 
 Ad-free, privacy-first local file sharing between nearby devices. Android first,
-with a macOS desktop app and an iOS app (`ios/`, SwiftUI over a wire-compatible Swift
+with macOS and Windows desktop apps and an iOS app (`ios/`, SwiftUI over a wire-compatible Swift
 port of the protocol core — see AGENTS.md). The Kotlin core (`:core`) stays the
 reference implementation; the Swift port is interop-tested against it.
 
@@ -68,3 +68,7 @@ orb does the rest.
 | `app/.../ui/transfers/`, `ui/inbox/`, `ui/settings/` | tab screens |
 | `app/.../storage/` | `InboxStore` (staging + shred), `HistoryStore` (transfer log) |
 | `promo/` | Self-contained animated promo — open `index.html`, plays like a ~55s video loop |
+
+## License
+
+CrossDrop is released under the [Apache License 2.0](LICENSE).
