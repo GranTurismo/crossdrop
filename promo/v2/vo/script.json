@@ -1,0 +1,184 @@
+{
+ "_doc": "Voice-over lines. 'at' = when the line (or its 'anchor' word) should start, 'end' = hard limit. Times in seconds on the promo timeline (js/timeline.js). 'say' may carry Kokoro phoneme hints: [word](/phonemes/).",
+ "lines": [
+  {
+   "id": "hook1",
+   "at": 0.85,
+   "end": 3.65,
+   "text": "Your devices live in different worlds."
+  },
+  {
+   "id": "hook2",
+   "at": 4.05,
+   "end": 7.3,
+   "text": "And sharing between them? It shouldn't be this hard."
+  },
+  {
+   "id": "logo1",
+   "at": 9.0,
+   "end": 9.75,
+   "anchor": "CrossDrop",
+   "text": "Meet CrossDrop."
+  },
+  {
+   "id": "logo2",
+   "at": 9.95,
+   "end": 12.1,
+   "text": "Share anything, with any device nearby."
+  },
+  {
+   "id": "plat",
+   "at": 12.25,
+   "end": 16.8,
+   "text": "One app, on every device. Mac, Android, iPhone, and Windows."
+  },
+  {
+   "id": "radar1",
+   "at": 18.5,
+   "end": 22.2,
+   "text": "Open it, and nearby devices simply appear on your radar."
+  },
+  {
+   "id": "radar2",
+   "at": 22.45,
+   "end": 25.3,
+   "text": "No pairing. No accounts. No cables."
+  },
+  {
+   "id": "send1",
+   "at": 27.0,
+   "end": 28.9,
+   "anchor": "Tap",
+   "text": "Tap a device, pick your photos,"
+  },
+  {
+   "id": "send2",
+   "at": 29.3,
+   "end": 33.8,
+   "text": "and they fly across at full Wi-Fi speed. Device to device, never through the cloud."
+  },
+  {
+   "id": "send3",
+   "at": 34.1,
+   "end": 34.9,
+   "anchor": "Done",
+   "text": "Done."
+  },
+  {
+   "id": "crypto",
+   "at": 36.1,
+   "end": 39.8,
+   "text": "End-to-end encrypted. Nothing in between. Not even us."
+  },
+  {
+   "id": "delta1",
+   "at": 40.15,
+   "end": 41.75,
+   "text": "Edited a huge video?",
+   "rise": {
+    "word": "video",
+    "st": 3.0
+   }
+  },
+  {
+   "id": "delta2",
+   "at": 42.0,
+   "end": 44.0,
+   "text": "Only the changes travel."
+  },
+  {
+   "id": "delta3",
+   "at": 44.62,
+   "end": 45.45,
+   "text": "Wi-Fi dropped?"
+  },
+  {
+   "id": "delta4",
+   "at": 45.65,
+   "end": 47.6,
+   "text": "It picks up right where it left off."
+  },
+  {
+   "id": "any1",
+   "at": 48.45,
+   "end": 49.9,
+   "text": "No app? No problem.",
+   "rise": {
+    "word": "app",
+    "st": 3.0,
+    "nth": 0
+   }
+  },
+  {
+   "id": "any2",
+   "at": 50.1,
+   "end": 54.4,
+   "text": "Anyone nearby can scan the code, and download right in their browser."
+  },
+  {
+   "id": "drive1",
+   "at": 56.3,
+   "end": 58.15,
+   "text": "Turn your phone into a wireless drive."
+  },
+  {
+   "id": "drive2",
+   "at": 58.25,
+   "end": 60.5,
+   "text": "Browse it from any Mac, PC, or browser,"
+  },
+  {
+   "id": "drive3",
+   "at": 60.62,
+   "end": 62.75,
+   "text": "and stream videos without copying a thing."
+  },
+  {
+   "id": "no1",
+   "at": 63.0,
+   "end": 63.75,
+   "beat": true,
+   "text": "No cloud."
+  },
+  {
+   "id": "no2",
+   "at": 63.75,
+   "end": 64.5,
+   "beat": true,
+   "text": "No accounts."
+  },
+  {
+   "id": "no3",
+   "at": 64.5,
+   "end": 65.25,
+   "beat": true,
+   "text": "No ads."
+  },
+  {
+   "id": "no4",
+   "at": 65.25,
+   "end": 66.0,
+   "beat": true,
+   "text": "No tracking."
+  },
+  {
+   "id": "drop",
+   "at": 66.05,
+   "end": 67.4,
+   "anchor": "Just",
+   "text": "Just drop it."
+  },
+  {
+   "id": "outro1",
+   "at": 68.4,
+   "end": 69.1,
+   "text": "CrossDrop."
+  },
+  {
+   "id": "outro2",
+   "at": 69.2,
+   "end": 72.0,
+   "text": "Available on Android, iOS, Mac, and Windows."
+  }
+ ]
+}
