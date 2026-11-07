@@ -102,6 +102,34 @@ interface VaultFs {
             return out.joinToString("/")
         }
 
+        // COM¹²³ / LPT¹²³ (superscript digits) are reserved too; CONIN$ / CONOUT$ are the console handles.
+        private val WINDOWS_DEVICE = Regex(
+            "^(CON|PRN|AUX|NUL|COM[1-9\u00b9\u00b2\u00b3]|LPT[1-9\u00b9\u00b2\u00b3]|CONIN\\$|CONOUT\\$)$",
+            RegexOption.IGNORE_CASE,
+        )
+
+        /**
+         * True when [name] is a Windows device name — judged the way Win32 does: any extension
+         * and trailing spaces are ignored, so `CON`, `con.txt` and `Nul .log` all qualify.
+         */
+        fun isWindowsDeviceName(name: String): Boolean =
+            WINDOWS_DEVICE.matches(name.substringBefore('.').trimEnd())
+
+        /**
+         * True for one path segment that a Windows host cannot store as-is or
+         * would silently alias: control chars and `< > : " | ? *` (`:` opens an
+         * NTFS alternate data stream, `foo.txt:hidden`), a trailing dot/space
+         * (dropped by Win32, so `a.` == `a`), and device names (`CON`, `NUL`,
+         * `COM1`… with any extension) that open the device instead of a file.
+         * [segment] is one already-split, non-empty piece of a [sanitizePath] result.
+         */
+        fun isWindowsUnsafeSegment(segment: String): Boolean {
+            if (segment.isEmpty()) return false
+            if (segment.any { it < ' ' || it in "<>:\"|?*" }) return true
+            if (segment.last() == '.' || segment.last() == ' ') return true
+            return isWindowsDeviceName(segment)
+        }
+
         fun mimeTypeOf(name: String): String {
             val ext = name.substringAfterLast('.', "").lowercase()
             return MIME[ext] ?: "application/octet-stream"

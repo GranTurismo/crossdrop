@@ -11,6 +11,7 @@ junit = "4.13.2"
 compose-multiplatform = "1.9.3"
 jmdns = "3.5.9"
 slf4j = "2.0.16"
+jna = "5.17.0"
 
 [libraries]
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
@@ -34,6 +35,8 @@ bcprov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "b
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 jmdns = { group = "org.jmdns", name = "jmdns", version.ref = "jmdns" }
 slf4j-nop = { group = "org.slf4j", name = "slf4j-nop", version.ref = "slf4j" }
+# Windows keep-awake (SetThreadExecutionState) in :desktop; unused on macOS.
+jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

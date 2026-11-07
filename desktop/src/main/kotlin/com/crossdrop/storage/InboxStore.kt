@@ -1,6 +1,7 @@
 package com.crossdrop.storage
 
 import com.crossdrop.core.protocol.FileMeta
+import com.crossdrop.core.vault.VaultFs
 import com.crossdrop.platform.AppDirs
 import java.io.File
 import java.io.FileOutputStream
@@ -43,8 +44,13 @@ class InboxStore(private val root: File = AppDirs.inbox) {
         val safe = sanitize(name)
         var target = File(dir, safe)
         var i = 1
+        // "name (1).ext", or "name (1)" when there is no extension — never a
+        // trailing dot, which Windows would silently drop and alias.
+        val dot = safe.lastIndexOf('.')
+        val stem = if (dot > 0) safe.substring(0, dot) else safe
+        val ext = if (dot > 0) safe.substring(dot) else ""
         while (target.exists()) {
-            target = File(dir, "${safe.substringBeforeLast('.')} ($i).${safe.substringAfterLast('.', "")}")
+            target = File(dir, "$stem ($i)$ext")
             i++
         }
         return target
@@ -74,9 +80,26 @@ class InboxStore(private val root: File = AppDirs.inbox) {
         File(dir, ".idx").listFiles()?.forEach { it.delete() }
     }
 
-    private fun sanitize(name: String): String =
-        name.substringAfterLast('/').substringAfterLast('\\')
-            .replace(Regex("[^A-Za-z0-9._ -]"), "_")
-            .ifBlank { "file" }
-            .take(96)
+    private fun sanitize(name: String): String = sanitizeName(name)
+
+    companion object {
+        /**
+         * Local filename for a name chosen by a remote peer. Safe on every OS
+         * the inbox can run on: no path separators, only `[A-Za-z0-9._ -]`
+         * (so no `:` — an NTFS alternate data stream — and no wildcard or
+         * shell characters), no trailing dots/spaces (Windows drops them, so
+         * "a." would alias "a"), and no Windows device names (`CON`, `NUL`,
+         * `COM1`… — with any extension — which open the device, not a file).
+         */
+        internal fun sanitizeName(name: String): String {
+            fun tidy(s: String) = s.trimEnd('.', ' ').ifBlank { "file" }
+            val s = tidy(
+                tidy(
+                    name.substringAfterLast('/').substringAfterLast('\\')
+                        .replace(Regex("[^A-Za-z0-9._ -]"), "_"),
+                ).take(96),    // take() can expose a new trailing dot/space
+            )
+            return if (VaultFs.isWindowsDeviceName(s)) "_$s" else s
+        }
+    }
 }

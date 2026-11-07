@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.net.VaultHostManager
+import com.crossdrop.platform.Platform
 import com.crossdrop.platform.SystemActions
 import java.io.File
 import com.crossdrop.ui.theme.DeepSpace
@@ -117,7 +118,7 @@ private fun StartCard(onStart: (Boolean, Boolean, File?) -> Boolean) {
     }
 
     Text(
-        "Turn this Mac into a drive",
+        "Turn this ${Platform.current.computerNoun} into a drive",
         color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
     )
     Spacer(Modifier.height(6.dp))

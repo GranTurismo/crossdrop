@@ -6,6 +6,7 @@ import com.crossdrop.core.vault.VaultServer
 import com.crossdrop.discovery.VaultAdvertiser
 import com.crossdrop.platform.AppDirs
 import com.crossdrop.platform.Log
+import com.crossdrop.platform.Platform
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,17 +55,58 @@ class VaultHostManager(
         private set
 
     /**
-     * Folders that must never be a drive root: the filesystem root, the home
-     * folder itself (it holds dotfiles, keys, Library), and anything inside
-     * Library or CrossDrop's own state. Sub-folders like Documents are fine.
+     * Folders that must never be a drive root: the filesystem/drive root, the
+     * home folder itself (it holds dotfiles, keys, Library/AppData), and
+     * anything inside Library, AppData, the OS directories (Windows, Program
+     * Files, ProgramData) or CrossDrop's own state. Sub-folders like Documents
+     * are fine.
      */
     fun isShareable(dir: File): Boolean {
         val f = runCatching { dir.canonicalFile }.getOrNull() ?: return false
         if (!f.isDirectory || !f.canRead()) return false
         val home = File(System.getProperty("user.home")).canonicalFile
-        if (f.parentFile == null || f == home || home.startsWith(f)) return false
-        if (f.startsWith(File(home, "Library")) || f.startsWith(AppDirs.support.canonicalFile)) return false
-        return true
+        return !isForbiddenRoot(f, home, AppDirs.support.canonicalFile, Platform.current, System::getenv)
+    }
+
+    companion object {
+        private const val TAG = "VaultHost"
+        private const val PREFERRED_PORT = 8080
+
+        /** Per-drive system folders; matched (case-insensitively) directly under a drive root. */
+        private val windowsDriveRootSystemDirs = setOf(
+            "\$recycle.bin", "system volume information", "recovery", "windows.old", "config.msi",
+            "\$windows.~bt", "\$windows.~ws", "\$winreagent",
+        )
+
+        /** Pure policy behind [isShareable]; [f] and [home] are already canonical. */
+        internal fun isForbiddenRoot(
+            f: File, home: File, support: File, platform: Platform, env: (String) -> String?,
+        ): Boolean {
+            if (f.parentFile == null || f == home || home.startsWith(f)) return true
+            if (f.startsWith(support)) return true
+            when (platform) {
+                Platform.MAC -> if (f.startsWith(File(home, "Library"))) return true
+                Platform.WINDOWS -> {
+                    if (f.startsWith(File(home, "AppData"))) return true
+                    // Other people's profiles (and Default / All Users) sit beside ours in C:\Users;
+                    // Public is shared by design. Skipped when the profile is a drive's top folder.
+                    val users = home.parentFile
+                    if (users?.parentFile != null && f.startsWith(users) && !f.startsWith(home) &&
+                        !f.relativeTo(users).invariantSeparatorsPath.substringBefore('/').equals("public", true)
+                    ) return true
+                    val osDirs = listOf("SystemRoot", "WINDIR", "ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "ProgramData")
+                        .mapNotNull { env(it)?.takeIf(String::isNotBlank) }
+                        .mapNotNull { runCatching { File(it).canonicalFile }.getOrNull() }
+                    if (osDirs.any { f.startsWith(it) }) return true
+                    // `X:\$Recycle.Bin\…`, `X:\System Volume Information\…`, `X:\Windows.old\…`
+                    var p: File? = f
+                    while (p != null && p.parentFile?.parentFile != null) p = p.parentFile
+                    if (p != null && p.name.lowercase() in windowsDriveRootSystemDirs) return true
+                }
+                Platform.OTHER -> Unit
+            }
+            return false
+        }
     }
 
     /**
@@ -144,8 +186,4 @@ class VaultHostManager(
         Log.i(TAG, "vault stopped")
     }
 
-    private companion object {
-        const val TAG = "VaultHost"
-        const val PREFERRED_PORT = 8080
-    }
 }
