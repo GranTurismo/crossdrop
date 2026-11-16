@@ -12,15 +12,15 @@ extension SessionState {
 /// Live session (if any) + the persisted log of finished transfers, grouped into Today / Earlier.
 /// Tapping the live card reopens the transfer view.
 struct TransfersScreen: View {
-    let session: SessionState?
+    let groups: [TransferGroup]
     @ObservedObject var history: HistoryStore
-    var onOpenActive: (() -> Void)?
+    var onOpenActive: ((UUID) -> Void)?
     @Environment(\.navInset) private var navInset
     @State private var confirmClear = false
 
     var body: some View {
         let entries = history.entries
-        let active = session.flatMap { $0.status.isTerminal ? nil : $0 }
+        let active = groups.filter { !$0.isTerminal }
         let todayStart = Calendar.current.startOfDay(for: Date())
         let today = entries.filter { $0.date >= todayStart }
         let earlier = entries.filter { $0.date < todayStart }
@@ -36,8 +36,8 @@ struct TransfersScreen: View {
                             ChipButton(text: "Clear", bg: CD.glassMid, border: CD.hairlineStrong, height: 40, label: "Clear history") { confirmClear = true }
                         }
                     }
-                    if let active { ActiveCard(s: active, onOpen: onOpenActive) }
-                    if entries.isEmpty && active == nil { EmptyState() }
+                    ForEach(active) { g in ActiveCard(g: g, onOpen: onOpenActive.map { open in { open(g.id) } }) }
+                    if entries.isEmpty && active.isEmpty { EmptyState() }
                     if !today.isEmpty {
                         SectionLabel("Today").padding(.top, 6)
                         HistoryGroup(entries: today)
@@ -61,21 +61,24 @@ struct TransfersScreen: View {
 }
 
 private struct ActiveCard: View {
-    let s: SessionState
+    let g: TransferGroup
     let onOpen: (() -> Void)?
     var body: some View {
+        let s = g.primary
         GlassCard(radius: 26, fill: CD.glassMid, border: CD.accent.opacity(0.4), glow: CD.accent.opacity(0.13), glowRadius: 40,
                   padding: .hv(18, 16), spacing: 12, action: onOpen, actionLabel: "Opens the transfer") {
             HStack(spacing: 8) {
                 Dot(color: CD.accent, size: 8)
-                Text((s.direction == .sending ? "Sending to " : "Receiving from ") + s.peerName)
+                Text(g.multi ? "Sending to \(g.sessions.count) devices"
+                     : (s.direction == .sending ? "Sending to " : "Receiving from ") + s.peerName)
                     .body(14, weight: .semibold).lineLimit(1)
                 Spacer(minLength: 8)
-                Text("\(Int(s.fraction * 100))%").displayStyle(20, color: CD.accent)
+                Text("\(Int(g.fraction * 100))%").displayStyle(20, color: CD.accent)
             }
-            ProgressBar(fraction: s.fraction, height: 6, glow: true)
-            Text([s.currentFileName ?? "Establishing a secure channel…", s.fileProgressLabel,
-                  s.bytesPerSec > 0 ? Fmt.rate(s.bytesPerSec) : nil].compactMap { $0 }.joined(separator: " · "))
+            ProgressBar(fraction: g.fraction, height: 6, glow: true)
+            Text((g.multi ? ["\(g.completed) of \(g.sessions.count) delivered", g.bytesPerSec > 0 ? Fmt.rate(g.bytesPerSec) : nil]
+                  : [s.currentFileName ?? "Establishing a secure channel…", s.fileProgressLabel,
+                     s.bytesPerSec > 0 ? Fmt.rate(s.bytesPerSec) : nil]).compactMap { $0 }.joined(separator: " · "))
                 .body(12, CD.textDim).lineLimit(1)
         }
         .accessibilityElement(children: .combine)

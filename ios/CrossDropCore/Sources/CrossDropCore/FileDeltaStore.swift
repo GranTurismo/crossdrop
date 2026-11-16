@@ -52,6 +52,8 @@ public final class FileDeltaStore: DeltaReceiver {
         var name = FileDeltaStore.clampName(nameFor(meta))
         if name.isEmpty || name == "." || name == ".." || name.contains("/") || name.contains("\0") { name = "file" }
         if name.hasPrefix(".") { name = "_" + name }
+        // A fresh store may not have its folder yet; the `.part` written beside the target needs it.
+        try? fm.createDirectory(at: inboxDir, withIntermediateDirectories: true)
         let url = inboxDir.appendingPathComponent(name)
         guard url.deletingLastPathComponent().standardizedFileURL.path == inboxDir.standardizedFileURL.path else {
             return inboxDir.appendingPathComponent("file")

@@ -26,6 +26,7 @@ struct RootView: View {
     @State private var dropTargeted = false
     /// The live transfer view is minimised to the Transfers tab.
     @State private var transferHidden = false
+    @State private var liveHidden = false
     @Environment(\.sizeCategory) private var sizeCategory
 
     init() {
@@ -56,7 +57,7 @@ struct RootView: View {
                     .allowsHitTesting(false)
 
                 FloatingNav(tab: $tab, inbox: container.inbox,
-                            transferLive: transferHidden && coordinator.session.map { !$0.status.isTerminal } == true)
+                            transferLive: coordinator.groups.contains { !$0.isTerminal } && (transferHidden || coordinator.focusedGroup == nil))
                     .padding(.horizontal, 18)
                     .padding(.bottom, navBottom)
                     .frame(maxHeight: .infinity, alignment: .bottom)
@@ -83,15 +84,18 @@ struct RootView: View {
         .ignoresSafeArea(.keyboard)
         .environmentObject(sheets)
         .onDrop(of: [UTType.item], isTargeted: $dropTargeted, perform: handleDrop)
-        .animation(.easeInOut(duration: 0.3), value: coordinator.session == nil)
+        .animation(.easeInOut(duration: 0.3), value: coordinator.focusedGroupId)
         .animation(.easeInOut(duration: 0.3), value: transferHidden)
+        .animation(.easeInOut(duration: 0.3), value: container.cameraTargets == nil)
+        .animation(.easeInOut(duration: 0.3), value: container.switchTarget == nil)
+        .animation(.easeInOut(duration: 0.3), value: coordinator.live == nil || liveHidden)
         .animation(.easeInOut(duration: 0.25), value: coordinator.incomingOffer?.id)
-        // A session that ends while minimised is cleared — history already has it.
-        .onChange(of: coordinator.session?.status) { status in
-            if status == .connecting { transferHidden = false }          // a new send always opens the view
-            if transferHidden, status?.isTerminal == true { coordinator.dismissSession() }
+        // A newly focused group always opens the transfer view; one that ends while minimised is cleared.
+        .onChange(of: coordinator.focusedGroupId) { id in if id != nil { transferHidden = false } }
+        .onChange(of: coordinator.focusedGroup?.isTerminal) { done in
+            if transferHidden, done == true, let id = coordinator.focusedGroupId { coordinator.dismissGroup(id) }
         }
-        .onChange(of: coordinator.session == nil) { gone in if gone { transferHidden = false } }
+        .onChange(of: coordinator.live?.grantId) { _ in liveHidden = false }
         // An offer outranks whatever sheet was open.
         .onChange(of: coordinator.incomingOffer?.id) { id in if id != nil { sheets.dismiss() } }
         // ⌘O "Send Files…" lands on the radar, which raises the picker.
@@ -111,7 +115,9 @@ struct RootView: View {
             switch tab {
             case .radar: EmptyView()
             case .transfers:
-                TransfersScreen(session: coordinator.session, history: container.history) { transferHidden = false }
+                TransfersScreen(groups: coordinator.groups, history: container.history) { id in
+                    coordinator.focus(id); transferHidden = false
+                }
             case .inbox:
                 InboxScreen(inbox: container.inbox)
             case .settings:
@@ -123,20 +129,45 @@ struct RootView: View {
     // MARK: overlays
 
     @ViewBuilder private var overlays: some View {
-        if let s = coordinator.session, !transferHidden {
-            TransferScreen(
-                session: s, selfName: container.deviceName,
-                onCancel: coordinator.cancelSession,
-                onClose: coordinator.dismissSession,
-                onHide: { transferHidden = true },
-                onOpenInbox: {
-                    coordinator.dismissSession()
-                    tab = .inbox
-                })
-                .background(CD.ink.ignoresSafeArea())
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(1)
+        if let g = coordinator.focusedGroup, !transferHidden {
+            Group {
+                if g.multi {
+                    GroupTransferScreen(group: g, onCancelAll: { coordinator.cancelGroup(g.id) },
+                                        onRetry: { coordinator.retryFailed(g.id) },
+                                        onClose: { coordinator.dismissGroup(g.id) },
+                                        onHide: { transferHidden = true })
+                } else {
+                    TransferScreen(
+                        session: g.primary, selfName: container.deviceName,
+                        onCancel: { coordinator.cancelGroup(g.id) },
+                        onClose: { coordinator.dismissGroup(g.id) },
+                        onHide: { transferHidden = true },
+                        onOpenInbox: {
+                            coordinator.dismissGroup(g.id)
+                            tab = .inbox
+                        })
+                }
+            }
+            .background(CD.ink.ignoresSafeArea())
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .zIndex(1)
         }
+        if let targets = container.cameraTargets {
+            CameraScreen(targets: targets) { container.cameraTargets = nil }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
+        }
+        if let feed = coordinator.live, !liveHidden {
+            LiveViewerScreen(feed: feed, onStop: coordinator.stopLive, onHide: { liveHidden = true })
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
+        }
+        if let peer = container.switchTarget {
+            SwitchSendHost(peer: peer, sender: container.switchSender) { container.switchTarget = nil }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
+        }
+        SwitchReceiveHost(importer: container.switchImporter).zIndex(3)
         QrShareHost(qrShare: container.qrShare).zIndex(2)
         DriveHostHost(host: container.vaultHost, open: $container.driveOpen).zIndex(2)
         VaultExplorerHost(explorer: container.vaultExplorer).zIndex(3)
@@ -266,5 +297,31 @@ private struct NavBadge: View {
                 .background(Capsule().fill(CD.accent))
                 .fixedSize()
         }
+    }
+}
+
+// MARK: - Switch phones hosts (observe their own models)
+
+private struct SwitchSendHost: View {
+    let peer: Peer
+    @ObservedObject var sender: SwitchSender
+    let onClose: () -> Void
+    var body: some View { SwitchSendScreen(peer: peer, sender: sender, onClose: onClose) }
+}
+
+private struct SwitchReceiveHost: View {
+    @ObservedObject var importer: SwitchImporter
+    @EnvironmentObject var coordinator: TransferCoordinator
+    @State private var hidden = false
+    var body: some View {
+        Group {
+            if let st = importer.state, !hidden {
+                SwitchReceiveScreen(importer: importer, state: st,
+                                    receiving: coordinator.sessions.last { $0.kind == OfferKind.switchPhones && !$0.status.isTerminal },
+                                    onHide: { hidden = true })
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .onChange(of: importer.state?.peerName) { _ in hidden = false }
     }
 }

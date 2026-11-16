@@ -39,6 +39,13 @@ final class AppContainer: ObservableObject {
     let vaultExplorer: VaultExplorerManager
     /// "Wireless Drive" — this device as a browsable LAN drive (host side).
     let vaultHost: VaultHostManager
+    /// "Switch phones": this device's library out, or another device's library in.
+    let switchSender: SwitchSender
+    let switchImporter: SwitchImporter
+    /// Live camera open, sending to these devices.
+    @Published var cameraTargets: [Peer]?
+    /// "Switch phones" screen open for this device.
+    @Published var switchTarget: Peer?
 
     private let listener = TCPListener()
     private var discovery: BonjourDiscovery!
@@ -62,6 +69,10 @@ final class AppContainer: ObservableObject {
         nameBox = box
         engine = TransferEngine(identity: identity, deviceName: { box.value }, instanceId: id)
         coordinator = TransferCoordinator(engine: engine, inbox: inbox, history: history)
+        switchImporter = SwitchImporter(inbox: inbox, history: history)
+        switchSender = SwitchSender(coordinator: coordinator, history: history)
+        coordinator.switchReceiver = switchImporter
+        switchImporter.attach(coordinator)
         qrShare = QrShareManager(deviceName: { box.value }, history: history)
         vaultExplorer = VaultExplorerManager(identity: identity, deviceName: { box.value }, instanceId: id, inbox: inbox, history: history)
         vaultHost = VaultHostManager(identity: identity, deviceName: { box.value })
@@ -188,8 +199,8 @@ final class AppContainer: ObservableObject {
         coordinator.onOfferArrived = { [weak self] offer in self?.notifyOffer(offer) }
         // Ask for notifications in context — after the first finished transfer, not at launch.
         if !UserDefaults.standard.bool(forKey: "asked_notifications") {
-            notificationWatch = coordinator.$session.sink { [weak self] s in
-                guard let s, s.status.isTerminal else { return }
+            notificationWatch = coordinator.$sessions.sink { [weak self] list in
+                guard list.contains(where: { $0.status.isTerminal }) else { return }
                 UserDefaults.standard.set(true, forKey: "asked_notifications")
                 self?.requestNotificationPermission()
                 self?.notificationWatch = nil
@@ -223,6 +234,31 @@ final class AppContainer: ObservableObject {
         if let v = args.string(forKey: "dev_peer"), let (h, p) = hostPort(v) { addManualPeer(name: "dev \(h)", host: h, port: p) }
         if let v = args.string(forKey: "dev_send"), let (h, p) = hostPort(v) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.debugSend(host: h, port: p) }
+        }
+        // `-dev_send_multi h:p,h:p` sends the self-test file to several devices at once;
+        // `-dev_text h:p` sends a link; `-dev_switch h:p` starts Switch phones (photos + contacts).
+        func peers(_ list: String) -> [Peer] {
+            list.split(separator: ",").compactMap { hostPort(String($0)) }.map {
+                Peer(instanceId: "dev-\($0.0):\($0.1)", name: "dev \($0.0):\($0.1)", host: $0.0, port: $0.1, sources: [.manual])
+            }
+        }
+        if let v = args.string(forKey: "dev_send_multi") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                let url = FileManager.default.temporaryDirectory.appendingPathComponent("self-test.bin")
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    try? Data((0..<(4 * 1024 * 1024)).map { UInt8($0 % 251) }).write(to: url)
+                }
+                self.coordinator.sendTo(peers(v), urls: [url])
+            }
+        }
+        if let v = args.string(forKey: "dev_text") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.coordinator.sendText(peers(v), text: "https://example.com/from-iphone") }
+        }
+        if let v = args.string(forKey: "dev_switch"), let p = peers(v).first {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                self.switchTarget = p
+                self.switchSender.start(p, photos: true, videos: true, contacts: true)
+            }
         }
         if args.bool(forKey: "dev_share") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.qrShare.startDebug() } }
         if args.bool(forKey: "dev_autoaccept") { coordinator.autoAcceptAll = true }
@@ -333,9 +369,21 @@ final class AppContainer: ObservableObject {
     private func notifyOffer(_ offer: IncomingOffer) {
         guard UIApplication.shared.applicationState != .active else { return }
         let c = UNMutableNotificationContent()
-        c.title = "\(offer.peerName) wants to send you files"
         let n = offer.offer.files.count
-        c.body = n == 1 ? offer.offer.files[0].name : "\(n) files"
+        switch offer.kind {
+        case .some(OfferKind.text) where offer.text != nil:
+            c.title = "\(offer.peerName) sent you " + (isLinkText(offer.text!) ? "a link" : "some text")
+            c.body = String(offer.text!.prefix(120))
+        case .some(OfferKind.camera):
+            c.title = "\(offer.peerName) wants to share their camera"
+            c.body = "Open CrossDrop to watch their photos arrive live"
+        case .some(OfferKind.switchPhones):
+            c.title = "\(offer.peerName) wants to move to this \(Platform.deviceNoun)"
+            c.body = "Open CrossDrop to start"
+        default:
+            c.title = "\(offer.peerName) wants to send you files"
+            c.body = n == 1 ? offer.offer.files[0].name : "\(n) files"
+        }
         c.sound = .default
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: offer.id.uuidString, content: c, trigger: nil))
     }

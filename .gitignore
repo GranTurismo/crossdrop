@@ -91,6 +91,7 @@ xcuserdata/
 # ---------- iOS generated (project.yml → xcodegen) ----------
 ios/CrossDrop.xcodeproj/
 ios/CrossDrop/Info.plist
+ios/CrossDropShare/Info.plist
 .build/
 .swiftpm/
 

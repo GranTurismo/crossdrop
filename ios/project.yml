@@ -23,6 +23,7 @@ targets:
       - path: CrossDrop
     dependencies:
       - package: CrossDropCore
+      - target: CrossDropShare
     info:
       path: CrossDrop/Info.plist
       properties:
@@ -54,6 +55,11 @@ targets:
         NSBonjourServices:
           - _crossdrop._tcp
           - _crossdrop-vault._tcp
+        NSCameraUsageDescription: CrossDrop's camera sends each photo or video to the devices you picked the moment you take it.
+        NSMicrophoneUsageDescription: Sound for the videos you record in CrossDrop's camera.
+        NSPhotoLibraryUsageDescription: To switch phones, CrossDrop reads your photos and videos and moves them straight to your other device.
+        NSPhotoLibraryAddUsageDescription: CrossDrop saves photos and videos it receives — and the ones you take in its camera — to your library.
+        NSContactsUsageDescription: To switch phones, CrossDrop copies your contacts straight to your other device, and adds contacts moved here from another phone.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
         CFBundleDocumentTypes:
@@ -75,6 +81,44 @@ targets:
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: CrossDrop/CrossDrop-Mac.entitlements
         ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
+  # Share → CrossDrop from any app (iPhone, iPad, Mac): finds devices and sends from inside the extension.
+  CrossDropShare:
+    type: app-extension
+    supportedDestinations: [iOS, macCatalyst]
+    sources:
+      - path: CrossDropShare
+    dependencies:
+      - package: CrossDropCore
+    info:
+      path: CrossDropShare/Info.plist
+      properties:
+        CFBundleDisplayName: CrossDrop
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSLocalNetworkUsageDescription: CrossDrop uses your local network to find nearby devices and send to them directly — nothing leaves your Wi-Fi.
+        NSBonjourServices:
+          - _crossdrop._tcp
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsFileWithMaxCount: 100
+              NSExtensionActivationSupportsImageWithMaxCount: 100
+              NSExtensionActivationSupportsMovieWithMaxCount: 100
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsText: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.granturismo.crossdrop.share
+        TARGETED_DEVICE_FAMILY: "1,2"
+        GENERATE_INFOPLIST_FILE: NO
+        SUPPORTS_MACCATALYST: YES
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: CrossDropShare/CrossDropShare-Mac.entitlements
+        ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
+        APPLICATION_EXTENSION_API_ONLY: YES
 schemes:
   CrossDrop:
     build:

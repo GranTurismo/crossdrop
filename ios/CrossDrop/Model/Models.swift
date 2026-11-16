@@ -38,7 +38,7 @@ enum SessionStatus: String {
     var isTerminal: Bool { self == .completed || self == .failed || self == .declined || self == .cancelled }
 }
 
-struct SessionState {
+struct SessionState: Identifiable {
     var direction: Direction
     var peerName: String
     var sas: String?
@@ -51,8 +51,61 @@ struct SessionState {
     var currentFileName: String?
     var status: SessionStatus = .connecting
     var error: String?
+    var id = UUID()
+    /// Sessions started together (one send to several devices) share it; a receive is its own group.
+    var groupId = UUID()
+    var kind: String?
+    /// Shown by its own screen (live camera, switch phones, text) — never opens the transfer view.
+    var quiet = false
 
+    var fraction: Double {
+        status == .completed ? 1 : min(1, max(0, Double(bytesDone) / Double(max(bytesTotal, 1))))
+    }
+}
+
+extension SessionStatus {
+    var isProblem: Bool { self == .failed || self == .declined || self == .cancelled }
+}
+
+/// One send (a session per device) or one receive, as the transfer view shows it.
+struct TransferGroup: Identifiable {
+    let id: UUID
+    let sessions: [SessionState]
+    var primary: SessionState { sessions[0] }
+    var direction: Direction { primary.direction }
+    var multi: Bool { sessions.count > 1 }
+    var isTerminal: Bool { sessions.allSatisfy { $0.status.isTerminal } }
+    var completed: Int { sessions.filter { $0.status == .completed }.count }
+    var problems: Int { sessions.filter { $0.status.isProblem }.count }
+    var bytesTotal: Int64 { sessions.reduce(0) { $0 + max($1.bytesTotal, 1) } }
+    var bytesDone: Int64 { sessions.reduce(0) { $0 + ($1.status == .completed ? max($1.bytesTotal, $1.bytesDone) : $1.bytesDone) } }
+    var bytesPerSec: Int64 { sessions.filter { !$0.status.isTerminal }.reduce(0) { $0 + $1.bytesPerSec } }
     var fraction: Double { min(1, max(0, Double(bytesDone) / Double(max(bytesTotal, 1)))) }
+}
+
+/// A photo or video that arrived during a live camera session.
+struct LiveShot: Identifiable, Equatable {
+    let url: URL
+    let name: String
+    let mime: String?
+    var id: URL { url }
+    var isVideo: Bool {
+        mime?.hasPrefix("video/") == true || ["mp4", "mov", "m4v", "3gp", "webm"].contains(url.pathExtension.lowercased())
+    }
+}
+
+/// Someone else's camera feeding this device: each shot lands here without a prompt.
+struct LiveFeed {
+    let grantId: String
+    let peerName: String
+    var shots: [LiveShot] = []
+    var incoming: SessionState?
+}
+
+/// "http(s)://…" with nothing else around it.
+func isLinkText(_ text: String) -> Bool {
+    let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    return !t.contains(" ") && !t.contains("\n") && (t.lowercased().hasPrefix("http://") || t.lowercased().hasPrefix("https://"))
 }
 
 /// An offer waiting for the human's accept/decline tap.
@@ -70,6 +123,10 @@ final class IncomingOffer: Identifiable, @unchecked Sendable {   // all mutable 
     var onAccept: (() -> Void)?
 
     init(peerName: String, offer: Offer) { self.peerName = peerName; self.offer = offer }
+
+    var kind: String? { offer.kind }
+    /// Inline text of a text/link offer (nil for files, or text too long to inline).
+    var text: String? { offer.kind == OfferKind.text ? offer.text : nil }
 
     func resolve(accept: Bool, reason: String? = nil) {
         lock.lock()

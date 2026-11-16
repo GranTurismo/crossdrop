@@ -38,7 +38,10 @@ final class InboxStore: ObservableObject, @unchecked Sendable {
     }
 
     /// Collision- and traversal-safe sink for the v1 (monolithic) path.
-    func sinkFor(_ meta: FileMeta) throws -> OutputSink {
+    func sinkFor(_ meta: FileMeta) throws -> OutputSink { try newFile(meta).sink }
+
+    /// A new, collision-free inbox file for `meta` and a sink writing it.
+    func newFile(_ meta: FileMeta) throws -> (url: URL, sink: OutputSink) {
         let safe = InboxStore.sanitize(meta.name)
         let ext = (safe as NSString).pathExtension
         let stem = (safe as NSString).deletingPathExtension
@@ -50,7 +53,7 @@ final class InboxStore: ObservableObject, @unchecked Sendable {
         }
         guard FileManager.default.createFile(atPath: target.path, contents: nil),
               let h = FileHandle(forWritingAtPath: target.path) else { throw ProtocolError("cannot create \(safe)") }
-        return HandleSink(h)
+        return (target, HandleSink(h))
     }
 
     /// Single-pass zero-fill then unlink.

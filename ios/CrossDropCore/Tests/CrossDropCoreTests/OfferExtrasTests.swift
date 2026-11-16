@@ -89,6 +89,21 @@ final class OfferExtrasTests: XCTestCase {
         XCTAssertFalse(wrong)
     }
 
+    func testTrustStoreAcceptsEachTransferOnce() {
+        let store = TrustStore()
+        let grant = store.grant(kind: OfferKind.camera, peerName: "phone", ttl: 60)
+        var first: TrustStore.Granted?, replay: TrustStore.Granted?
+        _ = roundTrip(meta: FileMeta(name: "a.jpg", size: 1), bytes: [1],
+                      options: SendOptions(kind: OfferKind.camera, trust: TrustCredential(grant))) { req in
+            first = store.match(req)
+            replay = store.match(req)
+            return self.accept()
+        }
+        XCTAssertNotNil(first)
+        XCTAssertNil(replay)
+        store.revoke(kind: OfferKind.camera)
+    }
+
     /// The Kotlin side computes the same proof for the same inputs (HMAC-SHA256 over binding ‖ id).
     func testProofKnownAnswer() {
         let p = SessionCrypto.trustProof(token: [UInt8](repeating: 1, count: 32), binding: [UInt8](repeating: 2, count: 32), transferId: "t")
