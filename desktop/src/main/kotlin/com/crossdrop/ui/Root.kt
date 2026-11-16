@@ -302,8 +302,11 @@ fun Root(container: AppContainer) {
     }
 }
 
-/** Live-camera shots: decoded with Skia, scaled down to about [maxPx] on the long side. */
-private fun decodeImage(file: java.io.File, maxPx: Int): androidx.compose.ui.graphics.ImageBitmap? {
+/**
+ * Live-camera shots: decoded with Skia (which applies the EXIF orientation phone cameras use, so
+ * photos come out upright — ExifOrientationTest), scaled down to about [maxPx] on the long side.
+ */
+internal fun decodeImage(file: java.io.File, maxPx: Int): androidx.compose.ui.graphics.ImageBitmap? {
     if (com.crossdrop.ui.live.isVideoName(file.name, null)) return null
     val img = org.jetbrains.skia.Image.makeFromEncoded(file.readBytes())
     val scale = maxPx.toFloat() / maxOf(img.width, img.height)
