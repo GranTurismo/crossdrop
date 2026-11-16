@@ -7,8 +7,8 @@ brand mark: a ring + centre dot in the in-app mark's 24/2/8 proportions.
     python3 -m venv .venv && .venv/bin/pip install numpy pillow
     .venv/bin/python tools/icons/render_icons.py        # from the repo root (macOS: needs iconutil)
 
-Writes: iOS AppIcon + LaunchMark, desktop window/tray PNGs + .icns/.ico, and the
-Play Store icon. The Android launcher icon is vector (app/src/main/res/drawable/
+Writes: iOS AppIcon + LaunchMark, desktop window/tray PNGs + .icns/.ico, the MSIX
+tile logos (Microsoft Store), and the Play Store icon. The Android launcher icon is vector (app/src/main/res/drawable/
 ic_launcher_*.xml) and is maintained by hand with the same geometry.
 """
 import os
@@ -95,6 +95,15 @@ def main():
     render(256, shape='squircle', pad=0.06).save(p('desktop', 'src', 'main', 'resources', 'icon.png'))
     render(44, shape='squircle', pad=0.02, echoes=False, sweep=False, mark_scale=1.2).save(
         p('desktop', 'src', 'main', 'resources', 'tray.png'))
+
+    # Microsoft Store (MSIX) tile logos: opaque, full bleed. The wide tile centres the square art on ink.
+    msix = p('desktop', 'packaging', 'msix', 'Assets')
+    render(150).convert('RGB').save(os.path.join(msix, 'Square150x150Logo.png'))
+    render(44, echoes=False, sweep=False, mark_scale=1.15).convert('RGB').save(os.path.join(msix, 'Square44x44Logo.png'))
+    render(50, echoes=False, sweep=False, mark_scale=1.15).convert('RGB').save(os.path.join(msix, 'StoreLogo.png'))
+    wide = Image.new('RGB', (310, 150), INK)
+    wide.paste(render(150).convert('RGB'), (80, 0))
+    wide.save(os.path.join(msix, 'Wide310x150Logo.png'))
 
     sizes = [16, 24, 32, 48, 64, 128, 256]
     ico = [render(s, shape='squircle', pad=0.03, echoes=s >= 48, sweep=s >= 48,
