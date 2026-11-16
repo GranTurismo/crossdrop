@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- "Sonar" ink — the app's ground colour (ui/theme/Theme.kt Ink). -->
+    <color name="ink">#FF06080C</color>
+</resources>
