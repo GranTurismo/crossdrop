@@ -20,6 +20,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        foreground = true
+        com.crossdrop.service.OfferNotifier.clear(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        foreground = false
+    }
+
+    companion object {
+        /** The app's own screen is showing — incoming offers appear there, not as notifications. */
+        @Volatile var foreground = false
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         handleDevPeer(intent, (application as CrossDropApp).container)

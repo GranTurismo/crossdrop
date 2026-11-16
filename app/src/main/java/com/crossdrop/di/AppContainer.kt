@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.security.SecureRandom
 import java.util.UUID
 
@@ -181,6 +182,13 @@ class AppContainer(private val app: Context) {
         if (_bleEnabled.value) runCatching { bleDiscovery.start() }
         manualDiscovery?.let { runCatching { it.start() } }
         coordinator.start()
+        // Offers that arrive while the app isn't on screen get a notification.
+        scope.launch {
+            coordinator.incomingOffer.collect { offer ->
+                if (offer == null) com.crossdrop.service.OfferNotifier.clear(app)
+                else if (!com.crossdrop.MainActivity.foreground) com.crossdrop.service.OfferNotifier.show(app, offer)
+            }
+        }
     }
 
     /** Debug: mount a vault by address (emulator path where mDNS can't cross).
