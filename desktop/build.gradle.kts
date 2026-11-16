@@ -51,7 +51,11 @@ val sharedUi = listOf(
     "theme/Theme.kt",
     "radar/RadarCanvas.kt",
     "transfers/TransfersScreen.kt",
+    "transfer/GroupTransferScreen.kt",
+    "live/LiveViewerScreen.kt",
 )
+// Platform-free transfer state (sessions, groups, trust, routing) shared the same way.
+val sharedNet = listOf("TransferHub.kt")
 val syncSharedUi by tasks.registering(Sync::class) {
     from(rootProject.file("app/src/main/java/com/crossdrop/ui")) {
         include(sharedUi)
@@ -60,10 +64,15 @@ val syncSharedUi by tasks.registering(Sync::class) {
     }
     into(layout.buildDirectory.dir("generated/sharedUi/com/crossdrop/ui"))
 }
+val syncSharedNet by tasks.registering(Sync::class) {
+    from(rootProject.file("app/src/main/java/com/crossdrop/net")) { include(sharedNet) }
+    into(layout.buildDirectory.dir("generated/sharedNet/com/crossdrop/net"))
+}
 sourceSets.main {
     kotlin.srcDir(layout.buildDirectory.dir("generated/sharedUi"))
+    kotlin.srcDir(layout.buildDirectory.dir("generated/sharedNet"))
 }
-tasks.named("compileKotlin") { dependsOn(syncSharedUi) }
+tasks.named("compileKotlin") { dependsOn(syncSharedUi, syncSharedNet) }
 
 // Installers can only be built on the OS they target (jpackage needs the native
 // toolchain: hdiutil on macOS, WiX on Windows), so the packaging tasks that exist
@@ -151,7 +160,26 @@ compose.desktop {
                     teamID.set(providers.environmentVariable("MACOS_TEAM_ID"))
                 }
                 infoPlist {
+                    // CFBundleDocumentTypes: Finder's "Open With → CrossDrop" and dropping files on the
+                    // Dock icon hand them to the app (Desktop.setOpenFileHandler), ready to send.
                     extraKeysRawXml = """
+                        <key>CFBundleDocumentTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleTypeName</key>
+                                <string>Any file</string>
+                                <key>CFBundleTypeRole</key>
+                                <string>Viewer</string>
+                                <key>LSHandlerRank</key>
+                                <string>Alternate</string>
+                                <key>LSItemContentTypes</key>
+                                <array>
+                                    <string>public.item</string>
+                                    <string>public.data</string>
+                                    <string>public.content</string>
+                                </array>
+                            </dict>
+                        </array>
                         <key>NSLocalNetworkUsageDescription</key>
                         <string>CrossDrop finds nearby devices on your Wi-Fi and sends files to them directly. Nothing leaves your network.</string>
                         <key>NSBonjourServices</key>

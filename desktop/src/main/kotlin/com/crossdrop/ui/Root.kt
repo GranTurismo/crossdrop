@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.di.AppContainer
 import com.crossdrop.net.isTerminal
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import com.crossdrop.ui.inbox.InboxScreen
 import com.crossdrop.ui.radar.RadarScreen
 import com.crossdrop.ui.settings.SettingsScreen
@@ -81,7 +82,12 @@ enum class Tab(val label: String) {
 @Composable
 fun Root(container: AppContainer) {
     val peers by container.peers.collectAsState()
-    val session by container.coordinator.session.collectAsState()
+    val groups by container.coordinator.groups.collectAsState()
+    val focused by container.coordinator.focusedGroup.collectAsState()
+    val allSessions by container.coordinator.sessions.collectAsState()
+    val live by container.coordinator.live.collectAsState()
+    val switchIn by container.switchReceiver.state.collectAsState()
+    val pending by container.pending.collectAsState()
     val shareState by container.qrShare.state.collectAsState()
     val vaultUi by container.vaultExplorer.state.collectAsState()
     val vaultHost by container.vaultHost.state.collectAsState()
@@ -97,15 +103,24 @@ fun Root(container: AppContainer) {
     var inboxTick by remember { mutableIntStateOf(0) }
     var driveOpen by remember { mutableStateOf(false) }
     var transferHidden by remember { mutableStateOf(false) }
+    var liveHidden by remember { mutableStateOf(false) }
+    var switchHidden by remember { mutableStateOf(false) }
+    var composingText by remember { mutableStateOf(false) }
+    val doneCount = allSessions.count { it.status.isTerminal }
 
     // Files may land while we're anywhere in the app — keep badges fresh.
-    LaunchedEffect(session) { inboxCount = container.inbox.list().size }
-    // A new session always opens the transfer view.
-    LaunchedEffect(session == null) { if (session == null) transferHidden = false }
-    // A minimised session that finishes is cleared — history already has it.
-    LaunchedEffect(transferHidden, session?.status) {
-        if (transferHidden && session?.status?.isTerminal == true) container.coordinator.dismissSession()
+    LaunchedEffect(doneCount) { inboxCount = container.inbox.list().size }
+    // A newly focused group always opens the transfer view.
+    LaunchedEffect(focused?.id) { if (focused != null) transferHidden = false }
+    // A minimised group that finishes is cleared — history already has it.
+    LaunchedEffect(transferHidden, focused?.isTerminal) {
+        val f = focused
+        if (transferHidden && f != null && f.isTerminal) container.coordinator.dismissGroup(f.id)
     }
+    LaunchedEffect(live?.grantId) { liveHidden = false }
+    LaunchedEffect(switchIn?.folder) { switchHidden = false }
+    // Something to send arrived (drop, Open With, Send to): show the radar to pick devices.
+    LaunchedEffect(pending) { if (pending != null) tabName = Tab.RADAR.name }
 
     BackHandler(enabled = tab != Tab.RADAR) { tabName = Tab.RADAR.name }
 
@@ -115,7 +130,7 @@ fun Root(container: AppContainer) {
                 tab = tab,
                 onSelect = { tabName = it.name },
                 inboxCount = inboxCount,
-                transferLive = transferHidden && session?.status?.isTerminal == false,
+                transferLive = groups.any { !it.isTerminal } && (transferHidden || focused == null),
                 modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 18.dp),
             )
             Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -124,6 +139,21 @@ fun Root(container: AppContainer) {
                         selfName = deviceName,
                         peers = peers.values.sortedBy { it.lastSeenMs },
                         onSendTo = { peer, files -> container.coordinator.sendTo(peer, files) },
+                        pending = pending,
+                        onSendPending = { targets ->
+                            when (val p = pending) {
+                                is com.crossdrop.ui.radar.Pending.Files -> container.coordinator.sendTo(targets, p.files)
+                                is com.crossdrop.ui.radar.Pending.Text -> container.coordinator.sendText(targets, p.text)
+                                null -> Unit
+                            }
+                            container.pending.value = null
+                        },
+                        onClearPending = { container.pending.value = null },
+                        onComposeText = { composingText = true },
+                        onPickForSeveral = {
+                            val picked = com.crossdrop.platform.SystemActions.pickFiles(title = "Choose files to send")
+                            container.openFiles(picked)
+                        },
                         onShareToAnyone = { files -> container.qrShare.start(files) },
                         onMountVault = { peer -> container.vaultExplorer.mount(peer) },
                         onRename = container::setDeviceName,
@@ -131,16 +161,16 @@ fun Root(container: AppContainer) {
                         nsdEnabled = nsdEnabled,
                     )
                     Tab.TRANSFERS -> TransfersScreen(
-                        session = session,
+                        groups = groups,
                         history = container.history,
                         onClearHistory = { container.history.clear(); historyTick++ },
-                        refreshSignal = listOf(session?.status, historyTick),
-                        onOpenActive = { transferHidden = false },
+                        refreshSignal = listOf(doneCount, historyTick, switchIn?.phase),
+                        onOpenActive = { id -> container.coordinator.focus(id); transferHidden = false },
                     )
                     Tab.INBOX -> InboxScreen(
                         inbox = container.inbox,
                         onChanged = { inboxCount = container.inbox.list().size },
-                        refreshSignal = listOf(session?.status, inboxTick),
+                        refreshSignal = listOf(doneCount, inboxTick),
                     )
                     Tab.SETTINGS -> SettingsScreen(
                         deviceName = deviceName,
@@ -159,25 +189,61 @@ fun Root(container: AppContainer) {
                         onClearHistory = { container.history.clear(); historyTick++ },
                         vaultState = vaultHost,
                         onOpenDrive = { driveOpen = true },
-                        refreshSignal = listOf(session?.status, inboxTick, historyTick),
+                        refreshSignal = listOf(doneCount, inboxTick, historyTick),
                     )
                 }
             }
         }
 
-        // ---- live transfer
-        Overlay(session?.takeIf { !transferHidden }) { s ->
-            BackHandler { if (s.status.isTerminal) container.coordinator.dismissSession() else transferHidden = true }
-            TransferScreen(
-                session = s,
-                selfName = deviceName,
-                onCancel = container.coordinator::cancelSession,
-                onClose = container.coordinator::dismissSession,
-                onHide = { transferHidden = true },
-                onOpenInbox = {
-                    container.coordinator.dismissSession()
-                    tabName = Tab.INBOX.name
+        // ---- live transfer (one device, or a send to several)
+        Overlay(focused?.takeIf { !transferHidden }) { g ->
+            BackHandler { if (g.isTerminal) container.coordinator.dismissGroup(g.id) else transferHidden = true }
+            if (g.multi) {
+                com.crossdrop.ui.transfer.GroupTransferScreen(
+                    group = g,
+                    onCancelAll = { container.coordinator.cancelGroup(g.id) },
+                    onRetry = { container.coordinator.retryFailed(g.id) },
+                    onClose = { container.coordinator.dismissGroup(g.id) },
+                    onHide = { transferHidden = true },
+                )
+            } else {
+                TransferScreen(
+                    session = g.primary,
+                    selfName = deviceName,
+                    onCancel = { container.coordinator.cancelGroup(g.id) },
+                    onClose = { container.coordinator.dismissGroup(g.id) },
+                    onHide = { transferHidden = true },
+                    onOpenInbox = {
+                        container.coordinator.dismissGroup(g.id)
+                        tabName = Tab.INBOX.name
+                    },
+                )
+            }
+        }
+
+        // ---- a phone's camera, live on this screen
+        Overlay(live?.takeIf { !liveHidden }) { feed ->
+            BackHandler { liveHidden = true }
+            com.crossdrop.ui.live.LiveViewerScreen(
+                feed = feed,
+                loadImage = ::decodeImage,
+                onOpen = { shot -> com.crossdrop.platform.SystemActions.open(shot.file) },
+                onStop = container.coordinator::stopLive,
+                onHide = { liveHidden = true },
+            )
+        }
+
+        // ---- a phone moving its library here
+        Overlay(switchIn?.takeIf { !switchHidden }) { st ->
+            BackHandler { switchHidden = true }
+            com.crossdrop.ui.switchphones.SwitchReceiveScreen(
+                state = st,
+                receiving = allSessions.lastOrNull {
+                    it.kind == com.crossdrop.core.protocol.OfferKind.SWITCH && !it.status.isTerminal
                 },
+                onStop = container.switchReceiver::stop,
+                onHide = { switchHidden = true },
+                onDone = container.switchReceiver::close,
             )
         }
 
@@ -221,6 +287,32 @@ fun Root(container: AppContainer) {
             IncomingOfferSheet(offer) { accept -> container.coordinator.respondToOffer(accept) }
         }
     }
+
+    if (composingText) {
+        val clip = remember {
+            runCatching {
+                java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                    .getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
+            }.getOrNull().orEmpty().take(4000)
+        }
+        SendTextDialog(initial = clip, target = "devices nearby") { text ->
+            composingText = false
+            if (!text.isNullOrBlank()) container.pending.value = com.crossdrop.ui.radar.Pending.Text(text)
+        }
+    }
+}
+
+/** Live-camera shots: decoded with Skia, scaled down to about [maxPx] on the long side. */
+private fun decodeImage(file: java.io.File, maxPx: Int): androidx.compose.ui.graphics.ImageBitmap? {
+    if (com.crossdrop.ui.live.isVideoName(file.name, null)) return null
+    val img = org.jetbrains.skia.Image.makeFromEncoded(file.readBytes())
+    val scale = maxPx.toFloat() / maxOf(img.width, img.height)
+    if (scale >= 1f) return img.toComposeImageBitmap()
+    val w = (img.width * scale).toInt().coerceAtLeast(1)
+    val h = (img.height * scale).toInt().coerceAtLeast(1)
+    val surface = org.jetbrains.skia.Surface.makeRasterN32Premul(w, h)
+    surface.canvas.drawImageRect(img, org.jetbrains.skia.Rect.makeWH(w.toFloat(), h.toFloat()))
+    return surface.makeImageSnapshot().toComposeImageBitmap()
 }
 
 /** Full-window layer shown while [value] is non-null; keeps the last value through its exit animation. */

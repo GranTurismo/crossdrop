@@ -83,11 +83,22 @@ internal val selfDeviceIcon: ImageVector get() = if (Platform.isMac) CdIcons.Lap
  * opens the native file dialog (no photo picker on desktop); a drive opens
  * its sheet.
  */
+/** Files or text waiting for devices to be picked (dropped on the window, opened with CrossDrop…). */
+sealed interface Pending {
+    data class Files(val files: List<File>) : Pending
+    data class Text(val text: String) : Pending
+}
+
 @Composable
 fun RadarScreen(
     selfName: String,
     peers: List<Peer>,
     onSendTo: (Peer, List<File>) -> Unit,
+    pending: Pending? = null,
+    onSendPending: (List<Peer>) -> Unit = {},
+    onClearPending: () -> Unit = {},
+    onComposeText: () -> Unit = {},
+    onPickForSeveral: () -> Unit = {},
     onShareToAnyone: (List<File>) -> Unit = {},
     onMountVault: (Peer) -> Unit = {},
     onRename: (String) -> Unit,
@@ -96,10 +107,16 @@ fun RadarScreen(
 ) {
     var vaultPeer by remember { mutableStateOf<Peer?>(null) }
     var renaming by remember { mutableStateOf(false) }
+    var picked by remember(pending) { mutableStateOf(emptySet<String>()) }
 
     fun startSendFlow(peer: Peer) {
         if (peer.endpoint == null) return
         if (peer.vault != null) { vaultPeer = peer; return }
+        // Something is waiting to go: a device tap picks (or un-picks) it as a destination.
+        if (pending != null) {
+            picked = if (peer.instanceId in picked) picked - peer.instanceId else picked + peer.instanceId
+            return
+        }
         val picked = SystemActions.pickFiles(title = "Send to ${peer.name}")
         if (picked.isNotEmpty()) onSendTo(peer, picked)
     }
@@ -172,7 +189,21 @@ fun RadarScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SendToAnyoneCard(::startAnyoneFlow, Modifier.widthIn(max = 560.dp))
+            if (pending != null) {
+                PendingCard(
+                    pending, devices.filter { it.endpoint != null }, picked,
+                    onToggle = { id -> picked = if (id in picked) picked - id else picked + id },
+                    onSend = { onSendPending(devices.filter { it.instanceId in picked }) },
+                    onClear = onClearPending,
+                    modifier = Modifier.widthIn(max = 560.dp),
+                )
+            } else {
+                SendToAnyoneCard(::startAnyoneFlow, Modifier.widthIn(max = 560.dp))
+                Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    QuickAction("Send text or a link", CdIcons.Note, Modifier.weight(1f), onComposeText)
+                    QuickAction("Send to several devices", CdIcons.Transfers, Modifier.weight(1f), onPickForSeveral)
+                }
+            }
             drives.take(2).forEach { d -> DriveRow(d, Modifier.widthIn(max = 560.dp)) { startSendFlow(d) } }
         }
     }
@@ -344,5 +375,88 @@ private fun BigTile(
             Text(title, style = displayStyle(19, tracking = -0.02f, color = if (primary) OnAccent else TextPrimary))
             Text(subtitle, color = if (primary) OnAccentMuted else TextDim, fontSize = 12.sp, lineHeight = 16.sp)
         }
+    }
+}
+
+@Composable
+private fun QuickAction(label: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Row(
+        modifier.heightIn(min = 52.dp).clip(RoundedCornerShape(22.dp)).background(GlassLow)
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CdIcon(icon, Accent, size = 18.dp)
+        Text(label, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** What's waiting to be sent, and every device it can go to — pick any number, then Send. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun PendingCard(
+    pending: Pending,
+    devices: List<Peer>,
+    picked: Set<String>,
+    onToggle: (String) -> Unit,
+    onSend: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(GlassMid)
+            .border(1.dp, Accent.copy(alpha = 0.4f), RoundedCornerShape(26.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(Accent.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
+                CdIcon(if (pending is Pending.Text) CdIcons.Note else CdIcons.ArrowUp, Accent, size = 20.dp)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when (pending) {
+                        is Pending.Files -> if (pending.files.size == 1) pending.files.first().name else "${pending.files.size} files"
+                        is Pending.Text -> pending.text.replace('\n', ' ')
+                    },
+                    color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    if (devices.isEmpty()) "Waiting for devices on this network…" else "Pick where it goes — on the radar or here",
+                    color = TextDim, fontSize = 12.sp,
+                )
+            }
+            com.crossdrop.ui.ChipButton("Clear", onClear, height = 34.dp)
+        }
+        if (devices.isNotEmpty()) {
+            androidx.compose.foundation.layout.FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                devices.forEach { p ->
+                    val on = p.instanceId in picked
+                    Row(
+                        Modifier.height(36.dp).clip(RoundedCornerShape(50)).background(if (on) Accent else GlassRaised)
+                            .clickable(role = Role.Checkbox) { onToggle(p.instanceId) }
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        CdIcon(if (on) CdIcons.Check else deviceIconFor(p.name), if (on) OnAccent else TextPrimary, size = 14.dp)
+                        Text(p.name, color = if (on) OnAccent else TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                    }
+                }
+            }
+        }
+        PillButton(
+            when (picked.size) {
+                0 -> "Pick a device"
+                1 -> "Send to " + (devices.firstOrNull { it.instanceId in picked }?.name ?: "1 device")
+                else -> "Send to ${picked.size} devices"
+            },
+            onSend, Modifier.fillMaxWidth(), enabled = picked.isNotEmpty(), icon = CdIcons.ArrowUp, glow = true,
+        )
     }
 }

@@ -5,4 +5,15 @@
         <item name="android:statusBarColor">@color/ink</item>
         <item name="android:navigationBarColor">@color/ink</item>
     </style>
+
+    <!-- Share menu target: a sheet over whatever app the user is in. -->
+    <style name="Theme.CrossDrop.Share" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Translucent</item>
+    </style>
 </resources>

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.net.Direction
 import com.crossdrop.net.SessionState
+import com.crossdrop.net.TransferGroup
 import com.crossdrop.net.isTerminal
 import com.crossdrop.storage.HistoryStore
 import com.crossdrop.ui.CdIcon
@@ -78,14 +79,14 @@ import java.util.Locale
  */
 @Composable
 fun TransfersScreen(
-    session: SessionState?,
+    groups: List<TransferGroup>,
     history: HistoryStore,
     onClearHistory: () -> Unit,
     refreshSignal: Any?,
-    onOpenActive: (() -> Unit)? = null,
+    onOpenActive: ((groupId: String) -> Unit)? = null,
 ) {
     val entries = remember(refreshSignal) { history.list() }
-    val active = session?.takeIf { !it.status.isTerminal }
+    val active = groups.filter { !it.isTerminal }
     val todayStart = remember(refreshSignal) { startOfDay(0) }
     val (today, earlier) = entries.partition { it.ts >= todayStart }
     var confirmClear by remember { mutableStateOf(false) }
@@ -113,10 +114,12 @@ fun TransfersScreen(
                     }
                 }
             }
-            active?.let { s ->
-                item { ActiveCard(s, onOpenActive, Modifier.widthIn(max = 640.dp)) }
+            active.forEach { g ->
+                item(key = g.id) {
+                    ActiveCard(g, onOpenActive?.let { open -> { open(g.id) } }, Modifier.widthIn(max = 640.dp))
+                }
             }
-            if (entries.isEmpty() && active == null) {
+            if (entries.isEmpty() && active.isEmpty()) {
                 item { EmptyState(Modifier.widthIn(max = 640.dp)) }
             }
             if (today.isNotEmpty()) {
@@ -150,8 +153,9 @@ fun TransfersScreen(
 }
 
 @Composable
-private fun ActiveCard(s: SessionState, onOpen: (() -> Unit)?, modifier: Modifier = Modifier) {
-    val pct = (s.fraction * 100).toInt()
+private fun ActiveCard(g: TransferGroup, onOpen: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val s = g.primary
+    val pct = (g.fraction * 100).toInt()
     GlassCard(
         modifier.fillMaxWidth(),
         radius = 26.dp, fill = GlassMid, border = Accent.copy(alpha = 0.4f),
@@ -163,7 +167,11 @@ private fun ActiveCard(s: SessionState, onOpen: (() -> Unit)?, modifier: Modifie
         Row(verticalAlignment = Alignment.CenterVertically) {
             Dot(Accent, size = 8.dp)
             Text(
-                (if (s.direction == Direction.SENDING) "Sending to " else "Receiving from ") + s.peerName,
+                when {
+                    g.multi -> "Sending to ${g.sessions.size} devices"
+                    s.direction == Direction.SENDING -> "Sending to ${s.peerName}"
+                    else -> "Receiving from ${s.peerName}"
+                },
                 color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f).padding(start = 8.dp),
@@ -172,17 +180,20 @@ private fun ActiveCard(s: SessionState, onOpen: (() -> Unit)?, modifier: Modifie
         }
         Box(Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)).background(GlassHigh)) {
             Box(
-                Modifier.fillMaxWidth(s.fraction).height(6.dp)
+                Modifier.fillMaxWidth(g.fraction).height(6.dp)
                     .dropShadow(RoundedCornerShape(3.dp), Shadow(12.dp, Accent.copy(alpha = 0.6f)))
                     .clip(RoundedCornerShape(3.dp)).background(Accent),
             )
         }
         Text(
-            listOfNotNull(
+            (if (g.multi) listOfNotNull(
+                "${g.completed} of ${g.sessions.size} delivered",
+                g.bytesPerSec.takeIf { it > 0 }?.let { "${formatBytes(it)}/s" },
+            ) else listOfNotNull(
                 s.currentFileName ?: "Establishing a secure channel…",
                 s.fileProgressLabel(),
                 s.bytesPerSec.takeIf { it > 0 }?.let { "${formatBytes(it)}/s" },
-            ).joinToString(" · "),
+            )).joinToString(" · "),
             color = TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
     }

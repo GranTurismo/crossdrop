@@ -17,7 +17,11 @@ import java.nio.channels.OverlappingFileLockException
  * The first instance holds an exclusive lock on `instance.lock` (released by the
  * OS if we crash) and listens on a loopback-only socket whose port is published
  * in `instance.port`. A later instance fails the lock, sends `show\n` to that
- * port and exits. Only the word "show" is acted on, and only to raise the window.
+ * port — followed by `file <absolute path>` lines for files it was launched with
+ * (Explorer "Send to", Open With) and an `end` line — and exits. The running copy
+ * raises its window and puts those files on the radar to pick devices for; it
+ * never sends anything on its own, so a local process that speaks this protocol
+ * can at most pre-fill that card.
  */
 class SingleInstance(private val dir: File = AppDirs.support) {
     private var raf: RandomAccessFile? = null
@@ -31,15 +35,15 @@ class SingleInstance(private val dir: File = AppDirs.support) {
      * loopback sockets) this fails open and returns true: two windows beat no window.
      */
     @Synchronized
-    fun acquire(onActivate: () -> Unit): Boolean = try {
-        acquireOrSignal(onActivate)
+    fun acquire(files: List<File> = emptyList(), onActivate: (List<File>) -> Unit): Boolean = try {
+        acquireOrSignal(files, onActivate)
     } catch (e: Exception) {
         Log.w("SingleInstance", "single-instance protection unavailable", e)
         release()
         true
     }
 
-    private fun acquireOrSignal(onActivate: () -> Unit): Boolean {
+    private fun acquireOrSignal(files: List<File>, onActivate: (List<File>) -> Unit): Boolean {
         dir.mkdirs()
         val file = RandomAccessFile(File(dir, LOCK_FILE), "rw")
         val got = try {
@@ -52,7 +56,7 @@ class SingleInstance(private val dir: File = AppDirs.support) {
         }
         if (got == null) {
             file.close()
-            signalRunningInstance()
+            signalRunningInstance(files)
             return false
         }
         raf = file
@@ -79,13 +83,22 @@ class SingleInstance(private val dir: File = AppDirs.support) {
         server = null; lock = null; raf = null
     }
 
-    private fun serve(srv: ServerSocket, onActivate: () -> Unit) {
+    private fun serve(srv: ServerSocket, onActivate: (List<File>) -> Unit) {
         while (!srv.isClosed) {
             try {
                 srv.accept().use { s ->
                     s.soTimeout = 2_000
-                    if (s.getInputStream().bufferedReader().readLine()?.trim() == "show") {
-                        onActivate()
+                    val reader = s.getInputStream().bufferedReader()
+                    if (reader.readLine()?.trim() == "show") {
+                        val files = ArrayList<File>()
+                        // Older launchers send "show" alone and wait for "ok": a short idle ends the list.
+                        s.soTimeout = 300
+                        while (files.size < MAX_FILES) {
+                            val line = runCatching { reader.readLine() }.getOrNull() ?: break
+                            if (line == "end") break
+                            if (line.startsWith("file ")) files += File(line.removePrefix("file "))
+                        }
+                        onActivate(files)
                         // The reply proves to the caller that this port is CrossDrop, not a stranger
                         // that happens to have inherited a stale port number.
                         s.getOutputStream().apply { write("ok\n".toByteArray()); flush() }
@@ -101,13 +114,18 @@ class SingleInstance(private val dir: File = AppDirs.support) {
      * The primary may still be starting (lock held, port not yet written — or a stale port file from a
      * crashed run still on disk), so retry briefly until a listener answers "ok".
      */
-    private fun signalRunningInstance() {
+    private fun signalRunningInstance(files: List<File>) {
+        val message = buildString {
+            append("show\n")
+            files.take(MAX_FILES).forEach { append("file ").append(it.absolutePath.replace("\n", "")).append('\n') }
+            append("end\n")
+        }
         repeat(20) {
             val port = runCatching { File(dir, PORT_FILE).readText().trim().toInt() }.getOrNull()
             if (port != null && runCatching {
                     Socket(InetAddress.getLoopbackAddress(), port).use { s ->
                         s.soTimeout = 1_000
-                        s.getOutputStream().apply { write("show\n".toByteArray()); flush() }
+                        s.getOutputStream().apply { write(message.toByteArray(Charsets.UTF_8)); flush() }
                         s.getInputStream().bufferedReader().readLine()?.trim() == "ok"
                     }
                 }.getOrDefault(false)
@@ -119,5 +137,6 @@ class SingleInstance(private val dir: File = AppDirs.support) {
     private companion object {
         const val LOCK_FILE = "instance.lock"
         const val PORT_FILE = "instance.port"
+        const val MAX_FILES = 1_000
     }
 }

@@ -57,15 +57,20 @@ class TransferService : LifecycleService() {
         observeJob = lifecycleScope.launch {
             val container = (application as CrossDropApp).container
             combine(
-                container.coordinator.session,
+                container.coordinator.sessions,
                 container.qrShare.state,
                 container.vaultHost.state,
-            ) { s, q, v -> Triple(s, q, v) }
-                .collectLatest { (session, share, vault) ->
+                container.switchSender.state,
+                container.coordinator.live,
+            ) { s, q, v, sw, live -> Snapshot(s, q, v, sw, live) }
+                .collectLatest { snap ->
+                    val active = snap.sessions.filter { !it.status.isTerminal }
                     when {
-                        session != null -> updateNotification(session)
-                        share != null -> updateShareNotification(share)
-                        vault != null -> updateVaultNotification(vault)
+                        snap.switchOut != null && !snap.switchOut.finished -> updateSwitchNotification(snap.switchOut)
+                        active.isNotEmpty() -> updateNotification(active)
+                        snap.live != null -> updateLiveNotification(snap.live)
+                        snap.share != null -> updateShareNotification(snap.share)
+                        snap.vault != null -> updateVaultNotification(snap.vault)
                         else -> stopSelf()
                     }
                 }
@@ -100,7 +105,37 @@ class TransferService : LifecycleService() {
         .setContentIntent(contentIntent())
         .build()
 
-    private fun updateNotification(session: com.crossdrop.net.SessionState) {
+    private class Snapshot(
+        val sessions: List<com.crossdrop.net.SessionState>,
+        val share: com.crossdrop.net.QrShareManager.State?,
+        val vault: com.crossdrop.net.VaultHostManager.State?,
+        val switchOut: com.crossdrop.switchphones.SwitchSender.State?,
+        val live: com.crossdrop.net.LiveFeed?,
+    )
+
+    /** Several sessions at once read as one: "Sending to 3 devices · 42%". */
+    private fun updateNotification(sessions: List<com.crossdrop.net.SessionState>) {
+        if (sessions.size > 1) {
+            val total = sessions.sumOf { it.bytesTotal.coerceAtLeast(1) }
+            val done = sessions.sumOf { it.bytesDone }
+            val pct = (done * 100 / total.coerceAtLeast(1)).toInt().coerceIn(0, 100)
+            val sending = sessions.count { it.direction == Direction.SENDING }
+            startForegroundWith(
+                NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle(
+                        if (sending == sessions.size) "Sending to ${sessions.map { it.peerName }.distinct().size} devices"
+                        else "${sessions.size} transfers"
+                    )
+                    .setContentText("$pct% · ${formatRate(sessions.sumOf { it.bytesPerSec })}")
+                    .setProgress(100, pct, false)
+                    .setOngoing(true).setOnlyAlertOnce(true)
+                    .setContentIntent(contentIntent())
+                    .build(),
+            )
+            return
+        }
+        val session = sessions.first()
         val title = if (session.direction == Direction.SENDING)
             "Sending to ${session.peerName}" else "Receiving from ${session.peerName}"
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -123,6 +158,32 @@ class TransferService : LifecycleService() {
             else -> builder.setContentText("Connecting…").setOngoing(true)
         }
         startForegroundWith(builder.build())
+    }
+
+    private fun updateSwitchNotification(s: com.crossdrop.switchphones.SwitchSender.State) {
+        val pct = (s.fraction * 100).toInt()
+        startForegroundWith(
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Moving to ${s.peerName}")
+                .setContentText("%,d of %,d items · $pct%%".format(s.itemsDone, s.itemsTotal))
+                .setProgress(100, pct, s.bytesTotal == 0L)
+                .setOngoing(true).setOnlyAlertOnce(true)
+                .setContentIntent(contentIntent())
+                .build(),
+        )
+    }
+
+    private fun updateLiveNotification(feed: com.crossdrop.net.LiveFeed) {
+        startForegroundWith(
+            NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle("Live camera from ${feed.peerName}")
+                .setContentText(if (feed.shots.isEmpty()) "Waiting for the first shot" else "${feed.shots.size} shots received")
+                .setOngoing(true).setOnlyAlertOnce(true)
+                .setContentIntent(contentIntent())
+                .build(),
+        )
     }
 
     /** "Send to anyone" share — keeps the HTTP server reachable while backgrounded. */

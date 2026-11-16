@@ -99,3 +99,36 @@ fun AddPeerDialog(onDone: () -> Unit, onAdd: (host: String, port: Int) -> Unit) 
         },
     )
 }
+
+/** Type or paste text/a link to send; starts with whatever is on the clipboard. */
+@Composable
+fun SendTextDialog(initial: String, target: String, onDone: (String?) -> Unit) {
+    var text by remember { mutableStateOf(initial) }
+    AlertDialog(
+        onDismissRequest = { onDone(null) },
+        containerColor = InkSheet,
+        shape = RoundedCornerShape(28.dp),
+        title = { Text("Send text to $target", style = displayStyle(20), maxLines = 2) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it },
+                    minLines = 3, maxLines = 8, label = { Text("Text or link") },
+                    shape = RoundedCornerShape(16.dp), colors = fieldColors(),
+                )
+                Text(
+                    "They can copy it or open the link with one tap.",
+                    color = TextDim, fontSize = 12.sp,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onDone(text) }, enabled = text.isNotBlank()) {
+                Text("Send", color = Accent, fontWeight = FontWeight.SemiBold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onDone(null) }) { Text("Cancel", color = TextDim, fontWeight = FontWeight.SemiBold) }
+        },
+    )
+}

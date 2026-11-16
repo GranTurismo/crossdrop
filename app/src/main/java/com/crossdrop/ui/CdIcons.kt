@@ -71,6 +71,11 @@ object CdIcons {
     val Upload by lazy { icon("M12 20V8M6 13l6-6 6 6M5 4h14") }
     val Play by lazy { filled("M8 5.5v13l10.5-6.5z") }
     val Bolt by lazy { icon("M13 3L5 13.5h6L10 21l8-10.5h-6z") }
+    val Contacts by lazy { icon(circle(12f, 9f, 3.5f), "M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5") }
+    val Camera by lazy { icon("M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z", circle(12f, 12.5f, 3.5f)) }
+    val Note by lazy { icon("M5 6h14M5 11h14M5 16h9", stroke = 2f) }
+    val Swap by lazy { icon("M7 4L3 8l4 4M3 8h13M17 12l4 4-4 4M21 16H8", stroke = 2f) }
+    val Live by lazy { icon(circle(12f, 12f, 3f), "M6.5 6.5a8 8 0 0 0 0 11M17.5 6.5a8 8 0 0 1 0 11", stroke = 2f) }
     val Wrench by lazy { icon("M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.5-.5-.5-2.5z") }
 }
 

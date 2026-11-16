@@ -40,17 +40,20 @@ class InboxStore(private val context: Context) {
             ?.filter { it.isFile && !it.name.startsWith(".") }
             ?.sortedByDescending { it.lastModified() }?.map(::ReceivedFile) ?: emptyList()
 
-    /** Collision- and traversal-safe local filename for an incoming [FileMeta]. */
-    fun sinkFor(meta: FileMeta): OutputStream {
+    /** Collision- and traversal-safe new local file for an incoming [FileMeta]. */
+    fun newFileFor(meta: FileMeta): File {
         val safe = sanitize(meta.name)
         var target = File(dir, safe)
         var i = 1
         while (target.exists()) {
-            target = File(dir, "${safe.substringBeforeLast('.')} ($i).${safe.substringAfterLast('.', "")}")
+            val ext = safe.substringAfterLast('.', "")
+            target = File(dir, "${safe.substringBeforeLast('.')} ($i)" + if (ext.isNotEmpty()) ".$ext" else "")
             i++
         }
-        return FileOutputStream(target)
+        return target
     }
+
+    fun sinkFor(meta: FileMeta): OutputStream = FileOutputStream(newFileFor(meta))
 
     /** Single-pass zero-fill then delete — cryptographic shred for ephemeral data. */
     fun shred(file: File) {

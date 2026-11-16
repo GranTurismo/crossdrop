@@ -84,12 +84,12 @@ class DesktopWiringTest {
             a.coordinator.sendTo(
                 Peer("bob", "bob", Endpoint("127.0.0.1", b.server.port)), listOf(src))
 
-            val offer = awaitNotNull("offer", { "(sender: ${a.coordinator.session.value})" }) { b.coordinator.incomingOffer.value }
+            val offer = awaitNotNull("offer", { "(sender: ${a.coordinator.sessions.value})" }) { b.coordinator.incomingOffer.value }
             assertEquals("payload.bin", offer.offer.files.single().name)
             b.coordinator.respondToOffer(true)
 
-            awaitNotNull("sender done") { a.coordinator.session.value?.takeIf { it.status.name == "COMPLETED" } }
-            awaitNotNull("receiver done") { b.coordinator.session.value?.takeIf { it.status.name == "COMPLETED" } }
+            awaitNotNull("sender done") { a.coordinator.sessions.value.lastOrNull()?.takeIf { it.status.name == "COMPLETED" } }
+            awaitNotNull("receiver done") { b.coordinator.sessions.value.lastOrNull()?.takeIf { it.status.name == "COMPLETED" } }
 
             assertArrayEquals(payload, b.inbox.list().single().file.readBytes())
             assertEquals("SENDING", a.history.list().single().direction)
@@ -103,10 +103,49 @@ class DesktopWiringTest {
             awaitNotNull("listener") { b.server.port.takeIf { it != 0 } }
             val src = File(home, "nope.txt").apply { writeText("hello") }
             a.coordinator.sendTo(Peer("bob2", "bob2", Endpoint("127.0.0.1", b.server.port)), listOf(src))
-            awaitNotNull("offer", { "(sender: ${a.coordinator.session.value})" }) { b.coordinator.incomingOffer.value }
+            awaitNotNull("offer", { "(sender: ${a.coordinator.sessions.value})" }) { b.coordinator.incomingOffer.value }
             b.coordinator.respondToOffer(false)
-            awaitNotNull("declined") { a.coordinator.session.value?.takeIf { it.status == SessionStatus.DECLINED } }
+            awaitNotNull("declined") { a.coordinator.sessions.value.lastOrNull()?.takeIf { it.status == SessionStatus.DECLINED } }
             assertTrue(b.inbox.list().isEmpty())
+        } finally { a.close(); b.close() }
+    }
+
+    @Test fun sendsToTwoDevicesAtOnce() = runBlocking {
+        val a = Node("alice3", File(home, "a3")); val b = Node("bob3", File(home, "b3")); val c = Node("carol3", File(home, "c3"))
+        try {
+            awaitNotNull("listeners") { if (b.server.port != 0 && c.server.port != 0) Unit else null }
+            val payload = ByteArray(1024 * 1024 + 5) { (it * 7).toByte() }
+            val src = File(home, "both.bin").apply { writeBytes(payload) }
+            val gid = a.coordinator.sendTo(
+                listOf(
+                    Peer("bob3", "bob3", Endpoint("127.0.0.1", b.server.port)),
+                    Peer("carol3", "carol3", Endpoint("127.0.0.1", c.server.port)),
+                ),
+                listOf(src),
+            )
+            awaitNotNull("offer b") { b.coordinator.incomingOffer.value }; b.coordinator.respondToOffer(true)
+            awaitNotNull("offer c") { c.coordinator.incomingOffer.value }; c.coordinator.respondToOffer(true)
+            val group = awaitNotNull("both delivered") {
+                a.coordinator.groups.value.firstOrNull { it.id == gid }?.takeIf { it.isTerminal && it.completed == 2 }
+            }
+            assertEquals(2, group.sessions.size)
+            assertArrayEquals(payload, b.inbox.list().single().file.readBytes())
+            assertArrayEquals(payload, c.inbox.list().single().file.readBytes())
+            assertEquals(2, a.history.list().size)
+        } finally { a.close(); b.close(); c.close() }
+    }
+
+    @Test fun textArrivesInlineWithoutTouchingTheInbox() = runBlocking {
+        val a = Node("alice4", File(home, "a4")); val b = Node("bob4", File(home, "b4"))
+        try {
+            awaitNotNull("listener") { b.server.port.takeIf { it != 0 } }
+            a.coordinator.sendText(listOf(Peer("bob4", "bob4", Endpoint("127.0.0.1", b.server.port))), "https://example.com/x")
+            val offer = awaitNotNull("text offer") { b.coordinator.incomingOffer.value }
+            assertEquals("https://example.com/x", offer.text)
+            b.coordinator.respondToOffer(true)
+            awaitNotNull("sent") { a.coordinator.sessions.value.lastOrNull()?.takeIf { it.status == SessionStatus.COMPLETED } }
+            assertTrue(b.inbox.list().isEmpty())
+            assertEquals("Link", b.history.list().single().summary)
         } finally { a.close(); b.close() }
     }
 

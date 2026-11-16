@@ -1,186 +1,68 @@
 package com.crossdrop.net
 
-import com.crossdrop.platform.Log
 import com.crossdrop.core.Peer
-import com.crossdrop.core.protocol.Offer
-import com.crossdrop.core.transfer.ReceiveDecision
+import com.crossdrop.core.delta.DeltaReceiver
+import com.crossdrop.core.protocol.FileMeta
+import com.crossdrop.core.protocol.OfferKind
+import com.crossdrop.core.transfer.OutgoingFile
+import com.crossdrop.core.transfer.SendOptions
 import com.crossdrop.core.transfer.TransferEngine
-import com.crossdrop.core.transfer.TransferEvent
 import com.crossdrop.storage.HistoryStore
 import com.crossdrop.storage.InboxStore
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
-import java.net.Socket
-
-enum class Direction { SENDING, RECEIVING }
-
-enum class SessionStatus {
-    CONNECTING, AWAITING_ACCEPT, TRANSFERRING, COMPLETED, FAILED, DECLINED, CANCELLED
-}
-
-val SessionStatus.isTerminal: Boolean
-    get() = this == SessionStatus.COMPLETED || this == SessionStatus.FAILED ||
-            this == SessionStatus.DECLINED || this == SessionStatus.CANCELLED
-
-data class SessionState(
-    val direction: Direction,
-    val peerName: String,
-    val sas: String? = null,
-    val offer: Offer? = null,
-    val bytesDone: Long = 0,
-    val bytesTotal: Long = 1,
-    val bytesPerSec: Long = 0,
-    /** v2 delta: bytes satisfied from local sources instead of the wire. */
-    val bytesSkipped: Long = 0,
-    val currentFileName: String? = null,
-    val status: SessionStatus = SessionStatus.CONNECTING,
-    val error: String? = null,
-) {
-    val fraction: Float get() = (bytesDone.toFloat() / bytesTotal.coerceAtLeast(1)).coerceIn(0f, 1f)
-}
-
-/** An offer waiting for the human's accept/decline tap. */
-class IncomingOffer(
-    val peerName: String,
-    val offer: Offer,
-    internal val decision: CompletableDeferred<ReceiveDecision>,
-)
 
 /**
- * Single source of truth for the "what is happening right now" transfer state.
- * The UI never touches sockets — it observes [session] / [incomingOffer] and
- * calls intent-style methods.
+ * Desktop face of the shared [TransferHub]: local files and text out, the inbox for files in,
+ * history for every finished session. The UI observes the hub's flows; it never touches sockets.
  */
 class TransferCoordinator(
-    private val scope: CoroutineScope,
-    private val engine: TransferEngine,
+    scope: CoroutineScope,
+    engine: TransferEngine,
     private val server: TransferServer,
     private val inbox: InboxStore,
     private val history: HistoryStore,
 ) {
-    private val _session = MutableStateFlow<SessionState?>(null)
-    val session: StateFlow<SessionState?> = _session
+    val hub = TransferHub(
+        scope, engine,
+        port = object : ReceivePort {
+            override fun newInboxFile(meta: FileMeta): File = inbox.uniqueFile(meta.name)
+            override val inboxDelta: DeltaReceiver get() = inbox.delta
+        },
+        onEnded = ::record,
+    )
 
-    private val _incomingOffer = MutableStateFlow<IncomingOffer?>(null)
-    val incomingOffer: StateFlow<IncomingOffer?> = _incomingOffer
-
-    private var sessionJob: Job? = null
-    private val inboundJobs = mutableListOf<Job>()
+    val sessions: StateFlow<List<SessionState>> get() = hub.sessions
+    val groups: StateFlow<List<TransferGroup>> get() = hub.groups
+    val focusedGroup: StateFlow<TransferGroup?> get() = hub.focusedGroup
+    val incomingOffer: StateFlow<IncomingOffer?> get() = hub.incomingOffer
+    val live: StateFlow<LiveFeed?> get() = hub.live
 
     fun start() {
-        server.onSocket = ::onInboundSocket
+        server.onSocket = hub::onInboundSocket
     }
 
-    // ------------------------------------------------------------ sending --
+    /** Send the same files to every device in [peers] at once. */
+    fun sendTo(peers: List<Peer>, picked: List<File>): String =
+        hub.send(peers, { picked.mapNotNull { it.toOutgoingFile() } })
 
-    fun sendTo(peer: Peer, picked: List<File>) {
-        val endpoint = peer.endpoint ?: return
-        sessionJob?.cancel()
-        _session.value = SessionState(Direction.SENDING, peer.name, status = SessionStatus.CONNECTING)
-        sessionJob = scope.launch {
-            val files = picked.mapNotNull { it.toOutgoingFile() }
-            if (files.isEmpty()) {
-                _session.value = _session.value?.copy(
-                    status = SessionStatus.FAILED, error = "nothing readable selected")
-                return@launch
-            }
-            engine.send(endpoint, files).collect { reduce(it, Direction.SENDING, peer.name) }
-        }
-    }
+    fun sendTo(peer: Peer, picked: List<File>): String = sendTo(listOf(peer), picked)
 
-    // ----------------------------------------------------------- incoming --
+    /** Text or a link: the receiver gets Copy / Open; older versions receive a .txt file. */
+    fun sendText(peers: List<Peer>, text: String): String =
+        hub.send(peers, { listOf(textFile(text)) }, SendOptions(kind = OfferKind.TEXT, text = text))
 
-    private fun onInboundSocket(socket: Socket) {
-        val job = scope.launch {
-            engine.receive(socket) { peerName, offer ->
-                Log.i(TAG, "offer from '$peerName': ${offer.files.size} file(s), id=${offer.transferId}")
-                val result = run {
-                    val decision = CompletableDeferred<ReceiveDecision>()
-                    // Displace (reject) any still-pending offer — one sheet at a time.
-                    _incomingOffer.value?.decision?.complete(ReceiveDecision.Reject("superseded"))
-                    _incomingOffer.value = IncomingOffer(peerName, offer, decision)
-                    runCatching {
-                        withTimeoutOrNull(OFFER_TIMEOUT_MS) { decision.await() }
-                    }.getOrNull() ?: ReceiveDecision.Reject("no response")
-                }
-                Log.i(TAG, "decision for ${offer.transferId}: $result")
-                if (_incomingOffer.value?.offer?.transferId == offer.transferId) {
-                    _incomingOffer.value = null
-                }
-                if (result is ReceiveDecision.Accept) {
-                    // Keep the code the handshake derived (the Secured event ran before the offer)
-                    // so the receiver can compare it too.
-                    val sas = _session.value?.takeIf { it.peerName == peerName }?.sas
-                    _session.value = SessionState(Direction.RECEIVING, peerName, offer = offer, sas = sas,
-                        status = SessionStatus.TRANSFERRING)
-                }
-                result
-            }.collect { reduce(it, Direction.RECEIVING, _session.value?.peerName ?: "peer") }
-        }
-        inboundJobs += job
-        job.invokeOnCompletion { inboundJobs -= job }
-    }
-
-    fun respondToOffer(accept: Boolean) {
-        val pending = _incomingOffer.value ?: return
-        _incomingOffer.value = null
-        if (accept) {
-            pending.decision.complete(ReceiveDecision.Accept(
-                sinkFor = { meta -> inbox.sinkFor(meta) },
-                delta = inbox.delta,
-            ))
-        } else {
-            pending.decision.complete(ReceiveDecision.Reject("declined"))
-        }
-    }
-
-    // ------------------------------------------------------------ session --
-
-    fun cancelSession() {
-        sessionJob?.cancel()
-        if (_session.value?.direction == Direction.RECEIVING) {
-            inboundJobs.forEach { it.cancel() }
-        }
-        _session.value = _session.value?.copy(status = SessionStatus.CANCELLED)
-    }
-
-    fun dismissSession() {
-        if (_session.value?.status?.isTerminal == true) _session.value = null
-    }
-
-    private fun reduce(event: TransferEvent, direction: Direction, peerName: String) {
-        val cur = _session.value
-        val base = cur ?: SessionState(direction, peerName)
-        val next = when (event) {
-            is TransferEvent.Connecting -> base.copy(status = SessionStatus.CONNECTING)
-            is TransferEvent.Secured -> base.copy(peerName = event.peerName, sas = event.sas)
-            is TransferEvent.AwaitingAccept -> base.copy(offer = event.offer, status = SessionStatus.AWAITING_ACCEPT)
-            is TransferEvent.Progress -> base.copy(
-                status = SessionStatus.TRANSFERRING,
-                bytesDone = event.bytesDone, bytesTotal = event.bytesTotal,
-                bytesPerSec = event.bytesPerSec, bytesSkipped = event.bytesSkipped,
-                currentFileName = event.currentFile.name,
-            )
-            is TransferEvent.Completed -> base.copy(status = SessionStatus.COMPLETED, offer = event.offer)
-            is TransferEvent.DeclinedByPeer -> base.copy(status = SessionStatus.DECLINED)
-            is TransferEvent.Cancelled -> base.copy(status = SessionStatus.CANCELLED)
-            is TransferEvent.Failed -> base.copy(status = SessionStatus.FAILED, error = event.message)
-        }
-        // Record the outcome once, on the transition into a terminal state.
-        // Direction comes from the caller — _session may already hold the
-        // opposite leg of a loopback, so it can't be trusted here.
-        if (next.status.isTerminal && cur?.status?.isTerminal != true) record(direction, next)
-        _session.value = next
-    }
+    fun respondToOffer(accept: Boolean) = hub.respondToOffer(accept)
+    fun retryFailed(groupId: String) = hub.retryFailed(groupId)
+    fun cancelGroup(groupId: String) = hub.cancelGroup(groupId)
+    fun dismissGroup(groupId: String) = hub.dismissGroup(groupId)
+    fun focus(groupId: String?) = hub.focus(groupId)
+    fun stopLive() = hub.stopLive()
 
     private fun record(direction: Direction, s: SessionState) {
         val files = s.offer?.files.orEmpty()
+        val text = s.kind == OfferKind.TEXT
         runCatching {
             history.add(
                 HistoryStore.Entry(
@@ -188,12 +70,13 @@ class TransferCoordinator(
                     direction = direction.name,
                     peerName = s.peerName,
                     summary = when {
+                        text -> if (isLink(s.offer?.text)) "Link" else "Text"
                         files.size == 1 -> files.first().name
                         files.size > 1 -> "${files.size} files"
                         s.currentFileName != null -> s.currentFileName
                         else -> "—"
                     },
-                    files = files.size,
+                    files = if (text) 1 else files.size,
                     bytes = if (files.isNotEmpty()) files.sumOf { it.size } else s.bytesDone,
                     status = s.status.name,
                 )
@@ -202,8 +85,18 @@ class TransferCoordinator(
     }
 
     companion object {
-        private const val TAG = "TransferCoordinator"
-        /** How long an inbound offer waits for the human before it is declined. */
-        const val OFFER_TIMEOUT_MS = 45_000L
+        const val OFFER_TIMEOUT_MS = TransferHub.OFFER_TIMEOUT_MS
+
+        fun isLink(text: String?): Boolean {
+            val t = text?.trim() ?: return false
+            return !t.contains(' ') && !t.contains('\n') &&
+                (t.startsWith("http://", true) || t.startsWith("https://", true))
+        }
+
+        fun textFile(text: String): OutgoingFile {
+            val bytes = text.toByteArray(Charsets.UTF_8)
+            val name = if (isLink(text)) "Link.txt" else "Text.txt"
+            return OutgoingFile(FileMeta(name, bytes.size.toLong(), "text/plain")) { bytes.inputStream() }
+        }
     }
 }

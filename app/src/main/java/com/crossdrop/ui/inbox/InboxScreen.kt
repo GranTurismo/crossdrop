@@ -289,10 +289,13 @@ private fun whenLabel(ts: Long): String {
     return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(ts))
 }
 
-private fun openFile(context: android.content.Context, item: InboxStore.ReceivedFile) {
+private fun openFile(context: android.content.Context, item: InboxStore.ReceivedFile) = openFile(context, item.file)
+
+/** Hand a file from the app's own storage to whatever app views its type. */
+fun openFile(context: android.content.Context, file: java.io.File) {
     runCatching {
         val uri = FileProvider.getUriForFile(
-            context, "${context.packageName}.fileprovider", item.file,
+            context, "${context.packageName}.fileprovider", file,
         )
         val mime = context.contentResolver.getType(uri) ?: "*/*"
         context.startActivity(

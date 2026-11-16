@@ -76,6 +76,12 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.service)
     implementation(libs.documentfile)
+    // In-app camera (live camera sessions): preview, photo and video capture.
+    implementation(libs.camera.core)
+    implementation(libs.camera.camera2)
+    implementation(libs.camera.lifecycle)
+    implementation(libs.camera.video)
+    implementation(libs.camera.view)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 

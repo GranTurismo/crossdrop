@@ -2,4 +2,6 @@
 <resources>
     <string name="app_name">CrossDrop</string>
     <string name="notification_channel_transfers">File transfers</string>
+    <string name="share_target_label">CrossDrop</string>
+    <string name="shortcut_category_label">Send with CrossDrop</string>
 </resources>

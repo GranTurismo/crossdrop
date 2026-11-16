@@ -74,6 +74,11 @@ class AppContainer(private val app: Context) {
     val server = TransferServer(scope, engine, onBound = ::onListenerBound)
     val coordinator = TransferCoordinator(scope, app, engine, server, inbox, history)
 
+    /** "Switch phones": this phone's library out, or another phone's library in. */
+    val switchSender = com.crossdrop.switchphones.SwitchSender(scope, app, coordinator.hub, history)
+    val switchImporter = com.crossdrop.switchphones.SwitchImporter(app, coordinator.hub, inbox, history)
+        .also { coordinator.hub.switchReceiver = it }
+
     /** "Send to anyone" — zero-install receiver path via QR + embedded HTTP. */
     val qrShare = QrShareManager(scope, app, deviceName::value, history)
 
@@ -165,6 +170,9 @@ class AppContainer(private val app: Context) {
     }
 
     fun start() {
+        // Camera shots and contact exports from an earlier run are only temporary copies.
+        runCatching { java.io.File(app.cacheDir, "camera").deleteRecursively() }
+        runCatching { java.io.File(app.cacheDir, "switch").deleteRecursively() }
         runCatching { server.start() }   // listener comes up first so we know the port…
         if (_nsdEnabled.value) {
             runCatching { nsdDiscovery.start() }

@@ -119,7 +119,10 @@ private fun hasAll(context: android.content.Context): Boolean =
 fun RadarScreen(
     selfName: String,
     peers: List<Peer>,
-    onSendTo: (Peer, List<android.net.Uri>) -> Unit,
+    onSendTo: (List<Peer>, List<android.net.Uri>) -> Unit,
+    onCamera: (List<Peer>) -> Unit = {},
+    onSendText: (List<Peer>, String) -> Unit = { _, _ -> },
+    onSwitchPhones: (Peer) -> Unit = {},
     onShareToAnyone: (List<android.net.Uri>) -> Unit = {},
     onMountVault: (Peer) -> Unit = {},
     onRename: (String) -> Unit,
@@ -129,7 +132,8 @@ fun RadarScreen(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
-    var pendingPeer by remember { mutableStateOf<Peer?>(null) }
+    var pendingPeers by remember { mutableStateOf<List<Peer>>(emptyList()) }
+    var textFor by remember { mutableStateOf<List<Peer>?>(null) }
     var pendingAnyone by remember { mutableStateOf(false) }
     var pickingForPeer by remember { mutableStateOf<Peer?>(null) }
     var pickingAnyone by remember { mutableStateOf(false) }
@@ -138,12 +142,12 @@ fun RadarScreen(
     var permsGranted by remember { mutableStateOf(hasAll(context)) }
 
     fun dispatch(uris: List<android.net.Uri>?) {
-        val peer = pendingPeer
+        val targets = pendingPeers
         val anyone = pendingAnyone
-        pendingPeer = null
+        pendingPeers = emptyList()
         pendingAnyone = false
         if (uris.isNullOrEmpty()) return
-        if (anyone) onShareToAnyone(uris) else if (peer != null) onSendTo(peer, uris)
+        if (anyone) onShareToAnyone(uris) else if (targets.isNotEmpty()) onSendTo(targets, uris)
     }
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
@@ -160,7 +164,7 @@ fun RadarScreen(
         if (peer.endpoint == null) return
         tap()
         if (peer.vault != null) { vaultPeer = peer; return }
-        pendingPeer = peer
+        pendingPeers = listOf(peer)
         pickingForPeer = peer
     }
 
@@ -280,9 +284,12 @@ fun RadarScreen(
         })
     }
 
-    // ---- send sheet: photo picker or generic files
+    // ---- send sheet: photo picker or generic files, to this device and any others picked
     pickingForPeer?.let { peer ->
         val d = peer.estimatedDistanceMeters
+        val others = devices.filter { it.instanceId != peer.instanceId && it.endpoint != null }
+        var also by remember(peer.instanceId) { mutableStateOf(emptySet<String>()) }
+        fun targets() = listOf(peer) + others.filter { it.instanceId in also }
         SendSheet(
             kicker = "Send to",
             title = peer.name,
@@ -297,13 +304,41 @@ fun RadarScreen(
             },
             note = "Straight to this device, end-to-end encrypted, never through a server. " +
                 "You'll both see a 6-digit code to compare.",
-            onDismiss = { pickingForPeer = null; pendingPeer = null },
+            onDismiss = { pickingForPeer = null; pendingPeers = emptyList() },
             onPickMedia = {
+                pendingPeers = targets()
                 pickingForPeer = null
                 mediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
             },
-            onPickFiles = { pickingForPeer = null; filePicker.launch(arrayOf("*/*")) },
+            onPickFiles = { pendingPeers = targets(); pickingForPeer = null; filePicker.launch(arrayOf("*/*")) },
+            extras = {
+                if (others.isNotEmpty()) AlsoSendTo(others, also) { id ->
+                    also = if (id in also) also - id else also + id
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SmallTile("Camera", "Live to them", CdIcons.Camera, Modifier.weight(1f)) {
+                        val t = targets(); pickingForPeer = null; pendingPeers = emptyList(); onCamera(t)
+                    }
+                    SmallTile("Text", "Note or link", CdIcons.Note, Modifier.weight(1f)) {
+                        textFor = targets(); pickingForPeer = null; pendingPeers = emptyList()
+                    }
+                    SmallTile("Switch", "Move phone", CdIcons.Swap, Modifier.weight(1f)) {
+                        pickingForPeer = null; pendingPeers = emptyList(); onSwitchPhones(peer)
+                    }
+                }
+            },
         )
+    }
+
+    textFor?.let { targets ->
+        val clip = LocalClipboardManager.current.getText()?.text.orEmpty().take(4000)
+        com.crossdrop.ui.SendTextDialog(
+            initial = clip,
+            target = if (targets.size == 1) targets.first().name else "${targets.size} devices",
+        ) { text ->
+            textFor = null
+            if (!text.isNullOrBlank()) onSendText(targets, text)
+        }
     }
     if (pickingAnyone) {
         SendSheet(
@@ -513,6 +548,7 @@ private fun SendSheet(
     onDismiss: () -> Unit,
     onPickMedia: () -> Unit,
     onPickFiles: () -> Unit,
+    extras: @Composable ColumnScope.() -> Unit = {},
 ) {
     CdSheet(onDismiss) {
         SheetHeader(kicker, title, icon, meta = meta)
@@ -520,6 +556,7 @@ private fun SendSheet(
             BigTile("Photos & videos", "Gallery, albums, Google Photos", CdIcons.Photo, true, onPickMedia, Modifier.weight(1f))
             BigTile("Files", "Any type, pick several", CdIcons.Doc, false, onPickFiles, Modifier.weight(1f))
         }
+        extras()
         NoteCard(note)
         PillButton("Cancel", onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
     }
@@ -566,5 +603,52 @@ private fun VaultMountSheet(peer: Peer, onDismiss: () -> Unit, onMount: () -> Un
         }
         NoteCard("Files come straight from this drive over your Wi-Fi. Nothing is uploaded anywhere.")
         PillButton("Cancel", onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
+    }
+}
+
+/** Compact action tile under the two big ones. */
+@Composable
+private fun SmallTile(title: String, subtitle: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(22.dp)
+    Column(
+        modifier.heightIn(min = 96.dp).clip(shape).background(GlassMid)
+            .border(1.dp, Color.White.copy(alpha = 0.1f), shape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CdIcon(icon, Accent, size = 22.dp)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(subtitle, color = TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+/** Other nearby devices as toggle chips: the same send goes to every one that's on. */
+@Composable
+private fun AlsoSendTo(others: List<Peer>, selected: Set<String>, onToggle: (String) -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Also send to", color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            others.forEach { p ->
+                val on = p.instanceId in selected
+                Row(
+                    Modifier.height(38.dp).clip(RoundedCornerShape(50))
+                        .background(if (on) Accent else GlassMid)
+                        .border(1.dp, if (on) Accent else Color.White.copy(alpha = 0.1f), RoundedCornerShape(50))
+                        .clickable(role = Role.Checkbox, onClickLabel = if (on) "Remove" else "Add") { onToggle(p.instanceId) }
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    CdIcon(if (on) CdIcons.Check else deviceIconFor(p.name), if (on) OnAccent else TextPrimary, size = 15.dp)
+                    Text(p.name, color = if (on) OnAccent else TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                }
+            }
+        }
     }
 }

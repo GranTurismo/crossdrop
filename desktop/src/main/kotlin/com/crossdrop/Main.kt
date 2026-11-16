@@ -27,6 +27,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 import java.awt.Dimension
+import java.io.File
 import java.awt.Frame
 import java.awt.SystemTray
 import java.awt.Taskbar
@@ -40,11 +41,24 @@ const val APP_VERSION = "0.4.0"
  * (or ⌘Q on a Mac). On Windows only one copy runs per user: launching it again
  * just raises the running one ([SingleInstance]).
  */
-fun main() {
+fun main(args: Array<String>) {
     // Bumped by a second launch (Windows) to ask the running window to surface.
     val showRequests = MutableStateFlow(0)
+    // Files handed to the app — launch arguments (Explorer "Send to"), Finder "Open With", a file
+    // dropped on the Dock icon, or a second launch — wait here until the UI picks them up.
+    val opened = MutableStateFlow(args.map(::File).filter { it.isFile })
     val singleInstance = if (Platform.isWindows) SingleInstance() else null
-    if (singleInstance != null && !singleInstance.acquire { showRequests.update { it + 1 } }) return
+    if (singleInstance != null && !singleInstance.acquire(opened.value) { files ->
+            if (files.isNotEmpty()) opened.value = files
+            showRequests.update { it + 1 }
+        }) return
+    // macOS delivers "open these files" as an app event, possibly before the window exists.
+    if (Platform.isMac) runCatching {
+        java.awt.Desktop.getDesktop().setOpenFileHandler { e ->
+            opened.value = e.files.filter { it.isFile }
+            showRequests.update { it + 1 }
+        }
+    }
 
     application {
         val container = remember { AppContainer().also { it.start() } }
@@ -59,6 +73,13 @@ fun main() {
         )
         val incoming by container.coordinator.incomingOffer.collectAsState()
         val showTick by showRequests.collectAsState()
+        val openedFiles by opened.collectAsState()
+        LaunchedEffect(openedFiles) {
+            if (openedFiles.isNotEmpty()) {
+                container.openFiles(openedFiles)
+                opened.value = emptyList()
+            }
+        }
 
         DisposableEffect(Unit) {
             // macOS: clicking the Dock icon while hidden brings the window back.
@@ -91,6 +112,22 @@ fun main() {
             state = windowState,
         ) {
             window.minimumSize = Dimension(780, 580)
+            // Files dragged onto the window wait on the radar for a device pick.
+            DisposableEffect(Unit) {
+                window.dropTarget = object : java.awt.dnd.DropTarget() {
+                    @Synchronized
+                    override fun drop(evt: java.awt.dnd.DropTargetDropEvent) {
+                        runCatching {
+                            evt.acceptDrop(java.awt.dnd.DnDConstants.ACTION_COPY)
+                            @Suppress("UNCHECKED_CAST")
+                            val files = evt.transferable.getTransferData(java.awt.datatransfer.DataFlavor.javaFileListFlavor) as List<File>
+                            evt.dropComplete(true)
+                            opened.value = files.filter { it.isFile }
+                        }.onFailure { evt.dropComplete(false) }
+                    }
+                }
+                onDispose { window.dropTarget = null }
+            }
 
             LaunchedEffect(showTick) {
                 if (showTick == 0) return@LaunchedEffect
@@ -113,7 +150,13 @@ fun main() {
                 }
                 if (trayOk) trayState.sendNotification(Notification(
                     "${offer.peerName} wants to share",
-                    "${offer.offer.files.size} file${if (offer.offer.files.size == 1) "" else "s"} — open CrossDrop to accept",
+                    when (offer.kind) {
+                        com.crossdrop.core.protocol.OfferKind.TEXT -> if (offer.text != null) "A link or note — open CrossDrop to see it"
+                            else "${offer.offer.files.size} file(s) — open CrossDrop to accept"
+                        com.crossdrop.core.protocol.OfferKind.CAMERA -> "Their camera, live on this screen — open CrossDrop to watch"
+                        com.crossdrop.core.protocol.OfferKind.SWITCH -> "Their photos, videos and contacts — open CrossDrop to accept"
+                        else -> "${offer.offer.files.size} file${if (offer.offer.files.size == 1) "" else "s"} — open CrossDrop to accept"
+                    },
                 ))
             }
 

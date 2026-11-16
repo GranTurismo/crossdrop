@@ -76,6 +76,19 @@ class AppContainer {
     val server = TransferServer(scope, engine, onBound = ::onListenerBound)
     val coordinator = TransferCoordinator(scope, engine, server, inbox, history)
 
+    /** A phone "switching" to this computer: its library lands in a Pictures folder. */
+    val switchReceiver = com.crossdrop.switchphones.DesktopSwitchReceiver(coordinator.hub, history)
+        .also { coordinator.hub.switchReceiver = it }
+
+    /** Files or text waiting for the user to pick devices (drag-and-drop, Open With, Send to…). */
+    val pending = MutableStateFlow<com.crossdrop.ui.radar.Pending?>(null)
+
+    /** Readable files only; folders and anything else are skipped. Never sends by itself. */
+    fun openFiles(files: List<java.io.File>) {
+        val ok = files.filter { it.isFile && it.canRead() }.distinct()
+        if (ok.isNotEmpty()) pending.value = com.crossdrop.ui.radar.Pending.Files(ok)
+    }
+
     /** "Send to anyone" — zero-install receiver path via QR + embedded HTTP. */
     val qrShare = QrShareManager(scope, deviceName::value, history)
 
@@ -127,10 +140,13 @@ class AppContainer {
         coordinator.start()
 
         // Don't let App Nap throttle the NIC mid-transfer or while serving the drive.
-        combine(coordinator.session, qrShare.state, vaultHost.state, vaultExplorer.state) { s, q, v, x ->
-            (s != null && !s.status.isTerminal) || q != null || v != null ||
+        combine(coordinator.hub.busy, qrShare.state, vaultHost.state, vaultExplorer.state) { busy, q, v, x ->
+            busy || q != null || v != null ||
                 x?.jobs?.any { !it.done && it.failed == null } == true
         }.onEach(SleepGuard::hold).launchIn(scope)
+
+        // Windows: put CrossDrop in Explorer's "Send to" menu (once; per-user, no admin).
+        com.crossdrop.platform.WindowsIntegration.ensureSendTo(prefs)
     }
 
     fun shutdown() {

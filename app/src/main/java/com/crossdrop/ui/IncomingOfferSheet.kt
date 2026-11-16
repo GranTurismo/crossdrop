@@ -56,8 +56,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.AnnotatedString
+import com.crossdrop.core.protocol.ItemCategory
+import com.crossdrop.core.protocol.OfferKind
 import com.crossdrop.net.IncomingOffer
-import com.crossdrop.net.TransferCoordinator
+import com.crossdrop.net.TransferHub
 import com.crossdrop.ui.radar.deviceIconFor
 import com.crossdrop.ui.theme.Accent
 import com.crossdrop.ui.theme.Glass
@@ -77,8 +82,9 @@ import com.crossdrop.ui.transfer.formatBytes
 
 /**
  * Full-screen inbound OFFER. The ring around the sender counts down the
- * coordinator's auto-decline window; the human answers only with the two
- * buttons (the shell maps system Back to Decline).
+ * coordinator's auto-decline window; the human answers only with the
+ * buttons (the shell maps system Back to Decline). Text/link, live-camera and
+ * switch-phones offers get their own wording and actions.
  */
 @Composable
 fun IncomingOfferSheet(
@@ -88,7 +94,14 @@ fun IncomingOfferSheet(
     android.util.Log.i("IncomingOfferSheet", "composed for ${offer.offer.transferId}")
     val files = offer.offer.files
     val total = files.sumOf { it.size }
-    val timeout = TransferCoordinator.OFFER_TIMEOUT_MS
+    val timeout = TransferHub.OFFER_TIMEOUT_MS
+    val kind = offer.kind
+    val text = offer.text
+    val isLink = text != null && isLinkText(text)
+    val switch = kind == OfferKind.SWITCH
+    val camera = kind == OfferKind.CAMERA
+    val clipboard = LocalClipboardManager.current
+    val uriHandler = LocalUriHandler.current
     val startedAt = remember(offer) { System.currentTimeMillis() }
     val elapsed = remember(offer) { mutableLongStateOf(0L) }
     LaunchedEffect(offer) {
@@ -122,7 +135,12 @@ fun IncomingOfferSheet(
                     ) {
                         Dot(Accent)
                         Text(
-                            "INCOMING FILES", color = TextSecondary, fontSize = 12.sp,
+                            when {
+                                text != null -> if (isLink) "INCOMING LINK" else "INCOMING TEXT"
+                                camera -> "LIVE CAMERA"
+                                switch -> "SWITCH PHONES"
+                                else -> "INCOMING FILES"
+                            }, color = TextSecondary, fontSize = 12.sp,
                             fontWeight = FontWeight.SemiBold, letterSpacing = 0.06.em,
                         )
                     }
@@ -138,14 +156,20 @@ fun IncomingOfferSheet(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(
-                            "${offer.peerName} wants to send you " +
-                                if (files.size == 1) "a file" else "${files.size} files",
+                            when {
+                                text != null -> "${offer.peerName} sent you " + if (isLink) "a link" else "some text"
+                                camera -> "${offer.peerName} wants to share their camera"
+                                switch -> "${offer.peerName} wants to move to this device"
+                                else -> "${offer.peerName} wants to send you " +
+                                    if (files.size == 1) "a file" else "${files.size} files"
+                            },
                             style = displayStyle(28, tracking = -0.035f).copy(lineHeight = 31.sp),
                             textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             buildAnnotatedString {
-                                append("${formatBytes(total)} · auto-declines in ")
+                                if (text == null && !camera) append(formatBytes(offer.offer.batch?.totalBytes?.takeIf { switch && it > 0 } ?: total) + " · ")
+                                append("auto-declines in ")
                                 withStyle(SpanStyle(fontFamily = MonoFont, color = Accent)) { append("$secondsLeft") }
                                 withStyle(SpanStyle(color = Accent)) { append(" s") }
                             },
@@ -154,7 +178,24 @@ fun IncomingOfferSheet(
                         )
                     }
 
-                    GlassCard(
+                    if (text != null) {
+                        GlassCard(Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline) {
+                            Text(
+                                text, style = if (isLink) monoStyle(14, TextPrimary) else androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 15.sp, lineHeight = 21.sp),
+                                maxLines = 12, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    } else if (camera) {
+                        GlassCard(Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline) {
+                            Text(
+                                "Every photo and video they take shows up here the moment it's taken, without asking " +
+                                    "again. Closing the viewer ends it.",
+                                color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp,
+                            )
+                        }
+                    } else if (switch) {
+                        SwitchSummary(offer)
+                    } else GlassCard(
                         Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
                     ) {
@@ -189,15 +230,35 @@ fun IncomingOfferSheet(
                     Modifier.widthIn(max = 520.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    PillButton(
-                        "Decline", { onRespond(false) }, Modifier.weight(1f),
-                        style = PillStyle.Outline, height = 62.dp, fontSize = 16,
-                    )
-                    PillButton(
-                        "Accept", { onRespond(true) }, Modifier.weight(1.5f),
-                        style = PillStyle.Accent, height = 62.dp, fontSize = 16,
-                        icon = CdIcons.Check, glow = true,
-                    )
+                    if (text != null) {
+                        PillButton(
+                            "Dismiss", { onRespond(false) }, Modifier.weight(1f),
+                            style = PillStyle.Outline, height = 62.dp, fontSize = 16,
+                        )
+                        PillButton(
+                            "Copy", { clipboard.setText(AnnotatedString(text)); onRespond(true) }, Modifier.weight(1f),
+                            style = if (isLink) PillStyle.Glass else PillStyle.Accent, height = 62.dp, fontSize = 16,
+                            icon = CdIcons.Copy, glow = !isLink,
+                        )
+                        if (isLink) PillButton(
+                            "Open", { onRespond(true); runCatching { uriHandler.openUri(text.trim()) } }, Modifier.weight(1f),
+                            style = PillStyle.Accent, height = 62.dp, fontSize = 16, icon = CdIcons.Globe, glow = true,
+                        )
+                    } else {
+                        PillButton(
+                            "Decline", { onRespond(false) }, Modifier.weight(1f),
+                            style = PillStyle.Outline, height = 62.dp, fontSize = 16,
+                        )
+                        PillButton(
+                            when {
+                                camera -> "Watch"
+                                switch -> "Start moving"
+                                else -> "Accept"
+                            }, { onRespond(true) }, Modifier.weight(1.5f),
+                            style = PillStyle.Accent, height = 62.dp, fontSize = 16,
+                            icon = CdIcons.Check, glow = true,
+                        )
+                    }
                 }
             }
         }
@@ -239,5 +300,48 @@ private fun CountdownAvatar(peerName: String, fraction: () -> Float, modifier: M
                 .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape),
             contentAlignment = Alignment.Center,
         ) { CdIcon(deviceIconFor(peerName), TextPrimary, size = 44.dp) }
+    }
+}
+
+/** "http(s)://…" with nothing else around it. */
+fun isLinkText(text: String): Boolean {
+    val t = text.trim()
+    return !t.contains(' ') && !t.contains('\n') &&
+        (t.startsWith("http://", true) || t.startsWith("https://", true))
+}
+
+/** What a phone move brings: counts per kind from the batch totals. */
+@Composable
+private fun SwitchSummary(offer: IncomingOffer) {
+    val b = offer.offer.batch
+    val cats = offer.offer.files.groupingBy { it.cat }.eachCount()
+    val rows = listOf(
+        Triple(CdIcons.Photo, "Photos", b?.photos ?: cats[ItemCategory.PHOTO] ?: 0),
+        Triple(CdIcons.Video, "Videos", b?.videos ?: cats[ItemCategory.VIDEO] ?: 0),
+        Triple(CdIcons.Contacts, "Contacts", b?.contacts ?: 0),
+        Triple(CdIcons.Doc, "Files", b?.files ?: cats[null] ?: 0),
+    ).filter { it.third > 0 }
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
+    ) {
+        rows.forEachIndexed { i, (icon, label, n) ->
+            if (i > 0) RowSeparator()
+            Row(
+                Modifier.fillMaxWidth().padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                CdIcon(icon, Accent, size = 22.dp)
+                Text(label, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text("%,d".format(n), style = monoStyle(14, TextSecondary))
+            }
+        }
+        Text(
+            "Photos and videos go to your gallery with their original dates, contacts to your address book. " +
+                "Keep both devices awake and on this Wi-Fi.",
+            color = TextDim, fontSize = 12.sp, lineHeight = 17.sp,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+        )
     }
 }

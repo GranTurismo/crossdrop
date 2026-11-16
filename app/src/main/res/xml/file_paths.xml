@@ -2,4 +2,6 @@
 <paths>
     <files-path name="inbox" path="inbox/" />
     <external-files-path name="ext_inbox" path="inbox/" />
+    <!-- Live camera shots before they are sent. -->
+    <cache-path name="camera" path="camera/" />
 </paths>
