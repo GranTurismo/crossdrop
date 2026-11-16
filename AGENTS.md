@@ -284,6 +284,43 @@ notes are in `ios/RELEASE.md`. Both Swift servers (QR share, Wireless Drive) wer
 Host/Origin checks against DNS rebinding/CSRF, shared PIN throttle, slow-connection limits, MOVE/COPY
 root guards (the same MOVE/COPY-onto-root data-loss bug was fixed in Kotlin `FileVaultFs`/`SafVaultFs`).
 
+## Multi-session transfers, offer kinds, trust grants
+
+- `app/.../net/TransferHub.kt` holds every session (one per device per send; a receive is its own
+  group). It is **shared verbatim with `:desktop`** (`syncSharedNet` in `desktop/build.gradle.kts`, like
+  the shared UI), so it must stay free of `android.*`. `TransferCoordinator` on each platform is a thin
+  face over it (URIs/files/text in, inbox + history out). The Swift twin is
+  `ios/CrossDrop/Services/TransferCoordinator.swift`. Shared screens: `ui/transfer/GroupTransferScreen.kt`,
+  `ui/live/LiveViewerScreen.kt` (image decoding is passed in: BitmapFactory on Android, Skia on desktop —
+  Skia applies EXIF orientation itself).
+- `Offer.kind` (`OfferKind`): `text` (the text rides inline in `Offer.text`, the `.txt` file is only for
+  older receivers; new receivers show Copy/Open and discard the file), `camera` (live camera shots →
+  `TransferHub.live`), `switch` (one batch of "Switch phones" → the platform `SwitchReceiver`).
+  `FileMeta.cat` / `mtime` and `Offer.batch` carry what each item is and the move's totals. All optional
+  JSON: older peers ignore them.
+- Trust grants (`core/transfer/TrustStore.kt`, Swift `TrustStore`): a receiver accepting a camera/switch
+  offer returns `Accept.trust` (`TrustGrant`: id, 32-byte token, kind, ttl). The sender's later offers
+  carry `trustId` + `trustProof` = HMAC-SHA256(token, `SessionKeys.binding` || transferId); the receiver
+  auto-accepts a valid, unexpired, same-kind proof whose transfer id it hasn't seen. Memory only.
+  `SessionKeys.binding` is HKDF of the per-launch keys, so it is the same for every connection between the
+  same two app launches — the seen-id check is what stops replays.
+- Switch phones: Android `switchphones/` (MediaStore query + `AndroidContacts` ↔ `core/contacts/VCard.kt`),
+  iOS `Services/SwitchPhones.swift` (PhotoKit export/import, Contacts framework), desktop
+  `switchphones/DesktopSwitchReceiver.kt` (backup folder). Receivers stage batches in their own
+  `FileDeltaStore` and delete each staged file once imported (only that batch's files — the next batch
+  may already be arriving). Android writes EXIF time + offset into date-less JPEGs before inserting:
+  MediaStore drops offset-less EXIF times on fresh copies.
+- Share entry points: Android `share/ShareActivity` (translucent, own task) hands its URI read grants to
+  `TransferService` via ClipData before sending; `share/DirectShare` pushes a shortcut per device sent to
+  (matched by name — ids rotate). iOS `ios/CrossDropShare` is an app extension with its own small Bonjour
+  browser and engine (`APPLICATION_EXTENSION_API_ONLY`, so it can't use app code that touches
+  `UIApplication.shared`). Desktop: `Main.kt` takes launch args, macOS `setOpenFileHandler`, window
+  drops; `SingleInstance` forwards `file <path>` lines after `show`; `platform/WindowsIntegration` adds
+  the per-user "Send to" shortcut once (not for MSIX).
+- Testing without UI taps: `crossdrop-cli send --kind text|camera|switch [--text T] [--cat C] [--each]`
+  and `recv --grant --count N` speak the new kinds; Android `-e dev_peer a:p,b:p` takes several peers;
+  iOS `-dev_send_multi`, `-dev_text`, `-dev_switch host:port`, `-dev_autoaccept YES`.
+
 ## Radar liveness & merging
 
 mDNS only retires a peer when it says goodbye, so a killed app, a sleeping laptop or a phone off
@@ -415,5 +452,5 @@ Debug-only hooks (`com.crossdrop.debug` builds):
   interop tests — never on a physical iPhone or against a real Android device. Local-network
   prompt flow, background suspension and Wi-Fi switching are unverified on hardware.
 - Desktop: Mac↔phone discovery verified only against macOS's own Bonjour
-  (`dns-sd`), not yet against a real Android device; no drag-and-drop send;
+  (`dns-sd`), not yet against a real Android device;
   DMG is ~80 MB (bundled JRE + Skia) — the <15 MB pillar is Android-only.

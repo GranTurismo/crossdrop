@@ -1,6 +1,6 @@
 # CrossDrop Privacy Policy
 
-**Last updated:** October 2025
+**Last updated:** November 2026
 
 ## The short version
 
@@ -23,6 +23,19 @@ Everything the app does happens entirely on your local network or on-device.
 - **On-device storage** — received files, a local transfer log, and your
   chosen display name are stored only on your device. You can delete them at
   any time from within the app (Inbox and Settings).
+- **Camera** — when you open CrossDrop's camera, each photo or video you take
+  is saved to your own gallery and sent straight to the devices you picked.
+  The camera is only on while that screen is open.
+- **Switch phones** — when you start a move, CrossDrop reads your photos,
+  videos and contacts and sends them directly to the one device you chose, over
+  the same encrypted local connection. On the receiving device they are added to
+  its gallery and address book. Nothing is copied anywhere else, and the
+  temporary copies made during the move are deleted as soon as each item is in
+  place.
+- **Accept once** — when you accept a live camera feed or a phone move, the two
+  devices share a one-time secret so the following photos or batches don't ask
+  again. It lives only in memory, ends when you close the viewer, finish the
+  move or restart the app, and is never stored or sent anywhere else.
 
 ## What CrossDrop does not do
 
@@ -37,8 +50,12 @@ Everything the app does happens entirely on your local network or on-device.
 | --- | --- |
 | Nearby Wi-Fi devices / Bluetooth (advertise, scan, connect) | Discover and reach peers on your network — declared `neverForLocation`. |
 | Location (Android 11 and older only) | Required by the OS for legacy BLE discovery; the app does not read or store your location. |
-| Notifications | Show transfer progress and completion. |
+| Notifications | Show transfer progress and completion, and offers that arrive while the app isn't open. |
 | Photos / files (system pickers) | You choose exactly which files to send, each time. |
+| Camera, microphone | Only while CrossDrop's camera screen is open: to take the photos and videos you send (the microphone records video sound). |
+| Photo library (full access) | Only for "Switch phones", to move your whole gallery to your other device. |
+| Add to photo library | To save photos and videos you receive in a phone move, and the shots you take in CrossDrop's camera. |
+| Contacts (read and write) | Only for "Switch phones": to copy your address book to your other device, and to add contacts moved to this one (duplicates are skipped). |
 
 ## Contact
 
