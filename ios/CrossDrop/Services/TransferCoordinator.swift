@@ -7,8 +7,9 @@ import UniformTypeIdentifiers
 /// Called from engine threads (store, sinks) and the main thread (begin, import) — implementations
 /// keep their own state thread-safe.
 protocol SwitchReceiving: AnyObject, Sendable {
-    var batchStore: FileDeltaStore { get }
-    func batchFile(_ meta: FileMeta) throws -> (url: URL, sink: OutputSink)
+    /// Staging for one batch — its own folder, so a batch can arrive while the previous one imports.
+    func store(for offer: Offer) -> FileDeltaStore
+    func batchFile(_ offer: Offer, _ meta: FileMeta) throws -> (url: URL, sink: OutputSink)
     @MainActor func begin(peerName: String, batch: BatchInfo?)
     @MainActor func importBatch(peerName: String, offer: Offer, files: [URL])
     @MainActor func batchEnded(failed: Bool, error: String?)
@@ -321,17 +322,18 @@ final class TransferCoordinator: ObservableObject {
                     }, delta: inbox.delta, grant: grant)
                 case .switchBatch(let grant):
                     guard let rx = switchRx else { return .reject("unsupported") }
+                    let store = rx.store(for: offer)
                     conn.kind = OfferKind.switchPhones
-                    conn.store = rx.batchStore
+                    conn.store = store
                     DispatchQueue.main.async {
                         if grant != nil { rx.begin(peerName: req.peerName, batch: offer.batch) }
                         self?.register(sid, conn: conn, peer: req.peerName, sas: sas, offer: offer, kind: OfferKind.switchPhones, quiet: true)
                     }
                     return .accept(sinkFor: { meta in
-                        let (url, sink) = try rx.batchFile(meta)
+                        let (url, sink) = try rx.batchFile(offer, meta)
                         conn.lock.lock(); conn.v1Files.append(url); conn.lock.unlock()
                         return sink
-                    }, delta: rx.batchStore, grant: grant)
+                    }, delta: store, grant: grant)
                 }
             }, emit: { event in
                 DispatchQueue.main.async { self?.inboundEvent(event, conn: conn) }
@@ -419,8 +421,13 @@ final class TransferCoordinator: ObservableObject {
 
     func respondToOffer(accept: Bool) {
         guard let pending = incomingOffer else { return }
-        incomingOffer = nil
-        pending.resolve(accept: accept, reason: accept ? nil : "declined")
+        respondToOffer(pending, accept: accept)
+    }
+
+    /// Answer exactly the offer that was on screen; if a newer one replaced it meanwhile, that one stays up.
+    func respondToOffer(_ offer: IncomingOffer, accept: Bool) {
+        if incomingOffer?.id == offer.id { incomingOffer = nil }
+        offer.resolve(accept: accept, reason: accept ? nil : "declined")
     }
 
     // MARK: state
@@ -460,8 +467,7 @@ final class TransferCoordinator: ObservableObject {
         if s.kind != OfferKind.camera && s.kind != OfferKind.switchPhones { record(s) }
         onSessionEnded?(s)
         if s.direction == .receiving { inbox.refresh() }
-        let groupDone = sessions.filter { $0.groupId == s.groupId }.allSatisfy { $0.status.isTerminal }
-        if groupDone { releaseGroup(s.groupId) }
+        // The group's files stay readable until it is dismissed: Retry resends from them.
         updateKeepAwake()
     }
 

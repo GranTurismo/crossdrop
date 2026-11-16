@@ -301,4 +301,51 @@ class WindowsSupportTest {
         third.release()
         dir.deleteRecursively()
     }
+
+    @Test
+    fun `second launch hands its files to the first`() {
+        val dir = Files.createTempDirectory("single-files").toFile()
+        val got = java.util.concurrent.LinkedBlockingQueue<List<File>>()
+        val first = SingleInstance(dir)
+        assertTrue(first.acquire { got.put(it) })
+        val local = File(dir, "photo.jpg").apply { writeText("x") }
+        val second = SingleInstance(dir)
+        assertFalse(second.acquire(listOf(local)) { error("never primary") })
+        assertEquals(listOf(local.absolutePath), got.poll(3, TimeUnit.SECONDS)?.map { it.path })
+        first.release()
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `network paths are never taken, even with the secret`() {
+        val dir = Files.createTempDirectory("single-unc").toFile()
+        val got = java.util.concurrent.LinkedBlockingQueue<List<File>>()
+        val first = SingleInstance(dir)
+        assertTrue(first.acquire { got.put(it) })
+        val (port, secret) = File(dir, "instance.port").readText().trim().split(' ')
+        java.net.Socket(InetAddress.getLoopbackAddress(), port.toInt()).use { s ->
+            val msg = "show $secret\nfile \\\\attacker\\share\\x\nfile //attacker/share/y\nfile /tmp/ok.jpg\nend\n"
+            s.getOutputStream().apply { write(msg.toByteArray()); flush() }
+            s.getInputStream().bufferedReader().readLine()
+        }
+        assertEquals(listOf(File("/tmp/ok.jpg").path), got.poll(3, TimeUnit.SECONDS)?.map { it.path })   // backslashes on Windows
+        first.release()
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun `a local process without the secret can raise the window but not hand over files`() {
+        val dir = Files.createTempDirectory("single-secret").toFile()
+        val got = java.util.concurrent.LinkedBlockingQueue<List<File>>()
+        val first = SingleInstance(dir)
+        assertTrue(first.acquire { got.put(it) })
+        val port = File(dir, "instance.port").readText().trim().split(' ').first().toInt()
+        java.net.Socket(InetAddress.getLoopbackAddress(), port).use { s ->
+            s.getOutputStream().apply { write("show wrong\nfile /etc/hosts\nend\n".toByteArray()); flush() }
+            s.getInputStream().bufferedReader().readLine()
+        }
+        assertEquals(emptyList<File>(), got.poll(3, TimeUnit.SECONDS))
+        first.release()
+        dir.deleteRecursively()
+    }
 }

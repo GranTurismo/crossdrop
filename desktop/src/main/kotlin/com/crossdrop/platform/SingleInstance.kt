@@ -20,8 +20,12 @@ import java.nio.channels.OverlappingFileLockException
  * port — followed by `file <absolute path>` lines for files it was launched with
  * (Explorer "Send to", Open With) and an `end` line — and exits. The running copy
  * raises its window and puts those files on the radar to pick devices for; it
- * never sends anything on its own, so a local process that speaks this protocol
- * can at most pre-fill that card.
+ * never sends anything on its own.
+ *
+ * Loopback is shared by every user on a machine (terminal servers), so file lines
+ * are only taken when the `show` line carries the random secret written next to
+ * the port in the per-user port file; network (UNC) paths are refused — even
+ * checking one would authenticate to that server — and lines are length-capped.
  */
 class SingleInstance(private val dir: File = AppDirs.support) {
     private var raf: RandomAccessFile? = null
@@ -69,8 +73,9 @@ class SingleInstance(private val dir: File = AppDirs.support) {
             throw e
         }
         server = srv
-        File(dir, PORT_FILE).writeText(srv.localPort.toString())
-        Thread({ serve(srv, onActivate) }, "crossdrop-single-instance").apply { isDaemon = true }.start()
+        val secret = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
+        File(dir, PORT_FILE).writeText("${srv.localPort} $secret")
+        Thread({ serve(srv, secret, onActivate) }, "crossdrop-single-instance").apply { isDaemon = true }.start()
         return true
     }
 
@@ -83,20 +88,25 @@ class SingleInstance(private val dir: File = AppDirs.support) {
         server = null; lock = null; raf = null
     }
 
-    private fun serve(srv: ServerSocket, onActivate: (List<File>) -> Unit) {
+    private fun serve(srv: ServerSocket, secret: String, onActivate: (List<File>) -> Unit) {
         while (!srv.isClosed) {
             try {
                 srv.accept().use { s ->
                     s.soTimeout = 2_000
-                    val reader = s.getInputStream().bufferedReader()
-                    if (reader.readLine()?.trim() == "show") {
+                    val input = s.getInputStream()
+                    val first = readLine(input)?.trim() ?: return@use
+                    if (first == "show" || first.startsWith("show ")) {
+                        val trusted = constantTimeEquals(first.removePrefix("show").trim(), secret)
                         val files = ArrayList<File>()
                         // Older launchers send "show" alone and wait for "ok": a short idle ends the list.
                         s.soTimeout = 300
-                        while (files.size < MAX_FILES) {
-                            val line = runCatching { reader.readLine() }.getOrNull() ?: break
+                        while (trusted && files.size < MAX_FILES) {
+                            val line = runCatching { readLine(input) }.getOrNull() ?: break
                             if (line == "end") break
-                            if (line.startsWith("file ")) files += File(line.removePrefix("file "))
+                            if (line.startsWith("file ")) {
+                                val path = line.removePrefix("file ")
+                                if (!isNetworkPath(path)) files += File(path)
+                            }
                         }
                         onActivate(files)
                         // The reply proves to the caller that this port is CrossDrop, not a stranger
@@ -115,13 +125,15 @@ class SingleInstance(private val dir: File = AppDirs.support) {
      * crashed run still on disk), so retry briefly until a listener answers "ok".
      */
     private fun signalRunningInstance(files: List<File>) {
-        val message = buildString {
-            append("show\n")
-            files.take(MAX_FILES).forEach { append("file ").append(it.absolutePath.replace("\n", "")).append('\n') }
-            append("end\n")
-        }
         repeat(20) {
-            val port = runCatching { File(dir, PORT_FILE).readText().trim().toInt() }.getOrNull()
+            val parts = runCatching { File(dir, PORT_FILE).readText().trim().split(' ') }.getOrNull()
+            val port = parts?.firstOrNull()?.toIntOrNull()
+            val secret = parts?.getOrNull(1).orEmpty()
+            val message = buildString {
+                append("show $secret\n")
+                files.take(MAX_FILES).forEach { append("file ").append(it.absolutePath.replace("\n", "")).append('\n') }
+                append("end\n")
+            }
             if (port != null && runCatching {
                     Socket(InetAddress.getLoopbackAddress(), port).use { s ->
                         s.soTimeout = 1_000
@@ -134,9 +146,29 @@ class SingleInstance(private val dir: File = AppDirs.support) {
         }
     }
 
+    /** One line, at most [MAX_LINE] bytes (a client streaming without newlines can't exhaust memory). */
+    private fun readLine(input: java.io.InputStream): String? {
+        val buf = java.io.ByteArrayOutputStream()
+        while (true) {
+            val b = input.read()
+            if (b < 0) return if (buf.size() == 0) null else buf.toString(Charsets.UTF_8)
+            if (b == '\n'.code) return buf.toString(Charsets.UTF_8).trimEnd('\r')
+            if (buf.size() >= MAX_LINE) throw java.io.IOException("line too long")
+            buf.write(b)
+        }
+    }
+
+    private fun constantTimeEquals(a: String, b: String) =
+        java.security.MessageDigest.isEqual(a.toByteArray(), b.toByteArray()) && b.isNotEmpty()
+
     private companion object {
+        const val MAX_LINE = 8_192
         const val LOCK_FILE = "instance.lock"
         const val PORT_FILE = "instance.port"
         const val MAX_FILES = 1_000
     }
 }
+
+/** `\\server\share` or `//server/share`: anything Windows would reach over SMB. */
+internal fun isNetworkPath(path: String): Boolean =
+    path.startsWith("\\\\") || path.startsWith("//")

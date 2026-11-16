@@ -143,16 +143,31 @@ object VCard {
     private fun unfold(text: String): List<String> {
         val lines = text.replace("\r\n", "\n").replace('\r', '\n').split('\n')
         val out = ArrayList<String>()
+        // Builders, not string concatenation: a big folded PHOTO line has 100k+ continuations.
+        var cur: StringBuilder? = null
+        var qp = false
+        fun flush() { cur?.let { out += it.toString() }; cur = null }
         for (l in lines) {
-            val prev = out.lastOrNull()
+            val c = cur
             when {
-                (l.startsWith(" ") || l.startsWith("\t")) && prev != null -> out[out.size - 1] = prev + l.substring(1)
-                prev != null && prev.endsWith("=") && isQuotedPrintable(prev) -> out[out.size - 1] = prev.dropLast(1) + l
-                else -> out += l
+                (l.startsWith(" ") || l.startsWith("\t")) && c != null -> {
+                    if (c.length + l.length > MAX_LINE) { cur = null; continue }   // drop absurd lines
+                    c.append(l, 1, l.length)
+                }
+                c != null && qp && c.endsWith("=") -> { c.setLength(c.length - 1); c.append(l) }
+                else -> {
+                    flush()
+                    cur = StringBuilder(l)
+                    qp = isQuotedPrintable(l)
+                }
             }
         }
+        flush()
         return out
     }
+
+    /** Longest logical line kept (≈ a 10 MB photo in base64). */
+    private const val MAX_LINE = 14_000_000
 
     private fun isQuotedPrintable(line: String): Boolean =
         line.substringBefore(':').uppercase().contains("QUOTED-PRINTABLE")

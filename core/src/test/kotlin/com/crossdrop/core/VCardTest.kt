@@ -95,4 +95,12 @@ class VCardTest {
         assertTrue(a.sameAs(b))
         assertFalse(a.sameAs(c))
     }
+
+    @Test(timeout = 5_000)
+    fun `a large folded photo parses quickly`() {
+        val photo = ByteArray(3_000_000) { (it * 31).toByte() }
+        val text = VCard.write(VContact(given = "Big", family = "Photo", photo = photo))
+        assertTrue(text.length > 4_000_000)
+        assertArrayEquals(photo, VCard.parse(text).single().photo)
+    }
 }

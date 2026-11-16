@@ -127,8 +127,10 @@ interface ReceivePort {
  */
 interface SwitchReceiver {
     fun begin(peerName: String, batch: BatchInfo?)
-    val batchStore: DeltaReceiver
-    fun batchFile(meta: FileMeta): File
+    /** Staging for one batch — its own folder, so a batch can arrive while the previous one imports. */
+    fun storeFor(offer: Offer): DeltaReceiver
+    /** The v1 stream target for [meta] of [offer], inside that batch's folder. */
+    fun batchFile(offer: Offer, meta: FileMeta): File
     /** Runs off the transfer thread; imports [files] (parallel to `offer.files`) and deletes them. */
     suspend fun importBatch(peerName: String, offer: Offer, files: List<File>)
     fun batchEnded(status: SessionStatus, error: String?)
@@ -234,13 +236,16 @@ class TransferHub(
         val sid = newId()
         observers[sid] = onUpdate
         _sessions.update { it + SessionState(Direction.SENDING, peer.name, id = sid, groupId = sid, kind = options.kind, quiet = quiet) }
+        var last: SessionState? = null
         try {
             runSend(sid, peer, files, options)
         } finally {
+            // Also on cancellation: a session left behind mid-transfer would keep "busy" (and the
+            // foreground notification) up forever.
             observers.remove(sid)
+            last = _sessions.value.firstOrNull { it.id == sid }
+            _sessions.update { list -> list.filterNot { it.id == sid } }
         }
-        val last = _sessions.value.firstOrNull { it.id == sid }
-        _sessions.update { list -> list.filterNot { it.id == sid } }
         return when {
             last == null -> SessionState(Direction.SENDING, peer.name, status = SessionStatus.FAILED)
             // The flow ended without a verdict (cancelled coroutine): call it cancelled.
@@ -250,14 +255,19 @@ class TransferHub(
     }
 
     private fun launchSend(sid: String, peer: Peer, files: suspend () -> List<OutgoingFile>, options: SendOptions) {
-        jobs[sid] = scope.launch {
+        // A retry reuses the session id: the previous attempt must neither keep running nor, when it
+        // finally ends, unregister the new one.
+        jobs.remove(sid)?.cancel()
+        val job = scope.launch {
             val list = runCatching { files() }.getOrElse { emptyList() }
             if (list.isEmpty()) {
                 reduce(sid, TransferEvent.Failed("nothing readable selected"))
                 return@launch
             }
             runSend(sid, peer, list, options)
-        }.also { job -> job.invokeOnCompletion { jobs.remove(sid) } }
+        }
+        jobs[sid] = job
+        job.invokeOnCompletion { jobs.remove(sid, job) }
     }
 
     private suspend fun runSend(sid: String, peer: Peer, files: List<OutgoingFile>, options: SendOptions) {
@@ -339,7 +349,7 @@ class TransferHub(
             }
         }
         jobs[sid] = job
-        job.invokeOnCompletion { jobs.remove(sid) }
+        job.invokeOnCompletion { jobs.remove(sid, job) }
     }
 
     /** What an accepted offer turned into, so completion knows where its files went. */
@@ -394,9 +404,17 @@ class TransferHub(
     }
 
     fun respondToOffer(accept: Boolean) {
-        val pending = _incoming.value ?: return
-        _incoming.value = null
-        pending.answer.complete(accept)
+        _incoming.value?.let { respondToOffer(it, accept) }
+    }
+
+    /**
+     * Answer exactly the offer the human was looking at. If a newer offer replaced it in the
+     * meantime, that one stays up (the old one was already declined) — a tap never lands on an
+     * offer that wasn't on screen.
+     */
+    fun respondToOffer(offer: IncomingOffer, accept: Boolean) {
+        if (_incoming.value === offer) _incoming.value = null
+        offer.answer.complete(accept)
     }
 
     private fun register(sid: String, req: InboundRequest, kind: String?, quiet: Boolean): SessionState {
@@ -452,17 +470,18 @@ class TransferHub(
         grant: com.crossdrop.core.protocol.TrustGrant?,
     ): ReceiveDecision {
         val rx = switchReceiver ?: return acceptFiles(sid, req, route)
+        val store = rx.storeFor(req.offer)
         route.kind = OfferKind.SWITCH
-        route.store = rx.batchStore
+        route.store = store
         route.switchStore = true
         register(sid, req, OfferKind.SWITCH, quiet = true)
         val sink: (FileMeta) -> OutputStream = { meta ->
-            val f = rx.batchFile(meta)
+            val f = rx.batchFile(req.offer, meta)
             synchronized(route.v1Files) { route.v1Files += f }
             f.parentFile?.mkdirs()
             f.outputStream()
         }
-        return ReceiveDecision.Accept(sink, rx.batchStore, grant)
+        return ReceiveDecision.Accept(sink, store, grant)
     }
 
     /** Files of a completed receive, parallel to `offer.files`. */
@@ -485,7 +504,15 @@ class TransferHub(
             }
             OfferKind.SWITCH -> if (route.switchStore) {
                 val files = receivedFiles(route, offer)
-                scope.launch { switchReceiver?.importBatch(route.peerName, offer, files) }
+                scope.launch {
+                    try {
+                        switchReceiver?.importBatch(route.peerName, offer, files)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        switchReceiver?.batchEnded(SessionStatus.FAILED, "couldn't add the items: ${e.message}")
+                    }
+                }
             }
         }
     }
@@ -503,7 +530,8 @@ class TransferHub(
         var ended: SessionState? = null
         _sessions.update { list ->
             list.map { cur ->
-                if (cur.id != id) return@map cur
+                // A finished session stays finished (a cancelled send must not flip to "completed").
+                if (cur.id != id || cur.status.isTerminal) return@map cur
                 val next = when (event) {
                     is TransferEvent.Connecting -> cur.copy(status = SessionStatus.CONNECTING)
                     is TransferEvent.Secured -> cur.copy(
@@ -514,7 +542,7 @@ class TransferHub(
                         offer = event.offer, status = SessionStatus.AWAITING_ACCEPT,
                         bytesTotal = event.offer.files.sumOf { it.size }.coerceAtLeast(1),
                     )
-                    is TransferEvent.Progress -> if (cur.status.isTerminal) cur else cur.copy(
+                    is TransferEvent.Progress -> cur.copy(
                         status = SessionStatus.TRANSFERRING,
                         bytesDone = event.bytesDone, bytesTotal = event.bytesTotal,
                         bytesPerSec = event.bytesPerSec, bytesSkipped = event.bytesSkipped,

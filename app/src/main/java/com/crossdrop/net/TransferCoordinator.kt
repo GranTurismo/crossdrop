@@ -72,6 +72,7 @@ class TransferCoordinator(
         )
 
     fun respondToOffer(accept: Boolean) = hub.respondToOffer(accept)
+    fun respondToOffer(offer: IncomingOffer, accept: Boolean) = hub.respondToOffer(offer, accept)
 
     fun retryFailed(groupId: String) = hub.retryFailed(groupId)
     fun cancelGroup(groupId: String) = hub.cancelGroup(groupId)

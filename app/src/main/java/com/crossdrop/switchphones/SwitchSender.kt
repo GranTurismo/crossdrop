@@ -154,7 +154,12 @@ class SwitchSender(
     }
 
     private suspend fun run(peer: Peer, cats: Set<String>) {
+        // Resume ledger, per receiving device name. It's only trusted for a few days: a later move to
+        // a different (or reset) phone with the same name must not skip anything.
         val ledgerKey = "done:" + peer.name
+        val stampKey = "when:" + peer.name
+        if (System.currentTimeMillis() - prefs.getLong(stampKey, 0) > LEDGER_TTL_MS) prefs.edit { remove(ledgerKey) }
+        prefs.edit { putLong(stampKey, System.currentTimeMillis()) }
         val done = prefs.getStringSet(ledgerKey, emptySet()).orEmpty().toMutableSet()
 
         val items = ArrayList<Item>()
@@ -276,5 +281,6 @@ class SwitchSender(
     companion object {
         const val MAX_ITEMS = 100
         const val MAX_BYTES = 512L * 1024 * 1024
+        const val LEDGER_TTL_MS = 3L * 24 * 60 * 60 * 1000
     }
 }

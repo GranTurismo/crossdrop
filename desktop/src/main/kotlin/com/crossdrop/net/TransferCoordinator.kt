@@ -54,6 +54,7 @@ class TransferCoordinator(
         hub.send(peers, { listOf(textFile(text)) }, SendOptions(kind = OfferKind.TEXT, text = text))
 
     fun respondToOffer(accept: Boolean) = hub.respondToOffer(accept)
+    fun respondToOffer(offer: IncomingOffer, accept: Boolean) = hub.respondToOffer(offer, accept)
     fun retryFailed(groupId: String) = hub.retryFailed(groupId)
     fun cancelGroup(groupId: String) = hub.cancelGroup(groupId)
     fun dismissGroup(groupId: String) = hub.dismissGroup(groupId)

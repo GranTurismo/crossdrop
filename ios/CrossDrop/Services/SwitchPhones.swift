@@ -252,7 +252,13 @@ final class SwitchSender: ObservableObject {
     private enum Item { case contacts(URL, Int), asset(PHAsset) }
 
     private func run(_ peer: Peer, photos: Bool, videos: Bool, contacts: Bool) async {
-        let ledgerKey = "switch_done:" + peer.name
+        // Resume ledger per receiving device name, trusted for a few days only: a later move to a
+        // different (or reset) device with the same name must not skip anything.
+        let ledgerKey = "switch_done:" + peer.name, stampKey = "switch_when:" + peer.name
+        if Date().timeIntervalSince1970 - UserDefaults.standard.double(forKey: stampKey) > 3 * 86_400 {
+            UserDefaults.standard.removeObject(forKey: ledgerKey)
+        }
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: stampKey)
         var done = Set(UserDefaults.standard.stringArray(forKey: ledgerKey) ?? [])
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("picked-switch-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -281,19 +287,24 @@ final class SwitchSender: ObservableObject {
         state = State(peerName: peer.name, phase: .waiting, batches: batches.count,
                       itemsDone: items.count - todo.count, itemsTotal: items.count)
 
+        var unreadable = 0
         for (i, batch) in batches.enumerated() {
             if Task.isCancelled { return }
             state?.batch = i
-            // Export this batch only (bounded temp space), then send it.
+            // Export this batch only (bounded temp space), then send it. Only what was actually
+            // exported counts as moved — the rest stays out of the ledger so a resume retries it.
             var files: [OutgoingFile] = []
+            var sentKeys: [String] = []
             var names = Set<String>()
-            for (_, item) in batch {
+            for (key, item) in batch {
                 switch item {
                 case .contacts(let url, _):
                     let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
                     files.append(OutgoingFile(meta: FileMeta(name: "Contacts.vcf", size: size, mime: "text/vcard", cat: ItemCategory.contacts), url: url))
+                    sentKeys.append(key)
                 case .asset(let a):
-                    guard let url = try? await PhotosBridge.export(a, into: dir) else { continue }
+                    guard let url = try? await PhotosBridge.export(a, into: dir) else { unreadable += 1; continue }
+                    sentKeys.append(key)
                     let size = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
                     var name = String(url.lastPathComponent.drop(while: { $0 != "-" }).dropFirst())
                     if name.isEmpty { name = url.lastPathComponent }
@@ -314,9 +325,9 @@ final class SwitchSender: ObservableObject {
             files.forEach { if $0.meta.cat != ItemCategory.contacts { try? FileManager.default.removeItem(at: $0.url) } }
             switch result.status {
             case .completed:
-                done.formUnion(batch.map(\.0))
+                done.formUnion(sentKeys)
                 UserDefaults.standard.set(Array(done), forKey: ledgerKey)
-                state?.itemsDone += batch.count
+                state?.itemsDone += sentKeys.count
                 state?.phase = .moving
             case .declined: state?.phase = .declined; state?.bytesPerSec = 0; return
             case .cancelled: state?.phase = .cancelled; state?.bytesPerSec = 0; return
@@ -324,6 +335,12 @@ final class SwitchSender: ObservableObject {
                 state?.phase = .failed; state?.error = result.error ?? "connection lost"; state?.bytesPerSec = 0
                 return
             }
+        }
+        if unreadable > 0 {
+            // Typically iCloud originals that couldn't be downloaded right now: say so, keep the ledger.
+            state?.phase = .failed; state?.bytesPerSec = 0
+            state?.error = "\(unreadable) item(s) couldn't be read (iCloud photos need a connection). Tap Resume to try them again."
+            return
         }
         UserDefaults.standard.removeObject(forKey: ledgerKey)
         state?.phase = .done; state?.bytesPerSec = 0; state?.itemsDone = items.count
@@ -384,7 +401,6 @@ final class SwitchImporter: ObservableObject, SwitchReceiving, @unchecked Sendab
     }
 
     @MainActor @Published private(set) var state: State?
-    let batchStore: FileDeltaStore
     private let dir: URL
     private let inbox: InboxStore
     private let history: HistoryStore
@@ -399,13 +415,25 @@ final class SwitchImporter: ObservableObject, SwitchReceiving, @unchecked Sendab
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         var noBackup = URLResourceValues(); noBackup.isExcludedFromBackup = true
         var d = dir; try? d.setResourceValues(noBackup)
-        batchStore = FileDeltaStore(inboxDir: dir)
     }
 
     @MainActor func attach(_ c: TransferCoordinator) { coordinator = c }
 
-    func batchFile(_ meta: FileMeta) throws -> (url: URL, sink: OutputSink) {
-        let url = batchStore.targetFor(meta)
+    /// One folder per batch (`b<index>`; a retried batch reuses it, so its chunks resume) and
+    /// index-prefixed names, so names that sanitise alike can't overwrite each other.
+    private func batchDir(_ offer: Offer) -> URL { dir.appendingPathComponent("b\(offer.batch?.index ?? 0)", isDirectory: true) }
+
+    private static func stagedName(_ offer: Offer, _ meta: FileMeta) -> String {
+        let i = offer.files.firstIndex(of: meta) ?? 0
+        return String(format: "%05d_", i) + FileDeltaStore.sanitizedFileName(meta.name)
+    }
+
+    func store(for offer: Offer) -> FileDeltaStore {
+        FileDeltaStore(inboxDir: batchDir(offer)) { SwitchImporter.stagedName(offer, $0) }
+    }
+
+    func batchFile(_ offer: Offer, _ meta: FileMeta) throws -> (url: URL, sink: OutputSink) {
+        let url = store(for: offer).targetFor(meta)
         guard FileManager.default.createFile(atPath: url.path, contents: nil),
               let h = FileHandle(forWritingAtPath: url.path) else { throw ProtocolError("cannot create \(meta.name)") }
         return (url, HandleSink(h))
@@ -455,8 +483,8 @@ final class SwitchImporter: ObservableObject, SwitchReceiving, @unchecked Sendab
             default:
                 moveToInbox(url, meta); state?.files += 1
             }
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent(".idx/\(url.lastPathComponent).idx"))
         }
+        try? FileManager.default.removeItem(at: batchDir(offer))     // this batch's folder; the next has its own
         let last = offer.batch.map { $0.index >= $0.count - 1 } ?? true
         if last {
             coordinator?.trust.revoke(kind: OfferKind.switchPhones)

@@ -64,11 +64,26 @@ class SwitchImporter(
     val state: StateFlow<State?> = _state
     private val lock = Mutex()
 
-    private val dir: File get() = File(context.filesDir, "switch-in").apply { mkdirs() }
+    private val root: File get() = File(context.filesDir, "switch-in")
 
-    override val batchStore: DeltaReceiver = FileDeltaStore(File(context.filesDir, "switch-in")) { sanitize(it.name) }
+    /**
+     * Each batch stages in its own folder (`b<index>`): the next batch may arrive while this one is
+     * still being imported, and names repeat across batches. A retried batch lands in the same
+     * folder, so its received chunks resume. Inside, files are prefixed with their position in the
+     * offer, so names that sanitise alike can't overwrite each other.
+     */
+    private fun batchDir(offer: Offer) = File(root, "b" + (offer.batch?.index ?: 0))
 
-    override fun batchFile(meta: FileMeta): File = File(dir, sanitize(meta.name))
+    private fun stagedName(offer: Offer, meta: FileMeta): String {
+        val i = offer.files.indexOfFirst { it === meta }.takeIf { it >= 0 } ?: offer.files.indexOf(meta)
+        return "%05d_%s".format(maxOf(i, 0), sanitize(meta.name))
+    }
+
+    override fun storeFor(offer: Offer): DeltaReceiver =
+        FileDeltaStore(batchDir(offer)) { meta -> stagedName(offer, meta) }
+
+    override fun batchFile(offer: Offer, meta: FileMeta): File =
+        File(batchDir(offer).apply { mkdirs() }, stagedName(offer, meta))
 
     override fun begin(peerName: String, batch: BatchInfo?) {
         _state.value = State(
@@ -85,55 +100,65 @@ class SwitchImporter(
 
     private fun importNow(peerName: String, offer: Offer, files: List<File>) {
         run {
+            root.mkdirs()
             if (_state.value == null) begin(peerName, offer.batch)
             _state.update { it?.copy(phase = Phase.IMPORTING, batch = offer.batch?.index ?: it.batch) }
             val folder = "DCIM/" + sanitize(peerName).ifBlank { "CrossDrop" }
             offer.files.forEachIndexed { i, meta ->
                 val f = files.getOrNull(i) ?: return@forEachIndexed
                 if (!f.isFile) { _state.update { it?.copy(failedItems = it.failedItems + 1) }; return@forEachIndexed }
-                // A sender's label alone doesn't put a file in the gallery: it must look like media.
-                val media = MediaSaver.isVideo(meta.name, meta.mime) || isImage(meta.name, meta.mime)
-                when (if (media) meta.cat else if (meta.cat == ItemCategory.CONTACTS) meta.cat else null) {
-                    ItemCategory.PHOTO, ItemCategory.VIDEO -> {
-                        val ok = MediaSaver.saveToGallery(context, f, meta.name, meta.mime, meta.mtime, folder) != null
-                        _state.update {
-                            it?.let { s ->
-                                when {
-                                    !ok -> s.copy(failedItems = s.failedItems + 1)
-                                    meta.cat == ItemCategory.PHOTO -> s.copy(photos = s.photos + 1)
-                                    else -> s.copy(videos = s.videos + 1)
-                                }
-                            }
-                        }
-                        if (ok) f.delete() else moveToInbox(f, meta)
-                    }
-                    ItemCategory.CONTACTS -> importContacts(f)
-                    else -> {
-                        moveToInbox(f, meta)
-                        _state.update { it?.copy(files = it.files + 1) }
-                    }
+                // One bad item (full storage, odd file) must not stop the rest of the move.
+                try { importItem(f, meta, folder) } catch (e: Exception) {
+                    _state.update { it?.copy(failedItems = it.failedItems + 1) }
+                    runCatching { moveToInbox(f, meta) }
                 }
             }
-            // Only this batch's leftovers: the next batch may already be arriving in the same folder.
-            files.forEach { f -> f.delete(); File(dir, ".idx/${f.name}.idx").delete() }
+            // This batch's folder only (with its .staging/.idx): the next batch has its own.
+            batchDir(offer).deleteRecursively()
             val last = offer.batch == null || offer.batch!!.index >= offer.batch!!.count - 1
-            if (last) {
-                hub.trust.revokeKind(OfferKind.SWITCH)
-                _state.update { it?.copy(phase = Phase.DONE) }
-                val s = _state.value
-                runCatching {
-                    history.add(
-                        HistoryStore.Entry(
-                            ts = System.currentTimeMillis(), direction = "RECEIVING", peerName = peerName,
-                            summary = "Switch phones",
-                            files = (s?.photos ?: 0) + (s?.videos ?: 0) + (s?.contactsAdded ?: 0) + (s?.files ?: 0),
-                            bytes = s?.bytesTotal ?: 0, status = "COMPLETED",
-                        )
-                    )
+            if (last) finishMove(peerName) else _state.update { it?.copy(phase = Phase.RECEIVING) }
+        }
+    }
+
+    private fun importItem(f: File, meta: FileMeta, folder: String) {
+        // A sender's label alone doesn't put a file in the gallery: it must look like media.
+        val media = MediaSaver.isVideo(meta.name, meta.mime) || isImage(meta.name, meta.mime)
+        when (if (media) meta.cat else if (meta.cat == ItemCategory.CONTACTS) meta.cat else null) {
+            ItemCategory.PHOTO, ItemCategory.VIDEO -> {
+                val taken = meta.mtime?.takeIf { it > 0 }
+                val ok = MediaSaver.saveToGallery(context, f, meta.name, meta.mime, taken, folder) != null
+                _state.update {
+                    it?.let { s ->
+                        when {
+                            !ok -> s.copy(failedItems = s.failedItems + 1)
+                            meta.cat == ItemCategory.PHOTO -> s.copy(photos = s.photos + 1)
+                            else -> s.copy(videos = s.videos + 1)
+                        }
+                    }
                 }
-            } else {
-                _state.update { it?.copy(phase = Phase.RECEIVING) }
+                if (ok) f.delete() else moveToInbox(f, meta)
             }
+            ItemCategory.CONTACTS -> importContacts(f)
+            else -> {
+                moveToInbox(f, meta)
+                _state.update { it?.copy(files = it.files + 1) }
+            }
+        }
+    }
+
+    private fun finishMove(peerName: String) {
+        hub.trust.revokeKind(OfferKind.SWITCH)
+        _state.update { it?.copy(phase = Phase.DONE) }
+        val s = _state.value
+        runCatching {
+            history.add(
+                HistoryStore.Entry(
+                    ts = System.currentTimeMillis(), direction = "RECEIVING", peerName = peerName,
+                    summary = "Switch phones",
+                    files = (s?.photos ?: 0) + (s?.videos ?: 0) + (s?.contactsAdded ?: 0) + (s?.files ?: 0),
+                    bytes = s?.bytesTotal ?: 0, status = "COMPLETED",
+                )
+            )
         }
     }
 

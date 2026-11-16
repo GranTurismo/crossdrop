@@ -349,12 +349,12 @@ fun Root(container: AppContainer) {
             // ---- inbound offer — always on top; Back declines
             Overlay(incomingOffer, fade = true) { offer ->
                 BackHandler {
-                    container.coordinator.respondToOffer(false)
+                    container.coordinator.respondToOffer(offer, false)
                 }
                 IncomingOfferSheet(offer) { accept ->
                     // Text arrives inline and is done in a moment; everything else may take a while.
                     if (accept && offer.text == null) TransferService.start(container.contextForService())
-                    container.coordinator.respondToOffer(accept)
+                    container.coordinator.respondToOffer(offer, accept)
                 }
             }
         }

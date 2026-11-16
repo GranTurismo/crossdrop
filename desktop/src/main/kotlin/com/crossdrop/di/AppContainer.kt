@@ -85,7 +85,8 @@ class AppContainer {
 
     /** Readable files only; folders and anything else are skipped. Never sends by itself. */
     fun openFiles(files: List<java.io.File>) {
-        val ok = files.filter { it.isFile && it.canRead() }.distinct()
+        // Network paths are skipped before touching them: even a stat would authenticate to that server.
+        val ok = files.filter { !com.crossdrop.platform.isNetworkPath(it.path) && it.isFile && it.canRead() }.distinct()
         if (ok.isNotEmpty()) pending.value = com.crossdrop.ui.radar.Pending.Files(ok)
     }
 

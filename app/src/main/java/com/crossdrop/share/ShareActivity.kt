@@ -144,18 +144,19 @@ class ShareActivity : ComponentActivity() {
         }.orEmpty()
         val clip = intent.clipData
         val fromClip = if (clip != null) (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri } else emptyList()
+        // Any app can send us a share intent, and CrossDrop can read more than most apps (its own
+        // files, and the whole gallery and address book once "Switch phones" was allowed). So only
+        // items the sender itself granted are taken: Android refuses to start us with a read grant
+        // the sender doesn't hold, which proves the sender could read every one of them anyway.
+        if ((intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION) == 0) return emptyList()
         return (list + fromClip).distinct().filter(::isForeignContent)
     }
 
-    /**
-     * Any app can send us a share intent, so it must not be able to make us read our own private
-     * files (a `content://` URI on our FileProvider, or a `file://` path into our sandbox) and send
-     * them off: only content owned by some other app is accepted.
-     */
+    /** `content://` owned by another app — never our FileProvider, also not via `0@authority` user prefixes. */
     private fun isForeignContent(uri: Uri): Boolean {
         if (uri.scheme != "content") return false
         val authority = uri.authority ?: return false
-        if (authority.startsWith(packageName)) return false
+        if ('@' in authority || authority.startsWith(packageName)) return false
         val owner = runCatching { packageManager.resolveContentProvider(authority, 0)?.packageName }.getOrNull()
         return owner != packageName
     }
@@ -229,10 +230,11 @@ private fun ShareSheet(
 
     fun go(targets: List<Peer>) { if (targets.isNotEmpty()) groupId = onSend(targets) }
 
-    // Direct Share: the device picked in the system menu is sent to the moment it's seen.
+    // Direct Share: the device picked in the system menu is sent to the moment it's seen — but only
+    // when exactly one device carries that name (names aren't proof of identity; with two, the user picks).
     LaunchedEffect(preferred, devices.map { it.name }) {
         if (preferred != null && !autoSent && groupId == null) {
-            devices.firstOrNull { it.name == preferred }?.let { autoSent = true; go(listOf(it)) }
+            devices.filter { it.name == preferred }.singleOrNull()?.let { autoSent = true; go(listOf(it)) }
         }
     }
     // Done → close by itself.

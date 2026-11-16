@@ -284,7 +284,7 @@ fun Root(container: AppContainer) {
 
         // ---- inbound offer — always on top; answered only by its buttons
         Overlay(incomingOffer, fade = true) { offer ->
-            IncomingOfferSheet(offer) { accept -> container.coordinator.respondToOffer(accept) }
+            IncomingOfferSheet(offer) { accept -> container.coordinator.respondToOffer(offer, accept) }
         }
     }
 

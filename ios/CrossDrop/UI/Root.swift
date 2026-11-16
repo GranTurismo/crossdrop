@@ -72,7 +72,7 @@ struct RootView: View {
                 if let offer = coordinator.incomingOffer {
                     IncomingOfferSheet(offer: offer) { accept in
                         if accept { transferHidden = false }
-                        coordinator.respondToOffer(accept: accept)
+                        coordinator.respondToOffer(offer, accept: accept)
                     }
                     .transition(.opacity)
                     .zIndex(6)

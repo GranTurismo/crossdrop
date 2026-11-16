@@ -60,9 +60,18 @@ class DesktopSwitchReceiver(
     private val lock = Mutex()
     private val staging = File(AppDirs.support, "switch-in")
 
-    override val batchStore: DeltaReceiver = FileDeltaStore(staging) { InboxStore.sanitizeName(it.name) }
+    /** One folder per batch (the next may arrive during this one's import); index-prefixed names
+     *  so names that sanitise alike (every non-ASCII name does here) can't overwrite each other. */
+    private fun batchDir(offer: Offer) = File(staging, "b" + (offer.batch?.index ?: 0))
 
-    override fun batchFile(meta: FileMeta): File = File(staging.apply { mkdirs() }, InboxStore.sanitizeName(meta.name))
+    private fun stagedName(offer: Offer, meta: FileMeta): String {
+        val i = offer.files.indexOfFirst { it === meta }.takeIf { it >= 0 } ?: offer.files.indexOf(meta)
+        return "%05d_%s".format(maxOf(i, 0), InboxStore.sanitizeName(meta.name))
+    }
+
+    override fun storeFor(offer: Offer): DeltaReceiver = FileDeltaStore(batchDir(offer)) { stagedName(offer, it) }
+
+    override fun batchFile(offer: Offer, meta: FileMeta): File = File(batchDir(offer).apply { mkdirs() }, stagedName(offer, meta))
 
     override fun begin(peerName: String, batch: BatchInfo?) {
         val stamp = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -93,8 +102,12 @@ class DesktopSwitchReceiver(
         offer.files.forEachIndexed { i, meta ->
             val f = files.getOrNull(i)?.takeIf { it.isFile } ?: return@forEachIndexed
             val target = uniqueFile(folder, InboxStore.sanitizeName(meta.name))
-            if (!f.renameTo(target)) { f.copyTo(target, overwrite = true); f.delete() }
-            meta.mtime?.let { target.setLastModified(it) }
+            val moved = runCatching {
+                if (!f.renameTo(target)) { f.copyTo(target, overwrite = true); f.delete() }
+            }.isSuccess
+            if (!moved) return@forEachIndexed
+            // Pre-1970 dates (re-dated scans) come as negative times, which File rejects.
+            meta.mtime?.takeIf { it > 0 }?.let { runCatching { target.setLastModified(it) } }
             _state.update {
                 it?.let { s ->
                     when (meta.cat) {
@@ -106,8 +119,7 @@ class DesktopSwitchReceiver(
                 }
             }
         }
-        // Only this batch's index sidecars: the next batch may already be arriving.
-        files.forEach { f -> File(staging, ".idx/${f.name}.idx").delete() }
+        batchDir(offer).deleteRecursively()
         val last = offer.batch == null || offer.batch!!.index >= offer.batch!!.count - 1
         if (last) {
             hub.trust.revokeKind(OfferKind.SWITCH)
