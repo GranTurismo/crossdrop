@@ -144,7 +144,20 @@ class ShareActivity : ComponentActivity() {
         }.orEmpty()
         val clip = intent.clipData
         val fromClip = if (clip != null) (0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri } else emptyList()
-        return (list + fromClip).distinct()
+        return (list + fromClip).distinct().filter(::isForeignContent)
+    }
+
+    /**
+     * Any app can send us a share intent, so it must not be able to make us read our own private
+     * files (a `content://` URI on our FileProvider, or a `file://` path into our sandbox) and send
+     * them off: only content owned by some other app is accepted.
+     */
+    private fun isForeignContent(uri: Uri): Boolean {
+        if (uri.scheme != "content") return false
+        val authority = uri.authority ?: return false
+        if (authority.startsWith(packageName)) return false
+        val owner = runCatching { packageManager.resolveContentProvider(authority, 0)?.packageName }.getOrNull()
+        return owner != packageName
     }
 
     private fun label(uris: List<Uri>): String {
