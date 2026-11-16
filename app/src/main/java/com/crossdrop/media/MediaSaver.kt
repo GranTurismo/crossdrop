@@ -42,6 +42,7 @@ object MediaSaver {
                 put(MediaStore.MediaColumns.DATE_MODIFIED, it / 1000)
             }
         }
+        if (takenMs != null && !video) stampCaptureTime(file, name, takenMs)
         val resolver = context.contentResolver
         val uri = runCatching { resolver.insert(collection, values) }.getOrNull() ?: return null
         val ok = runCatching {
@@ -54,7 +55,43 @@ object MediaSaver {
         runCatching {
             resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
         }
+        // Publishing rescans the file and DATE_TAKEN comes back from its metadata (null without EXIF):
+        // set the original capture time once more so the gallery sorts it where it belongs.
+        takenMs?.let { t ->
+            runCatching {
+                resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.DATE_TAKEN, t) }, null, null)
+            }
+        }
         return uri
+    }
+
+    /**
+     * The gallery takes a photo's date from its EXIF when the item is published, but only trusts an
+     * EXIF time that carries a UTC offset (otherwise it compares it with the file's modification
+     * time, which for an imported copy is "now", and gives up). So a JPEG gets its original time and
+     * an offset written in when they're missing — on our staged copy, never on the sender's original.
+     */
+    private fun stampCaptureTime(file: File, name: String, takenMs: Long) {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        if (ext != "jpg" && ext != "jpeg") return
+        runCatching {
+            val exif = android.media.ExifInterface(file.path)
+            val fmt = java.text.SimpleDateFormat("yyyy:MM:dd HH:mm:ss", java.util.Locale.US)
+            val existing = exif.getAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL)
+            val hasOffset = exif.getAttribute(android.media.ExifInterface.TAG_OFFSET_TIME_ORIGINAL) != null
+            if (existing != null && hasOffset) return
+            val whenMs = existing?.let { runCatching { fmt.parse(it)?.time }.getOrNull() } ?: takenMs
+            val tz = java.util.TimeZone.getDefault().getOffset(whenMs) / 60_000
+            val offset = "%s%02d:%02d".format(if (tz < 0) "-" else "+", Math.abs(tz) / 60, Math.abs(tz) % 60)
+            if (existing == null) {
+                val stamp = fmt.format(java.util.Date(takenMs))
+                exif.setAttribute(android.media.ExifInterface.TAG_DATETIME_ORIGINAL, stamp)
+                exif.setAttribute(android.media.ExifInterface.TAG_DATETIME, stamp)
+            }
+            exif.setAttribute(android.media.ExifInterface.TAG_OFFSET_TIME_ORIGINAL, offset)
+            exif.setAttribute(android.media.ExifInterface.TAG_OFFSET_TIME, offset)
+            exif.saveAttributes()
+        }
     }
 
     private fun guessMime(name: String, video: Boolean): String = when (name.substringAfterLast('.', "").lowercase()) {

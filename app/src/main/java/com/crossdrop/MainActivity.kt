@@ -29,7 +29,8 @@ class MainActivity : ComponentActivity() {
     private fun handleDevPeer(intent: android.content.Intent?, container: com.crossdrop.di.AppContainer) {
         if (!BuildConfig.DEBUG) return
         android.util.Log.i("DevPeer", "extras=${intent?.extras?.keySet()?.joinToString()} dev_peer=${intent?.getStringExtra("dev_peer")}")
-        intent?.getStringExtra("dev_peer")?.takeIf { it.isNotBlank() }?.let { peer ->
+        // Comma-separated for several peers: -e dev_peer 10.0.2.2:5001,10.0.2.2:5002
+        intent?.getStringExtra("dev_peer")?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }?.forEach { peer ->
             val host = peer.substringBefore(':')
             val port = peer.substringAfter(':', "0").toIntOrNull() ?: 0
             android.os.Handler(mainLooper).postDelayed(

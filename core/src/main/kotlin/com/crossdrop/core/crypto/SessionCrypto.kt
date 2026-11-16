@@ -28,7 +28,7 @@ class SessionKeys(
     val sas: String,
     /** Raw X25519 shared secret — input to extra derivations (vault PIN auth). */
     val shared: ByteArray,
-    /** Same on both ends of this connection, unique to it — trust proofs are bound to it. */
+    /** Same on both ends; changes whenever either device's per-launch key does. Trust proofs are bound to it. */
     val binding: ByteArray = ByteArray(32),
 )
 

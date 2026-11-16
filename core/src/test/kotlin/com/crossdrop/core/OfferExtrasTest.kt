@@ -142,6 +142,23 @@ class OfferExtrasTest {
         assertFalse(proved)
     }
 
+    @Test
+    fun `a trusted transfer id is accepted once`() {
+        val store = com.crossdrop.core.transfer.TrustStore()
+        val grant = store.grant(OfferKind.CAMERA, "phone", 60_000)
+        val cred = TrustCredential.of(grant)!!
+        var first: Any? = null
+        var replay: Any? = "unset"
+        var captured: InboundRequest? = null
+        roundTrip(listOf(file("a", ByteArray(1))), SendOptions(kind = OfferKind.CAMERA, trust = cred)) { req ->
+            first = store.match(req); captured = req; accept()
+        }
+        // Same request presented again (what replaying a recorded session amounts to).
+        replay = store.match(captured!!)
+        assertNotNull(first)
+        assertNull(replay)
+    }
+
     /** Same inputs give the same proof in the Swift core (`OfferExtrasTests.testProofKnownAnswer`). */
     @Test
     fun `proof known answer`() {

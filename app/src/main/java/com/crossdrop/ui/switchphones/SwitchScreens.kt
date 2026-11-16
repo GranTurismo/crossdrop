@@ -307,11 +307,15 @@ fun SwitchReceiveScreen(
                 )
             }
             GlassCard(Modifier.fillMaxWidth(), fill = Glass, border = Hairline, contentPadding = PaddingValues(6.dp)) {
-                CountRow(CdIcons.Photo, "Photos", "%,d / %,d".format(state.photos, state.photosTotal))
-                RowSeparator()
-                CountRow(CdIcons.Video, "Videos", "%,d / %,d".format(state.videos, state.videosTotal))
+                if (state.photosTotal > 0 || state.photos > 0) {
+                    CountRow(CdIcons.Photo, "Photos", "%,d / %,d".format(state.photos, state.photosTotal))
+                }
+                if (state.videosTotal > 0 || state.videos > 0) {
+                    if (state.photosTotal > 0 || state.photos > 0) RowSeparator()
+                    CountRow(CdIcons.Video, "Videos", "%,d / %,d".format(state.videos, state.videosTotal))
+                }
                 if (state.contactsTotal > 0) {
-                    RowSeparator()
+                    if (state.photosTotal + state.photos + state.videosTotal + state.videos > 0) RowSeparator()
                     CountRow(
                         CdIcons.Contacts, "Contacts",
                         if (state.pendingContacts != null) "waiting for access"

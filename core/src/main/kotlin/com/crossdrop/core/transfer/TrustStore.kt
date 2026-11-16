@@ -24,6 +24,9 @@ class TrustStore(private val clock: () -> Long = System::currentTimeMillis) {
         val peerName: String,
         @Volatile var lastUsedMs: Long,
     ) {
+        /** Transfer ids already let through: a recorded session replayed between the same two app
+         *  launches carries a valid proof, so each id is good once. */
+        internal val seen: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
         val id: String get() = grant.id
         val kind: String get() = grant.kind
     }
@@ -50,6 +53,7 @@ class TrustStore(private val clock: () -> Long = System::currentTimeMillis) {
         if (now - g.lastUsedMs > g.grant.ttlMs) { granted.remove(id); return null }
         if (g.kind != (request.offer.kind ?: return null)) return null
         if (!request.provesTrust(g.token)) return null
+        if (!g.seen.add(request.offer.transferId)) return null
         g.lastUsedMs = now
         return g
     }

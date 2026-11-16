@@ -82,7 +82,8 @@ data class Offer(
     /** Set when the sender holds a [TrustGrant] from this receiver: the grant's id… */
     val trustId: String? = null,
     /** …and HMAC-SHA256(token, session binding ‖ transferId), base64 — proves the sender holds the
-     *  token without revealing it, and can't be replayed on another connection. */
+     *  token without revealing it. The binding comes from the two devices' current keys (new on
+     *  every app launch), and a receiver accepts each transferId only once per grant. */
     val trustProof: String? = null,
     /** [OfferKind.SWITCH]: where this batch sits in the whole move. */
     val batch: BatchInfo? = null,

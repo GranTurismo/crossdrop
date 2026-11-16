@@ -106,7 +106,8 @@ class DesktopSwitchReceiver(
                 }
             }
         }
-        File(staging, ".idx").listFiles()?.forEach { it.delete() }
+        // Only this batch's index sidecars: the next batch may already be arriving.
+        files.forEach { f -> File(staging, ".idx/${f.name}.idx").delete() }
         val last = offer.batch == null || offer.batch!!.index >= offer.batch!!.count - 1
         if (last) {
             hub.trust.revokeKind(OfferKind.SWITCH)

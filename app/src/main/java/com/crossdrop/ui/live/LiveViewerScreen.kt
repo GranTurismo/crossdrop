@@ -134,7 +134,7 @@ fun LiveViewerScreen(
                             )
                         }
                     } else {
-                        ShotView(shot, loadImage, 2048, Modifier.fillMaxSize().clickable { onOpen(shot) }, ContentScale.Fit)
+                        ShotView(shot, loadImage, 2048, Modifier.fillMaxSize().clickable { onOpen(shot) }, ContentScale.Fit, Color.Transparent)
                     }
                 }
                 feed.incoming?.let { s ->
@@ -177,12 +177,15 @@ fun LiveViewerScreen(
 }
 
 @Composable
-private fun ShotView(shot: LiveShot, loadImage: (File, Int) -> ImageBitmap?, maxPx: Int, modifier: Modifier, scale: ContentScale) {
+private fun ShotView(
+    shot: LiveShot, loadImage: (File, Int) -> ImageBitmap?, maxPx: Int, modifier: Modifier, scale: ContentScale,
+    bg: Color = GlassHigh,
+) {
     val video = isVideoName(shot.name, shot.mime)
     val bitmap by produceState<ImageBitmap?>(null, shot.file, maxPx) {
         value = withContext(Dispatchers.IO) { runCatching { loadImage(shot.file, maxPx) }.getOrNull() }
     }
-    Box(modifier.background(GlassHigh).semantics { contentDescription = shot.name }, contentAlignment = Alignment.Center) {
+    Box(modifier.background(bg).semantics { contentDescription = shot.name }, contentAlignment = Alignment.Center) {
         bitmap?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = scale) }
         if (video) {
             Box(Modifier.size(if (maxPx > 500) 64.dp else 26.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.55f)), contentAlignment = Alignment.Center) {

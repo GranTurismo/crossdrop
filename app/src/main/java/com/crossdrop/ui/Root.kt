@@ -352,7 +352,8 @@ fun Root(container: AppContainer) {
                     container.coordinator.respondToOffer(false)
                 }
                 IncomingOfferSheet(offer) { accept ->
-                    if (accept) TransferService.start(container.contextForService())
+                    // Text arrives inline and is done in a moment; everything else may take a while.
+                    if (accept && offer.text == null) TransferService.start(container.contextForService())
                     container.coordinator.respondToOffer(accept)
                 }
             }

@@ -33,7 +33,8 @@ class FileDeltaStore(
 
     override fun stagingPool(): File = pool.apply { mkdirs() }
 
-    override fun targetFor(meta: FileMeta): File = File(inboxDir, nameFor(meta))
+    // The directory may not exist yet (a fresh store on first use): the .part beside the target needs it.
+    override fun targetFor(meta: FileMeta): File = File(inboxDir.apply { mkdirs() }, nameFor(meta))
 
     override fun baselineFor(meta: FileMeta): Baseline? {
         val file = File(inboxDir, nameFor(meta))

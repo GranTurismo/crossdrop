@@ -91,7 +91,9 @@ class SwitchImporter(
             offer.files.forEachIndexed { i, meta ->
                 val f = files.getOrNull(i) ?: return@forEachIndexed
                 if (!f.isFile) { _state.update { it?.copy(failedItems = it.failedItems + 1) }; return@forEachIndexed }
-                when (meta.cat) {
+                // A sender's label alone doesn't put a file in the gallery: it must look like media.
+                val media = MediaSaver.isVideo(meta.name, meta.mime) || isImage(meta.name, meta.mime)
+                when (if (media) meta.cat else if (meta.cat == ItemCategory.CONTACTS) meta.cat else null) {
                     ItemCategory.PHOTO, ItemCategory.VIDEO -> {
                         val ok = MediaSaver.saveToGallery(context, f, meta.name, meta.mime, meta.mtime, folder) != null
                         _state.update {
@@ -112,8 +114,8 @@ class SwitchImporter(
                     }
                 }
             }
-            dir.listFiles()?.forEach { if (it.isFile) it.delete() }
-            File(dir, ".idx").listFiles()?.forEach { it.delete() }
+            // Only this batch's leftovers: the next batch may already be arriving in the same folder.
+            files.forEach { f -> f.delete(); File(dir, ".idx/${f.name}.idx").delete() }
             val last = offer.batch == null || offer.batch!!.index >= offer.batch!!.count - 1
             if (last) {
                 hub.trust.revokeKind(OfferKind.SWITCH)
@@ -189,6 +191,10 @@ class SwitchImporter(
         hub.pruneQuiet(OfferKind.SWITCH)
         if (_state.value?.phase == Phase.DONE || _state.value?.phase == Phase.FAILED) _state.value = null
     }
+
+    private fun isImage(name: String, mime: String?): Boolean =
+        mime?.startsWith("image/") == true ||
+            name.substringAfterLast('.', "").lowercase() in setOf("jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "dng", "bmp", "avif")
 
     private fun sanitize(name: String): String =
         name.substringAfterLast('/').substringAfterLast('\\')

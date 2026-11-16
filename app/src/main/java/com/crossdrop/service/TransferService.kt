@@ -49,7 +49,8 @@ class TransferService : LifecycleService() {
             CHANNEL_ID, getString(R.string.notification_channel_transfers),
             NotificationManager.IMPORTANCE_LOW,
         ))
-        observe()
+        // Observing starts in onStartCommand, after startForeground: stopping before that
+        // point crashes the app (ForegroundServiceDidNotStartInTimeException).
     }
 
     private fun observe() {
@@ -71,7 +72,9 @@ class TransferService : LifecycleService() {
                         snap.live != null -> updateLiveNotification(snap.live)
                         snap.share != null -> updateShareNotification(snap.share)
                         snap.vault != null -> updateVaultNotification(snap.vault)
-                        else -> stopSelf()
+                        // A just-accepted receive registers a moment after the service starts:
+                        // wait briefly (collectLatest cancels this when anything changes).
+                        else -> { kotlinx.coroutines.delay(1_500); stopSelf() }
                     }
                 }
         }
