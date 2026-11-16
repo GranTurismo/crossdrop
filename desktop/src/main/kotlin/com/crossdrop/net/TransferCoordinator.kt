@@ -114,7 +114,10 @@ class TransferCoordinator(
                     _incomingOffer.value = null
                 }
                 if (result is ReceiveDecision.Accept) {
-                    _session.value = SessionState(Direction.RECEIVING, peerName, offer = offer,
+                    // Keep the code the handshake derived (the Secured event ran before the offer)
+                    // so the receiver can compare it too.
+                    val sas = _session.value?.takeIf { it.peerName == peerName }?.sas
+                    _session.value = SessionState(Direction.RECEIVING, peerName, offer = offer, sas = sas,
                         status = SessionStatus.TRANSFERRING)
                 }
                 result
@@ -198,8 +201,9 @@ class TransferCoordinator(
         }
     }
 
-    private companion object {
-        const val TAG = "TransferCoordinator"
+    companion object {
+        private const val TAG = "TransferCoordinator"
+        /** How long an inbound offer waits for the human before it is declined. */
         const val OFFER_TIMEOUT_MS = 45_000L
     }
 }

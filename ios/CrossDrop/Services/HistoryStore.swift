@@ -4,7 +4,8 @@ import Foundation
 final class HistoryStore: ObservableObject {
     @Published private(set) var entries: [HistoryEntry] = []
     private let key = "transfer_history"
-    private let maxEntries = 100
+    /// How many finished sessions are kept (the Transfers tab says so).
+    static let maxEntries = 100
 
     init() {
         if let data = UserDefaults.standard.data(forKey: key),
@@ -14,7 +15,7 @@ final class HistoryStore: ObservableObject {
     }
 
     func add(_ e: HistoryEntry) {
-        entries = Array(([e] + entries).prefix(maxEntries))
+        entries = Array(([e] + entries).prefix(Self.maxEntries))
         save()
     }
 

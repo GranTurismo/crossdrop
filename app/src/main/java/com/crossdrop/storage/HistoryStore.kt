@@ -67,8 +67,8 @@ class HistoryStore(context: Context) {
         prefs.edit { putString(KEY, arr.toString()) }
     }
 
-    private companion object {
-        const val KEY = "transfer_history"
+    companion object {
+        private const val KEY = "transfer_history"
         const val MAX_ENTRIES = 100
     }
 }

@@ -17,68 +17,76 @@ struct PickedMedia: Transferable {
     }
 }
 
+extension Platform {
+    /// This device's own glyph (the radar's centre node, the transfer endpoints, Settings).
+    static var deviceIcon: CdIcon {
+        #if targetEnvironment(macCatalyst)
+        return CdIcons.laptop
+        #else
+        return UIDevice.current.userInterfaceIdiom == .pad ? CdIcons.tablet : CdIcons.phone
+        #endif
+    }
+}
+
+/// Home tab: brand + network chip, the sonar with every nearby device, then "Send to anyone" and any
+/// wireless drives on the network. Tapping a device opens the send sheet (photo picker or files); a
+/// drive opens its own sheet.
 struct RadarScreen: View {
     @EnvironmentObject var container: AppContainer
     @EnvironmentObject var coordinator: TransferCoordinator
+    @EnvironmentObject var sheets: SheetHost
+    @Environment(\.navInset) private var navInset
+    var active = true
 
-    @State private var chooserPeer: Peer?
-    @State private var vaultPeer: Peer?
     @State private var targetPeer: Peer?
-    /// "to anyone": the chooser's result feeds the QR share instead of a peer send.
-    @State private var chooserAnyone = false
+    /// "to anyone": the picker's result feeds the QR share instead of a peer send.
     @State private var targetAnyone = false
     @State private var showFiles = false
     @State private var showPhotos = false
     @State private var photoSelection: [PhotosPickerItem] = []
     @State private var renaming = false
+    @State private var renameText = ""
     @State private var loadingMedia = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            if let notice = container.networkNotice { noticeBanner(notice) }
-            if !container.pendingShare.isEmpty { pendingBanner }
-            ZStack(alignment: .bottom) {
-                RadarCanvas(selfName: container.deviceName, peers: container.peers) { peer in
-                    guard peer.isReachable else { return }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    startSend(peer)
+        let devices = container.peers.filter { $0.vault == nil }
+        let drives = container.peers.filter { $0.vault != nil && $0.isReachable }
+        ZStack {
+            VStack(spacing: 0) {
+                header(devices.count).padding(.horizontal, 18).padding(.top, 22)
+                if let notice = container.networkNotice { noticeCard(notice).padding(.horizontal, 16).padding(.top, 14) }
+                if !container.pendingShare.isEmpty { pendingCard.padding(.horizontal, 16).padding(.top, 10) }
+
+                ZStack(alignment: .bottom) {
+                    RadarCanvas(selfName: container.deviceName, selfIcon: Platform.deviceIcon, peers: devices, active: active,
+                                onPeerTap: startSendFlow, onSelfTap: { renameText = container.deviceName; renaming = true })
+                    if devices.isEmpty {
+                        Text("Open CrossDrop on another device on this Wi-Fi").body(12, CD.textDim)
+                            .multilineTextAlignment(.center).padding(.bottom, 6).padding(.horizontal, 16)
+                    }
                 }
-                Text(container.peers.isEmpty ? "Listening for nearby devices…"
-                     : "\(container.peers.count) device\(container.peers.count == 1 ? "" : "s") nearby — tap to send")
-                    .font(.cd(13)).foregroundColor(container.peers.isEmpty ? Aurora.textDim : Aurora.phosphor)
-                    .padding(.bottom, 24)
-                if loadingMedia {
-                    ProgressView("Preparing…").tint(Aurora.teal).foregroundColor(Aurora.textDim)
-                        .padding(14).background(Aurora.deepSpaceSoft, in: RoundedRectangle(cornerRadius: 14))
-                        .padding(.bottom, 70)
+                .frame(maxWidth: .infinity, minHeight: 220, maxHeight: .infinity)
+                .padding(.top, 8)
+
+                VStack(spacing: 10) {
+                    SendToAnyoneCard { startAnyoneFlow() }
+                    ForEach(drives.prefix(2)) { d in DriveRow(peer: d) { startSendFlow(d) } }
                 }
+                .frame(maxWidth: 560)
+                .padding(.horizontal, 16).padding(.top, 4)
+                Spacer().frame(height: navInset)
             }
-            peerStrip
+            if loadingMedia {
+                HStack(spacing: 10) {
+                    ProgressView().tint(CD.accent)
+                    Text("Preparing…").body(14, CD.textSecondary)
+                }
+                .padding(.horizontal, 18).padding(.vertical, 14)
+                .background(Capsule().fill(CD.inkSheet))
+                .overlay(Capsule().strokeBorder(CD.hairline, lineWidth: 1))
+            }
         }
-        .background(Aurora.deepSpace)
-        .sheet(item: $chooserPeer) { peer in
-            SendChooserSheet(title: "Send to \(peer.name)", subtitle: "pick what to share",
-                             onPickMedia: { present(peer) { showPhotos = true } },
-                             onPickFiles: { present(peer) { showFiles = true } })
-                .presentationDetents([.height(320)])
-        }
-        #if DEBUG
-        // `-dev_vault_sheet YES`: raise the mount sheet for the first vault beacon (no tap tool in the simulator).
-        .onChange(of: container.peers) { peers in
-            if UserDefaults.standard.bool(forKey: "dev_vault_sheet"), vaultPeer == nil, let v = peers.first(where: { $0.vault != nil }) { vaultPeer = v }
-        }
-        #endif
-        .sheet(item: $vaultPeer) { peer in
-            VaultMountSheet(peer: peer) { vaultPeer = nil; container.vaultExplorer.mount(peer) }
-                .presentationDetents([.medium, .large])
-        }
-        .sheet(isPresented: $chooserAnyone) {
-            SendChooserSheet(title: "Send to anyone", subtitle: "they'll scan a QR — no app needed",
-                             onPickMedia: { presentAnyone { showPhotos = true } },
-                             onPickFiles: { presentAnyone { showFiles = true } })
-                .presentationDetents([.height(320)])
-        }
+        .background(CD.ink)
         .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             let anyone = targetAnyone, peer = targetPeer
             targetAnyone = false; targetPeer = nil                 // a cancelled picker must not leave a stale target
@@ -109,230 +117,387 @@ struct RadarScreen: View {
                 else if let peer { coordinator.sendTo(peer, urls: urls, temporary: temp) }
             }
         }
-        .sheet(isPresented: $renaming) {
-            DeviceNameSheet(current: container.deviceName) { new in
-                renaming = false
-                if let new { container.setDeviceName(new) }
-            }.presentationDetents([.height(260)])
-        }
+        .renameDialog(isPresented: $renaming, text: $renameText) { container.setDeviceName($0) }
         .onChange(of: container.sendRequest) { _ in
             // ⌘O: first reachable device, or a QR share when nobody is around.
-            if let peer = container.peers.first(where: { $0.isReachable && $0.vault == nil }) { startSend(peer) }
-            else { chooserAnyone = true }
+            if let peer = container.peers.first(where: { $0.isReachable && $0.vault == nil }) { startSendFlow(peer) }
+            else { startAnyoneFlow() }
         }
+        #if DEBUG
+        // `-dev_vault_sheet YES`: raise the drive sheet for the first vault beacon (no tap tool in the simulator).
+        .onChange(of: container.peers) { peers in
+            if UserDefaults.standard.bool(forKey: "dev_vault_sheet"), sheets.item == nil,
+               let v = peers.first(where: { $0.vault != nil }) {
+                UserDefaults.standard.set(false, forKey: "dev_vault_sheet")
+                startSendFlow(v)
+            }
+        }
+        // `-dev_sheet peer|anyone`: raise the send sheet for screenshots.
+        .onAppear {
+            guard let which = UserDefaults.standard.string(forKey: "dev_sheet") else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                if which == "anyone" { startAnyoneFlow() }
+                else if let p = container.peers.first(where: { $0.vault == nil && $0.isReachable }) { startSendFlow(p) }
+            }
+        }
+        #endif
         .alert("Can't share", isPresented: Binding(get: { container.qrShare.failure != nil }, set: { if !$0 { container.qrShare.failure = nil } })) {
             Button("OK", role: .cancel) {}
         } message: { Text(container.qrShare.failure ?? "") }
     }
 
-    /// Dismiss the chooser first, then raise the system picker (two modal presentations can't overlap).
-    private func present(_ peer: Peer, _ action: @escaping () -> Void) {
-        targetPeer = peer
-        targetAnyone = false
-        chooserPeer = nil
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: action)
-    }
+    // MARK: flows
 
-    private func presentAnyone(_ action: @escaping () -> Void) {
-        targetAnyone = true
-        chooserAnyone = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45, execute: action)
-    }
-
-    /// Files handed to us from another app ("Open in CrossDrop") wait for a tap on a device.
-    private func startSend(_ peer: Peer) {
-        if peer.vault != nil { vaultPeer = peer; return }      // beacon → mount sheet, not the send chooser
+    /// Device tap → send sheet (or straight away for files handed over by another app); a drive → its sheet.
+    private func startSendFlow(_ peer: Peer) {
+        guard peer.isReachable else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if peer.vault != nil {
+            sheets.present {
+                VaultMountSheet(peer: peer,
+                                onMount: { sheets.dismiss(notify: false); container.vaultExplorer.mount(peer) },
+                                onCancel: { sheets.dismiss() })
+            }
+            return
+        }
         if !container.pendingShare.isEmpty {
             let taken = container.takePendingShare()
             coordinator.sendTo(peer, urls: taken.urls, temporary: taken.temporary)
-        } else {
-            chooserPeer = peer
+            return
+        }
+        sheets.present {
+            SendSheet(kicker: "Send to", title: peer.name, icon: deviceIconFor(peer.name),
+                      meta: MetaLine(lead: nil, rest: peer.sources.contains(.manual) ? "Added by address · Wi-Fi" : "Wi-Fi · this network"),
+                      note: "Straight to this device, end-to-end encrypted, never through a server. You'll both see a 6-digit code to compare.",
+                      onPickMedia: { pick(peer: peer) { showPhotos = true } },
+                      onPickFiles: { pick(peer: peer) { showFiles = true } },
+                      onCancel: { sheets.dismiss() })
         }
     }
 
-    private var pendingBanner: some View {
-        let n = container.pendingShare.count
-        return HStack(spacing: 10) {
-            Image(systemName: "paperplane.fill").foregroundColor(Aurora.teal)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("\(n) file\(n == 1 ? "" : "s") ready").font(.cd(13, weight: .semibold)).foregroundColor(Aurora.textPrimary)
-                Text("tap a device to send").font(.cd(12)).foregroundColor(Aurora.textDim)
+    /// "Send to anyone" → same sheet, but the result feeds the QR share.
+    private func startAnyoneFlow() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if !container.pendingShare.isEmpty {
+            let taken = container.takePendingShare()
+            container.qrShare.start(urls: taken.urls, temporary: taken.temporary)
+            return
+        }
+        sheets.present {
+            SendSheet(kicker: "Share with", title: "Anyone nearby", icon: CdIcons.qr,
+                      meta: MetaLine(lead: nil, rest: "No app needed — they scan a QR code"),
+                      note: "They need to be on this Wi-Fi. The link is secret, and it stops working the moment you close the share screen.",
+                      onPickMedia: { pick(peer: nil) { showPhotos = true } },
+                      onPickFiles: { pick(peer: nil) { showFiles = true } },
+                      onCancel: { sheets.dismiss() })
+        }
+    }
+
+    private func pick(peer: Peer?, _ open: @escaping () -> Void) {
+        targetPeer = peer
+        targetAnyone = peer == nil
+        sheets.dismiss(notify: false)
+        // Let the sheet's exit animation start before the system picker slides in.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: open)
+    }
+
+    // MARK: header
+
+    private func header(_ count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 8) {
+                BrandMark()
+                Text("CrossDrop").displayStyle(16, tracking: -0.01)
+                Spacer(minLength: 8)
+                GlassChip(text: chipText, dot: container.discoveryEnabled ? CD.accent : CD.textDim)
             }
-            Spacer()
-            Button("to anyone") {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Radar").displayStyle(36, tracking: -0.04).accessibilityAddTraits(.isHeader)
+                Text(count == 0 ? "Looking for devices…" : count == 1 ? "1 device nearby" : "\(count) devices nearby")
+                    .body(14, CD.textDim)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var chipText: String {
+        var t = container.discoveryEnabled ? "Wi-Fi · local only" : "Wi-Fi discovery off"
+        #if DEBUG
+        if container.listenerPort > 0 { t += " · :\(container.listenerPort)" }
+        #endif
+        return t
+    }
+
+    private func noticeCard(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            CdIconView(CdIcons.wifi, color: CD.amber, size: 18)
+            Text(text).body(12, CD.textSecondary).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            ChipButton(text: "Settings", fg: CD.amber, bg: CD.amber.opacity(0.1), border: CD.amber.opacity(0.35), height: 32, fontSize: 12) {
+                openSystemSettings()
+            }
+            CircleButton(icon: CdIcons.close, label: "Dismiss", size: 32, iconSize: 14, fill: .clear, tint: CD.textDim) {
+                container.networkNotice = nil
+            }
+        }
+        .padding(.leading, 14).padding(.trailing, 4).padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(CD.amber.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(CD.amber.opacity(0.25), lineWidth: 1))
+        .frame(maxWidth: 560)
+    }
+
+    /// Files handed to us by another app ("Open in CrossDrop", drag & drop) wait for a device tap.
+    private var pendingCard: some View {
+        let n = container.pendingShare.count
+        return HStack(spacing: 12) {
+            IconTile(icon: CdIcons.arrowUp, tint: CD.accent, size: 40, radius: 14, iconSize: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(n) file\(n == 1 ? "" : "s") ready").body(14, weight: .semibold)
+                Text("Tap a device to send").body(12, CD.textDim)
+            }
+            Spacer(minLength: 4)
+            ChipButton(text: "To anyone", icon: CdIcons.qr, fg: CD.onAccent, bg: CD.accent, height: 36) {
                 let taken = container.takePendingShare()
                 container.qrShare.start(urls: taken.urls, temporary: taken.temporary)
-            }.font(.cd(13, weight: .medium)).foregroundColor(Aurora.teal).pointerHover()
-            Button { container.clearPendingShare() } label: {
-                Image(systemName: "xmark").font(.cd(12, weight: .semibold)).foregroundColor(Aurora.danger)
-                    .frame(width: 32, height: 32).contentShape(Rectangle())
             }
-            .accessibilityLabel("Discard waiting files")
+            CircleButton(icon: CdIcons.close, label: "Discard waiting files", size: 36, iconSize: 14, fill: CD.glassHigh, tint: CD.textSecondary) {
+                container.clearPendingShare()
+            }
         }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Aurora.deepSpaceRaised, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Aurora.teal.opacity(0.5), lineWidth: 1))
-        .padding(.horizontal, 16).padding(.bottom, 4)
-    }
-
-    private var topBar: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("CrossDrop").font(.cd(24, weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(Aurora.gradient)
-                Button { renaming = true } label: {
-                    HStack(spacing: 6) {
-                        Text("●").font(.cd(7)).foregroundColor(Aurora.teal)
-                        Text(container.deviceName + (container.listenerPort > 0 ? "  :\(container.listenerPort)" : ""))
-                            .font(.cd(11)).foregroundColor(Aurora.textDim)
-                    }
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Aurora.deepSpaceSoft, in: Capsule())
-                    .overlay(Capsule().stroke(Aurora.glassEdge, lineWidth: 1))
-                }
-                .buttonStyle(.plain).pointerHover()
-            }
-            Spacer()
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                chooserAnyone = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "qrcode").font(.cd(16, weight: .medium)).foregroundColor(Aurora.teal)
-                    Text("to anyone").font(.cd(13, weight: .medium)).foregroundColor(Aurora.textPrimary)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(Aurora.deepSpaceSoft, in: Capsule())
-                .overlay(Capsule().stroke(Aurora.teal.opacity(0.4), lineWidth: 1))
-            }
-            .buttonStyle(.plain).pointerHover()
-        }
-        .padding(.horizontal, 20).padding(.vertical, 12)
-    }
-
-    private func noticeBanner(_ text: String) -> some View {
-        HStack {
-            Text(text).font(.cd(12)).foregroundColor(Aurora.textDim)
-            Spacer()
-            Button("Settings") { openSystemSettings() }
-                .font(.cd(13, weight: .medium)).foregroundColor(Aurora.teal)
-            Button { container.networkNotice = nil } label: {
-                Image(systemName: "xmark").font(.cd(12, weight: .semibold)).foregroundColor(Aurora.textDim)
-                    .frame(width: 32, height: 32).contentShape(Rectangle())
-            }
-            .accessibilityLabel("Dismiss")
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .background(Aurora.deepSpaceSoft, in: RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal, 16).padding(.bottom, 4)
-    }
-
-    @ViewBuilder private var peerStrip: some View {
-        if container.peers.isEmpty {
-            Text("Tap a device to send files").font(.cd(13)).foregroundColor(Aurora.textDim).padding(.vertical, 18)
-        } else {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(container.peers.prefix(8)) { peer in
-                        Button { if peer.isReachable { startSend(peer) } } label: {
-                            HStack(spacing: 8) {
-                                Text("●").font(.cd(8)).foregroundColor(peer.isReachable ? Aurora.teal : Aurora.textDim)
-                                Text(peer.name).font(.cd(13, weight: .medium)).foregroundColor(Aurora.textPrimary).lineLimit(1)
-                                if peer.isReachable {
-                                    Text(peer.vault != nil ? "vault" : "send").font(.cd(12))
-                                        .foregroundColor(peer.vault != nil ? Aurora.violet : Aurora.teal)
-                                }
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 10)
-                            .background(Aurora.deepSpaceRaised, in: Capsule())
-                            .overlay(Capsule().stroke(peer.isReachable ? Aurora.teal.opacity(0.5) : Aurora.glassEdge, lineWidth: 1))
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-            .padding(.vertical, 14)
-        }
+        .padding(.leading, 12).padding(.trailing, 4).padding(.vertical, 4)
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(CD.glassMid))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(CD.accent.opacity(0.4), lineWidth: 1))
+        .frame(maxWidth: 560)
     }
 }
 
-struct SendChooserSheet: View {
-    let title: String
-    let subtitle: String
-    let onPickMedia: () -> Void
-    let onPickFiles: () -> Void
-
+private struct BrandMark: View {
     var body: some View {
         ZStack {
-            Aurora.deepSpaceSoft.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title).font(.cd(18, weight: .semibold)).foregroundColor(Aurora.textPrimary)
-                Text(subtitle).font(.cd(12)).foregroundColor(Aurora.textDim).padding(.bottom, 6)
-                PickerOption(icon: "photo.on.rectangle", tint: Aurora.teal, title: "Photos & videos",
-                             subtitle: "your photo library", action: onPickMedia)
-                PickerOption(icon: "doc", tint: Aurora.cyan, title: "Files",
-                             subtitle: "documents, archives, everything else", action: onPickFiles)
-                Spacer(minLength: 0)
+            Circle().strokeBorder(CD.accent, lineWidth: 2).frame(width: 24, height: 24)
+            Circle().fill(CD.accent).frame(width: 8, height: 8)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private struct SendToAnyoneCard: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                IconTile(icon: CdIcons.qr, tint: CD.accent, bg: CD.accent.opacity(0.14), size: 46, radius: 16, iconSize: 24)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Send to anyone").body(15, weight: .semibold)
+                    Text("No app needed. They scan a QR code.").body(12, CD.textDim).lineLimit(1).minimumScaleFactor(0.85)
+                }
+                Spacer(minLength: 4)
+                CdIconView(CdIcons.arrowRight, color: CD.onAccent, size: 18)
+                    .frame(width: 40, height: 40).background(Circle().fill(CD.accent))
             }
-            .padding(24)
+            .padding(.leading, 16).padding(.trailing, 14).padding(.vertical, 14)
+            .frame(minHeight: 74)
+            .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(CD.glassMid))
+            .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Send to anyone. No app needed, they scan a QR code.")
+        .accessibilityAddTraits(.isButton)
+        .pointerHover()
+    }
+}
+
+private struct DriveRow: View {
+    let peer: Peer
+    let action: () -> Void
+    var body: some View {
+        let vault = peer.vault
+        Button(action: action) {
+            HStack(spacing: 12) {
+                CdIconView(CdIcons.drive, color: CD.textPrimary, size: 22)
+                Text(vault?.vaultName ?? peer.name).body(14, weight: .semibold).lineLimit(1)
+                Spacer(minLength: 4)
+                if vault?.needsPin == true {
+                    HStack(spacing: 5) {
+                        CdIconView(CdIcons.lock, color: CD.amber, size: 12)
+                        Text("PIN protected").body(12, CD.amber, weight: .semibold)
+                    }
+                } else if vault?.writable == true {
+                    Text("Editable").body(12, CD.accent, weight: .semibold)
+                } else {
+                    Text("Read-only").body(12, CD.textDim, weight: .semibold)
+                }
+            }
+            .padding(.leading, 16).padding(.trailing, 14).padding(.vertical, 10)
+            .frame(minHeight: 58)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(CD.glassLow))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(CD.groupBorder, lineWidth: 1))
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+        .buttonStyle(PressableStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Opens the drive")
+        .pointerHover()
+    }
+}
+
+// MARK: - Sheets
+
+/// "≈ 2 m · Wi-Fi" — an optional accent lead, then the rest.
+struct MetaLine: View {
+    let lead: String?
+    let rest: String
+    var body: some View {
+        (Text(lead.map { $0 + (rest.isEmpty ? "" : " · ") } ?? "").foregroundColor(CD.accent).fontWeight(.semibold)
+            + Text(rest).foregroundColor(CD.textSecondary))
+            .font(.cd(12))
+    }
+}
+
+private struct SheetHeader: View {
+    let kicker: String
+    let title: String
+    let icon: CdIcon
+    var iconTint: Color = CD.textPrimary
+    let meta: MetaLine
+
+    var body: some View {
+        HStack(spacing: 14) {
+            CdIconView(icon, color: iconTint, size: 26)
+                .frame(width: 62, height: 62)
+                .background(
+                    ZStack {
+                        Circle().fill(CD.inkSheet).shadow(color: CD.accent.opacity(0.22), radius: 9)
+                        Circle().fill(CD.glassRaised)
+                    }
+                )
+                .overlay(Circle().strokeBorder(CD.accent, lineWidth: 1.5))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(kicker).body(13, CD.textDim)
+                Text(title).displayStyle(26).lineLimit(2).accessibilityAddTraits(.isHeader)
+                meta
+            }
+            Spacer(minLength: 0)
         }
     }
 }
 
-struct PickerOption: View {
-    let icon: String
-    let tint: Color
+private struct BigTile: View {
     let title: String
     let subtitle: String
+    let icon: CdIcon
+    let primary: Bool
     let action: () -> Void
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 28, style: .continuous)
         Button(action: action) {
-            GlassCard(radius: 16) {
-                HStack(spacing: 14) {
-                    Image(systemName: icon).font(.cd(22)).foregroundColor(tint).frame(width: 30)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.cd(15, weight: .medium)).foregroundColor(Aurora.textPrimary)
-                        Text(subtitle).font(.cd(12)).foregroundColor(Aurora.textDim)
-                    }
-                    Spacer()
-                    Text("›").font(.cd(18)).foregroundColor(Aurora.textDim)
+            VStack(alignment: .leading, spacing: 0) {
+                CdIconView(icon, color: primary ? CD.onAccent : CD.textPrimary, size: 32)
+                Spacer(minLength: 12)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title).displayStyle(19, tracking: -0.02, color: primary ? CD.onAccent : CD.textPrimary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(subtitle).body(12, primary ? CD.onAccentMuted : CD.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(14)
             }
+            .padding(18)
+            .frame(maxWidth: .infinity, minHeight: 178, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .background(
+                ZStack {
+                    if primary { shape.fill(CD.accent).shadow(color: CD.accent.opacity(0.18), radius: 20, x: 0, y: 12) }
+                    shape.fill(primary ? CD.accent : CD.glassMid)
+                }
+            )
+            .overlay { if !primary { shape.strokeBorder(Color.white.opacity(0.1), lineWidth: 1) } }
+            .contentShape(shape)
         }
-        .buttonStyle(.plain).pointerHover()
+        .buttonStyle(PressableStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityAddTraits(.isButton)
+        .pointerHover()
     }
 }
 
-struct DeviceNameSheet: View {
-    let current: String
-    let onDone: (String?) -> Void
-    @State private var text: String
-
-    init(current: String, onDone: @escaping (String?) -> Void) {
-        self.current = current; self.onDone = onDone
-        _text = State(initialValue: current)
+private struct NoteCard: View {
+    let text: String
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            CdIconView(CdIcons.shield, color: CD.accent, size: 20).padding(.top, 1)
+            Text(text).body(13, CD.textSecondary).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(CD.glassLow))
     }
+}
+
+/// Peer (or "anyone") tapped: photo library or any files.
+private struct SendSheet: View {
+    let kicker: String
+    let title: String
+    let icon: CdIcon
+    let meta: MetaLine
+    let note: String
+    let onPickMedia: () -> Void
+    let onPickFiles: () -> Void
+    let onCancel: () -> Void
 
     var body: some View {
-        ZStack {
-            Aurora.deepSpaceSoft.ignoresSafeArea()
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Device name").font(.cd(18, weight: .semibold)).foregroundColor(Aurora.textPrimary)
-                Text("how other devices see this one").font(.cd(12)).foregroundColor(Aurora.textDim)
-                TextField("Name", text: $text)
-                    .textFieldStyle(.plain).padding(12).foregroundColor(Aurora.textPrimary)
-                    .background(Aurora.deepSpaceRaised, in: RoundedRectangle(cornerRadius: 12))
-                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Aurora.glassEdge, lineWidth: 1))
-                    .submitLabel(.done).onSubmit { onDone(text) }
-                HStack(spacing: 12) {
-                    Button("Cancel") { onDone(nil) }.buttonStyle(OutlineButtonStyle(color: Aurora.textDim))
-                    Button("Save") { onDone(text) }.buttonStyle(PrimaryButtonStyle())
-                }
-                Spacer(minLength: 0)
+        VStack(spacing: 20) {
+            SheetHeader(kicker: kicker, title: title, icon: icon, meta: meta)
+            HStack(spacing: 10) {
+                BigTile(title: "Photos & videos", subtitle: "Library, albums, iCloud Photos", icon: CdIcons.photo, primary: true, action: onPickMedia)
+                BigTile(title: "Files", subtitle: "Any type, pick several", icon: CdIcons.doc, primary: false, action: onPickFiles)
             }
-            .padding(24)
+            NoteCard(text: note)
+            PillButton("Cancel", style: .glass, action: onCancel)
         }
     }
+}
+
+/// Drive beacon sheet: open it here (encrypted session, native explorer) or hand the browser address to
+/// anyone nearby — copied, with a QR to scan.
+struct VaultMountSheet: View {
+    let peer: Peer
+    let onMount: () -> Void
+    let onCancel: () -> Void
+    @State private var showQr = false
+
+    private var url: String { peer.host.map { "http://\(Self.hostLiteral($0)):\(peer.port)/" } ?? "" }
+
+    var body: some View {
+        let vault = peer.vault
+        VStack(spacing: 20) {
+            SheetHeader(kicker: "Wireless drive", title: vault?.vaultName ?? peer.name, icon: CdIcons.drive, iconTint: CD.amber,
+                        meta: MetaLine(lead: vault?.needsPin == true ? "PIN protected" : nil,
+                                       rest: vault?.writable == true ? "you can add & edit" : "view & download"))
+            HStack(spacing: 10) {
+                BigTile(title: "Open here", subtitle: "Browse, preview and save — encrypted", icon: CdIcons.drive, primary: true, action: onMount)
+                BigTile(title: "Open in browser", subtitle: showQr ? "Link copied — or scan below" : "Copy the link, show a QR",
+                        icon: CdIcons.globe, primary: false) {
+                    if !url.isEmpty { UIPasteboard.general.string = url }
+                    withAnimation(.easeInOut(duration: 0.25)) { showQr.toggle() }
+                }
+            }
+            if showQr, !url.isEmpty {
+                VStack(spacing: 18) {
+                    QrCard(text: url, size: 200)
+                    Text(url).monoStyle(13, color: CD.textSecondary).textSelection(.enabled)
+                }
+                .padding(.vertical, 8)
+                .transition(.opacity)
+            }
+            NoteCard(text: "Files come straight from this drive over your Wi-Fi. Nothing is uploaded anywhere.")
+            PillButton("Cancel", style: .glass, action: onCancel)
+        }
+    }
+
+    /// IPv6 literals need brackets in a URL.
+    static func hostLiteral(_ h: String) -> String { h.contains(":") ? "[\(h)]" : h }
 }

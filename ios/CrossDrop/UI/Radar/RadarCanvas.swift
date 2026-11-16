@@ -1,85 +1,82 @@
 import SwiftUI
 
-/// The ambient sonar: concentric ripples, a rotating sweep and orbiting peer nodes. A peer's angle
-/// is a stable hash of its instance id so nodes never teleport between redraws.
+/// The sonar: three quiet rings, a rotating sweep and two accent pulses behind real, focusable device
+/// nodes (buttons with VoiceOver labels, not canvas hit-testing). iOS has no BLE layer, so every peer
+/// sits on the outer "Wi-Fi · no distance" ring with a dashed outline. A node's angle is a stable hash of
+/// its instance id, nudged apart so neighbours never overlap.
 struct RadarCanvas: View {
     let selfName: String
+    let selfIcon: CdIcon
     let peers: [Peer]
+    var active = true
     let onPeerTap: (Peer) -> Void
+    var onSelfTap: (() -> Void)?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    static let nodeW: CGFloat = 112
+    static let nodeD: CGFloat = 56
+    static let nodeH: CGFloat = 98
+    static let selfW: CGFloat = 140
+    static let selfD: CGFloat = 76
+
     var body: some View {
         GeometryReader { geo in
-            // 30 fps is plenty for slow ambient motion and halves the battery cost; frozen for Reduce Motion.
-            TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion)) { timeline in
-                let t = timeline.date.timeIntervalSinceReferenceDate
-                Canvas { gc, size in
-                    draw(&gc, size: size, t: t)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(SpatialTapGesture().onEnded { tap in
-                let t = Date().timeIntervalSinceReferenceDate
-                let pos = positions(size: geo.size, t: t)
-                let hit = pos.min(by: { dist($0.value, tap.location) < dist($1.value, tap.location) })
-                if let hit, dist(hit.value, tap.location) < 56, let peer = peers.first(where: { $0.instanceId == hit.key }) {
-                    onPeerTap(peer)
-                }
-            })
-        }
-        // The canvas is a picture to VoiceOver — expose each device as a real button instead.
-        .accessibilityRepresentation {
-            VStack {
+            let w = geo.size.width, h = geo.size.height
+            let maxR = max(70, min(w - 20, h - 8) / 2)
+            let cx = w / 2, cy = h / 2
+            let layout = Self.layout(peers)
+            ZStack(alignment: .topLeading) {
+                // Ambient glow centred on the radar — a view, not canvas paint, so it bleeds softly past the box.
+                let gr = min(w, h) * 0.69
+                RadialGradient(colors: [CD.accent.opacity(0.18), CD.accent.opacity(0)], center: .center, startRadius: 0, endRadius: gr)
+                    .frame(width: gr * 2, height: gr * 2)
+                    .offset(x: cx - gr, y: cy - gr)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                SonarBackdrop(maxR: maxR, paused: !active || reduceMotion)
+                    .frame(width: w, height: h)
+
                 ForEach(peers) { peer in
-                    Button(peer.vault != nil ? "\(peer.name), shared drive" : "Send to \(peer.name)") { onPeerTap(peer) }
-                        .disabled(!peer.isReachable)
+                    let slot = layout[peer.instanceId] ?? (angle: 0, ring: 0.8)
+                    let r = maxR * slot.ring
+                    let px = cx + r * cos(slot.angle), py = cy + r * sin(slot.angle)
+                    // Keep the whole node (circle + two label lines) inside the box.
+                    let left = min(max(0, px - Self.nodeW / 2), max(0, w - Self.nodeW))
+                    let top = min(max(0, py - Self.nodeD / 2), max(0, h - Self.nodeH))
+                    PeerNode(peer: peer) { onPeerTap(peer) }
+                        .modifier(FloatBob(phase: Double(Self.hash(peer.instanceId) % 7), enabled: !reduceMotion))
+                        .offset(x: left, y: top)
                 }
+
+                SelfNode(name: selfName, icon: selfIcon, onTap: onSelfTap)
+                    .offset(x: cx - Self.selfW / 2, y: cy - Self.selfD / 2)
             }
         }
     }
 
-    // MARK: time bases
+    // MARK: layout
 
-    private struct Phases {
-        let ripple: Double   // 0…1
-        let sweepDeg: Double
-        let bob: Double      // 0…2π
-        let ambient: Double  // 0…2π
-        init(_ t: Double) {
-            func frac(_ period: Double) -> Double { (t / period).truncatingRemainder(dividingBy: 1) }
-            ripple = frac(4.2); sweepDeg = frac(6) * 360
-            bob = frac(2.6) * 2 * .pi; ambient = frac(9) * 2 * .pi
-        }
+    static func hash(_ s: String) -> Int {
+        var h = 7
+        for u in s.utf16 { h = h &* 31 &+ Int(u) }
+        return h & 0x7fffffff
     }
 
-    private func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat { hypot(a.x - b.x, a.y - b.y) }
-
-    private func positions(size: CGSize, t: Double) -> [String: CGPoint] {
-        let ph = Phases(t)
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let maxR = min(size.width, size.height) / 2 * 0.86
-        var out: [String: CGPoint] = [:]
-        for (id, slot) in layout() {
-            let bob = reduceMotion ? 0 : sin(ph.bob + Double(abs(Self.hash(id)) % 7)) * 6
-            let r = maxR * slot.ring + bob
-            out[id] = CGPoint(x: center.x + r * cos(slot.angle), y: center.y + r * sin(slot.angle))
-        }
-        return out
-    }
+    static func angle(for id: String) -> Double { Double(hash(id) % 360) * .pi / 180 }
 
     /// Stable hash-based angles, nudged apart so neighbours don't sit on top of each other; with many
     /// peers they alternate between two rings. Peers joining or leaving only shift their neighbours slightly.
-    private func layout() -> [String: (angle: Double, ring: CGFloat)] {
+    static func layout(_ peers: [Peer]) -> [String: (angle: Double, ring: CGFloat)] {
         let n = peers.count
         guard n > 0 else { return [:] }
         let sorted = peers.sorted {
-            let a = Self.angle(for: $0.instanceId), b = Self.angle(for: $1.instanceId)
+            let a = angle(for: $0.instanceId), b = angle(for: $1.instanceId)
             return a == b ? $0.instanceId < $1.instanceId : a < b
         }
-        var angles = sorted.map { Self.angle(for: $0.instanceId) }
+        var angles = sorted.map { angle(for: $0.instanceId) }
         if n > 1 {
-            let gap = min(0.85, 2 * Double.pi / Double(n))
+            let gap = min(0.95, 2 * Double.pi / Double(n))
             for _ in 0..<12 {
                 for i in 0..<n {
                     let j = (i + 1) % n
@@ -91,184 +88,148 @@ struct RadarCanvas: View {
         }
         var out: [String: (angle: Double, ring: CGFloat)] = [:]
         for (i, p) in sorted.enumerated() {
-            let ring: CGFloat = n <= 5 ? 0.55 : (i % 2 == 0 ? 0.43 : 0.7)
+            // No distance on iOS (no BLE): the outer ring, split in two when crowded.
+            let ring: CGFloat = n <= 5 ? 0.80 : (i % 2 == 0 ? 0.62 : 0.90)
             out[p.instanceId] = (angles[i], ring)
         }
         return out
     }
+}
 
-    // MARK: drawing
+/// Gentle 4 pt float, like the design's `cd-float`.
+private struct FloatBob: ViewModifier {
+    let phase: Double
+    let enabled: Bool
+    @State private var up = false
+    func body(content: Content) -> some View {
+        content
+            .offset(y: up ? -4 : 0)
+            .onAppear {
+                guard enabled else { return }
+                withAnimation(.easeInOut(duration: 2 + phase * 0.1).repeatForever(autoreverses: true).delay(phase * 0.25)) { up = true }
+            }
+    }
+}
+
+// MARK: - Backdrop
+
+private struct SonarBackdrop: View {
+    let maxR: CGFloat
+    let paused: Bool
+
+    var body: some View {
+        // 30 fps is plenty for slow ambient motion; frozen for Reduce Motion or when the tab is hidden.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: paused)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            Canvas { gc, size in draw(&gc, size: size, t: paused ? 0.9 : t) }
+        }
+        .accessibilityHidden(true)
+        .allowsHitTesting(false)
+    }
 
     private func draw(_ gc: inout GraphicsContext, size: CGSize, t: Double) {
-        let ph = Phases(t)
-        let center = CGPoint(x: size.width / 2, y: size.height / 2)
-        let maxR = min(size.width, size.height) / 2 * 0.86
+        let c = CGPoint(x: size.width / 2, y: size.height / 2)
+        let r = maxR
+        func circle(_ rad: CGFloat) -> Path { Path(ellipseIn: CGRect(x: c.x - rad, y: c.y - rad, width: rad * 2, height: rad * 2)) }
 
-        // background
-        gc.fill(Path(CGRect(origin: .zero, size: size)),
-                with: .radialGradient(Gradient(colors: [Color(hex: 0x0C0628), Aurora.deepSpace]),
-                                      center: center, startRadius: 0, endRadius: max(size.width, size.height) / 1.6))
-        drawAmbient(&gc, size: size, center: center, maxR: maxR, tA: ph.ambient)
-        drawGrid(&gc, center: center, maxR: maxR)
-        drawSweep(&gc, center: center, maxR: maxR, deg: ph.sweepDeg)
-        drawRipples(&gc, center: center, maxR: maxR, t: ph.ripple)
+        // sweep — a soft wedge with a crisp leading edge, rotating clockwise once every 5 s
+        let sweepDeg = (t / 5).truncatingRemainder(dividingBy: 1) * 360
+        let g = Gradient(stops: [
+            .init(color: CD.accent.opacity(0), location: 0),
+            .init(color: CD.accent.opacity(0.25), location: 70.0 / 360),
+            .init(color: CD.accent.opacity(0), location: 70.5 / 360),
+            .init(color: CD.accent.opacity(0), location: 1),
+        ])
+        gc.fill(circle(r), with: .conicGradient(g, center: c, angle: .degrees(sweepDeg)))
 
-        let pos = positions(size: size, t: t)
-        for peer in peers {
-            guard let p = pos[peer.instanceId] else { continue }
-            if peer.vault != nil { drawVaultBeacon(&gc, at: p, peer: peer, t: ph.bob, orbit: ph.ambient) }
-            else { drawPeerNode(&gc, at: p, peer: peer, t: ph.bob) }
+        // two expanding pulses, half a cycle apart, eased out
+        for k in 0..<2 {
+            let p = ((t / 3.2) + Double(k) * 0.5).truncatingRemainder(dividingBy: 1)
+            let e = 1 - pow(1 - p, 2.4)
+            gc.stroke(circle(r * CGFloat(0.35 + 0.65 * e)), with: .color(CD.accent.opacity(0.7 * (1 - p))), lineWidth: 1.5)
         }
-        drawSelfNode(&gc, center: center, name: selfName, t: ph.ripple)
-    }
 
-    private func drawAmbient(_ gc: inout GraphicsContext, size: CGSize, center: CGPoint, maxR: CGFloat, tA: Double) {
-        let blobs: [(Color, CGPoint, CGFloat)] = [
-            (Aurora.violet, CGPoint(x: -0.9, y: -0.5), 1.1), (Aurora.cyan, CGPoint(x: 0.8, y: -0.9), 0.9),
-            (Aurora.teal, CGPoint(x: 0.4, y: 0.95), 1.0), (Aurora.pink, CGPoint(x: -0.75, y: 0.6), 0.7),
-        ]
-        for (i, b) in blobs.enumerated() {
-            let dx = sin(tA * 0.4 + Double(i) * 2.1) * 0.08, dy = cos(tA * 0.3 + Double(i)) * 0.06
-            let pos = CGPoint(x: center.x + (b.1.x + dx) * maxR, y: center.y + (b.1.y + dy) * maxR)
-            let r = maxR * b.2
-            gc.fill(Path(ellipseIn: CGRect(x: pos.x - r, y: pos.y - r, width: r * 2, height: r * 2)),
-                    with: .radialGradient(Gradient(colors: [b.0.opacity(0.075), .clear]), center: pos, startRadius: 0, endRadius: r))
-        }
-        for i in 0..<90 {
-            let h = (UInt64(i) &* 2654435761) ^ 0x9E3779B9
-            let px = Double((h >> 33) % 1000) / 1000, py = Double((h >> 11) % 1023) / 1023
-            let tw = 0.5 + 0.5 * sin(tA * (0.8 + Double(i % 7) * 0.22) + Double(i) * 1.7)
-            let r = 0.8 + Double(i % 3) * 0.5
-            gc.fill(Path(ellipseIn: CGRect(x: px * size.width - r, y: py * size.height - r, width: r * 2, height: r * 2)),
-                    with: .color(.white.opacity(0.05 + 0.10 * tw)))
-        }
+        // static rings
+        gc.stroke(circle(r * 0.35), with: .color(.white.opacity(0.12)), lineWidth: 1)
+        gc.stroke(circle(r * 0.676), with: .color(.white.opacity(0.08)), lineWidth: 1)
+        gc.stroke(circle(r), with: .color(.white.opacity(0.05)), lineWidth: 1)
     }
+}
 
-    private func drawGrid(_ gc: inout GraphicsContext, center: CGPoint, maxR: CGFloat) {
-        for i in 1...4 {
-            let r = maxR * CGFloat(i) / 4
-            gc.stroke(Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)),
-                      with: .color(Aurora.teal.opacity(0.10)), lineWidth: 1.2)
-        }
-        var cross = Path()
-        cross.move(to: CGPoint(x: center.x - maxR, y: center.y)); cross.addLine(to: CGPoint(x: center.x + maxR, y: center.y))
-        cross.move(to: CGPoint(x: center.x, y: center.y - maxR)); cross.addLine(to: CGPoint(x: center.x, y: center.y + maxR))
-        gc.stroke(cross, with: .color(Aurora.teal.opacity(0.05)), lineWidth: 1)
-    }
+// MARK: - Nodes
 
-    private func drawSweep(_ gc: inout GraphicsContext, center: CGPoint, maxR: CGFloat, deg: Double) {
-        gc.drawLayer { layer in
-            layer.translateBy(x: center.x, y: center.y)
-            layer.rotate(by: .degrees(deg))
-            var wedge = Path()
-            wedge.move(to: .zero)
-            wedge.addArc(center: .zero, radius: maxR, startAngle: .degrees(0), endAngle: .degrees(60), clockwise: false)
-            wedge.closeSubpath()
-            layer.clip(to: wedge)
-            let g = Gradient(stops: [
-                .init(color: Aurora.teal.opacity(0.30), location: 0), .init(color: Aurora.cyan.opacity(0.16), location: 0.07),
-                .init(color: Aurora.violet.opacity(0.07), location: 0.13), .init(color: .clear, location: 0.18),
-                .init(color: .clear, location: 1),
-            ])
-            layer.fill(Path(ellipseIn: CGRect(x: -maxR, y: -maxR, width: maxR * 2, height: maxR * 2)),
-                       with: .conicGradient(g, center: .zero, angle: .zero))
-        }
-    }
+private struct SelfNode: View {
+    let name: String
+    let icon: CdIcon
+    let onTap: (() -> Void)?
 
-    private func drawRipples(_ gc: inout GraphicsContext, center: CGPoint, maxR: CGFloat, t: Double) {
-        for i in 0..<4 {
-            let phase = (t + Double(i) / 4).truncatingRemainder(dividingBy: 1)
-            let r = CGFloat(phase) * maxR
-            gc.stroke(Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)),
-                      with: .color(Aurora.teal.opacity((1 - phase) * 0.35)), lineWidth: max(0.6, 3 - phase * 2))
-        }
-    }
-
-    private func pill(_ gc: inout GraphicsContext, text: String, color: Color, at topCenter: CGPoint, edge: Color, fontSize: CGFloat = 12, weight: Font.Weight = .medium) {
-        let resolved = gc.resolve(Text(text).font(.system(size: fontSize, weight: weight)).foregroundColor(color))
-        let m = resolved.measure(in: CGSize(width: 120, height: 40))
-        let padH: CGFloat = 10, padV: CGFloat = 4
-        let rect = CGRect(x: topCenter.x - (m.width + padH * 2) / 2, y: topCenter.y, width: m.width + padH * 2, height: m.height + padV * 2)
-        let rr = Path(roundedRect: rect, cornerRadius: rect.height / 2)
-        gc.fill(rr, with: .color(Aurora.deepSpaceSoft.opacity(0.85)))
-        gc.stroke(rr, with: .color(edge), lineWidth: 1)
-        gc.draw(resolved, at: CGPoint(x: rect.minX + padH, y: rect.minY + padV), anchor: .topLeading)
-    }
-
-    private func drawPeerNode(_ gc: inout GraphicsContext, at pos: CGPoint, peer: Peer, t: Double) {
-        let reachable = peer.isReachable
-        let alpha = reachable ? 1.0 : 0.45
-        let nodeR: CGFloat = 30
-        let pulse = 1 + 0.08 * sin(t + Double(abs(Self.hash(peer.instanceId)) % 11))
-        let haloR = nodeR * 2 * pulse
-        gc.fill(Path(ellipseIn: CGRect(x: pos.x - haloR, y: pos.y - haloR, width: haloR * 2, height: haloR * 2)),
-                with: .radialGradient(Gradient(colors: [(reachable ? Aurora.teal : Aurora.cyan).opacity(0.40 * alpha), .clear]),
-                                      center: pos, startRadius: 0, endRadius: haloR))
-        let body = nodeR * 0.62
-        gc.fill(Path(ellipseIn: CGRect(x: pos.x - body, y: pos.y - body, width: body * 2, height: body * 2)),
-                with: .radialGradient(Gradient(colors: [Aurora.phosphor.opacity(alpha), Aurora.teal.opacity(0.85 * alpha)]),
-                                      center: CGPoint(x: pos.x, y: pos.y - nodeR * 0.3), startRadius: 0, endRadius: nodeR))
-        if reachable {
-            let ring = nodeR * 0.8
-            gc.stroke(Path(ellipseIn: CGRect(x: pos.x - ring, y: pos.y - ring, width: ring * 2, height: ring * 2)),
-                      with: .color(Aurora.teal.opacity(0.6)), lineWidth: 1.4)
-        }
-        pill(&gc, text: peer.name, color: Aurora.textPrimary.opacity(alpha), at: CGPoint(x: pos.x, y: pos.y + nodeR * 0.85), edge: Aurora.glassEdge)
-    }
-
-    private func drawVaultBeacon(_ gc: inout GraphicsContext, at pos: CGPoint, peer: Peer, t: Double, orbit: Double) {
-        guard let vault = peer.vault else { return }
-        let nodeR: CGFloat = 30, tint = Aurora.violet
-        let pulse = 1 + 0.10 * sin(t + Double(abs(Self.hash(peer.instanceId)) % 11))
-        let haloR = nodeR * 2.2 * pulse
-        gc.fill(Path(ellipseIn: CGRect(x: pos.x - haloR, y: pos.y - haloR, width: haloR * 2, height: haloR * 2)),
-                with: .radialGradient(Gradient(colors: [tint.opacity(0.45), .clear]), center: pos, startRadius: 0, endRadius: haloR))
-        let core = nodeR * 0.58
-        gc.fill(Path(ellipseIn: CGRect(x: pos.x - core, y: pos.y - core, width: core * 2, height: core * 2)),
-                with: .radialGradient(Gradient(colors: [Aurora.phosphor, tint.opacity(0.85)]),
-                                      center: CGPoint(x: pos.x, y: pos.y - nodeR * 0.3), startRadius: 0, endRadius: nodeR))
-        let ringR = nodeR * 1.02
-        gc.drawLayer { layer in
-            layer.translateBy(x: pos.x, y: pos.y)
-            layer.rotate(by: .radians(orbit))
-            for i in 0..<12 {
-                let c = i % 3 == 0 ? Aurora.pink : tint
-                var arc = Path()
-                arc.addArc(center: .zero, radius: ringR, startAngle: .degrees(Double(i) * 30), endAngle: .degrees(Double(i) * 30 + 16), clockwise: false)
-                layer.stroke(arc, with: .color(c.opacity(i % 2 == 0 ? 0.9 : 0.42)), lineWidth: 2)
+    var body: some View {
+        Button { onTap?() } label: {
+            VStack(spacing: 0) {
+                ZStack {
+                    Circle().fill(CD.accent.opacity(0.15)).frame(width: RadarCanvas.selfD + 16, height: RadarCanvas.selfD + 16)
+                    Circle().fill(CD.accent).frame(width: RadarCanvas.selfD, height: RadarCanvas.selfD)
+                        .shadow(color: CD.accent.opacity(0.5), radius: 24)
+                    CdIconView(icon, color: CD.onAccent, size: 28)
+                }
+                .frame(width: RadarCanvas.selfD, height: RadarCanvas.selfD)
+                Text(name).displayStyle(14, tracking: 0).lineLimit(1).truncationMode(.tail)
+                    .padding(.top, 12)
+                Text(onTap != nil ? "you · tap to rename" : "you").body(11, CD.textDim)
+                    .padding(.top, 4)
             }
+            .frame(width: RadarCanvas.selfW)
+            .contentShape(Rectangle())
         }
-        let badge = vault.writable ? "RW" : "RO"
-        let resolved = gc.resolve(Text(badge).font(.system(size: 9, weight: .bold)).foregroundColor(vault.writable ? Aurora.phosphor : tint))
-        let m = resolved.measure(in: CGSize(width: 60, height: 20))
-        let rect = CGRect(x: pos.x - (m.width + 12) / 2, y: pos.y - nodeR * 1.35 - (m.height + 4), width: m.width + 12, height: m.height + 4)
-        let rr = Path(roundedRect: rect, cornerRadius: rect.height / 2)
-        gc.fill(rr, with: .color(Aurora.deepSpaceSoft.opacity(0.9)))
-        gc.stroke(rr, with: .color(tint.opacity(0.7)), lineWidth: 1)
-        gc.draw(resolved, at: CGPoint(x: rect.minX + 6, y: rect.minY + 2), anchor: .topLeading)
-        pill(&gc, text: vault.vaultName, color: Aurora.textPrimary, at: CGPoint(x: pos.x, y: pos.y + nodeR * 0.85), edge: tint.opacity(0.6))
+        .buttonStyle(PressableStyle())
+        .disabled(onTap == nil)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your device, \(name)")
+        .accessibilityHint(onTap != nil ? "Double-tap to rename" : "")
+        .accessibilityAddTraits(onTap != nil ? .isButton : [])
     }
+}
 
-    private func drawSelfNode(_ gc: inout GraphicsContext, center: CGPoint, name: String, t: Double) {
-        let phase = t.truncatingRemainder(dividingBy: 1)
-        let hb = 14 + CGFloat(phase) * 34
-        gc.stroke(Path(ellipseIn: CGRect(x: center.x - hb, y: center.y - hb, width: hb * 2, height: hb * 2)),
-                  with: .color(Aurora.teal.opacity((1 - phase) * 0.30)), lineWidth: 1.2 + (1 - phase) * 1.4)
-        gc.fill(Path(ellipseIn: CGRect(x: center.x - 44, y: center.y - 44, width: 88, height: 88)),
-                with: .radialGradient(Gradient(colors: [Aurora.teal.opacity(0.5), .clear]), center: center, startRadius: 0, endRadius: 44))
-        gc.fill(Path(ellipseIn: CGRect(x: center.x - 9, y: center.y - 9, width: 18, height: 18)), with: .color(Aurora.phosphor))
-        gc.stroke(Path(ellipseIn: CGRect(x: center.x - 14, y: center.y - 14, width: 28, height: 28)), with: .color(Aurora.teal), lineWidth: 1.6)
-        let label = gc.resolve(Text(name).font(.system(size: 11)).foregroundColor(Aurora.textDim))
-        gc.draw(label, at: CGPoint(x: center.x, y: center.y + 18), anchor: .top)
+private struct PeerNode: View {
+    let peer: Peer
+    let onTap: () -> Void
+
+    var body: some View {
+        let reachable = peer.isReachable
+        let name = peer.vault?.vaultName ?? peer.name
+        let icon = deviceIconFor(peer.name)
+        Button(action: onTap) {
+            VStack(spacing: 6) {
+                CdIconView(icon, color: icon == CdIcons.wifi ? CD.textDim : CD.textPrimary, size: 24)
+                    .frame(width: RadarCanvas.nodeD, height: RadarCanvas.nodeD)
+                    .background(Circle().fill(Color.white.opacity(0.04)))
+                    .overlay(Circle().strokeBorder(Color.white.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
+                Text(name).font(.cd(13, weight: .semibold)).foregroundColor(CD.textPrimary)
+                    .lineLimit(1).truncationMode(.tail)
+                Text(reachable ? "Wi-Fi" : "Connecting…").font(.cd(11, weight: .semibold)).foregroundColor(CD.textDim)
+                    .lineLimit(1)
+            }
+            .frame(width: RadarCanvas.nodeW)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(!reachable)
+        .opacity(reachable ? 1 : 0.6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Send to \(name)" + (reachable ? ", seen over Wi-Fi" : ", not reachable yet"))
+        .accessibilityAddTraits(.isButton)
+        .pointerHover()
     }
+}
 
-    // MARK: math
-
-    static func hash(_ s: String) -> Int {
-        var h = 7
-        for u in s.unicodeScalars { h = h &* 31 &+ Int(u.value) }
-        return h & 0x7fffffff
-    }
-
-    static func angle(for id: String) -> Double { Double(hash(id) % 360) * .pi / 180 }
+/// Best-guess device glyph from the advertised name.
+func deviceIconFor(_ name: String) -> CdIcon {
+    let n = name.lowercased()
+    func has(_ s: String) -> Bool { n.contains(s) }
+    if n == Peer.unnamed.lowercased() || n.trimmingCharacters(in: .whitespaces).isEmpty { return CdIcons.wifi }
+    if has("ipad") || has("tablet") || n.hasPrefix("galaxy tab") || " \(n) ".contains(" tab ") { return CdIcons.tablet }
+    if has("macbook") || has("laptop") || has("notebook") || has("thinkpad") || has("chromebook") { return CdIcons.laptop }
+    if has("imac") || has("desktop") || has("windows") || has("mac mini") || has("mac studio") || n == "mac"
+        || n.range(of: "\\bpc\\b", options: .regularExpression) != nil { return CdIcons.monitor }
+    return CdIcons.phone
 }

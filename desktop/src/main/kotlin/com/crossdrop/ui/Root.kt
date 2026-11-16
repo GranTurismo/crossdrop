@@ -1,18 +1,30 @@
 package com.crossdrop.ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,18 +35,32 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.di.AppContainer
+import com.crossdrop.net.isTerminal
 import com.crossdrop.ui.inbox.InboxScreen
 import com.crossdrop.ui.radar.RadarScreen
 import com.crossdrop.ui.settings.SettingsScreen
-import com.crossdrop.ui.theme.AuroraBackdrop
-import com.crossdrop.ui.theme.DeepSpace
-import com.crossdrop.ui.theme.DeepSpaceSoft
-import com.crossdrop.ui.theme.RippleTeal
-import com.crossdrop.ui.theme.TextDim
+import com.crossdrop.ui.theme.Accent
+import com.crossdrop.ui.theme.Hairline
+import com.crossdrop.ui.theme.Ink
+import com.crossdrop.ui.theme.InkNav
+import com.crossdrop.ui.theme.NavIdle
+import com.crossdrop.ui.theme.OnAccent
 import com.crossdrop.ui.transfer.TransferScreen
 import com.crossdrop.ui.transfers.TransfersScreen
 
@@ -46,10 +72,12 @@ enum class Tab(val label: String) {
 }
 
 /**
- * App shell: four tabs (radar / transfers / inbox / settings) behind a side
- * rail. The transfer view slides over everything as a full-screen overlay, and
- * inbound offers stay modal.
+ * Desktop shell: the phone design's floating glass pill, stood on its side as
+ * a rail at the window's left edge. Overlays (live transfer, QR share,
+ * wireless drive, mounted drive) cover the whole window; an inbound offer
+ * takes the window on top. Esc acts as Back (CMP's BackHandler).
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun Root(container: AppContainer) {
     val peers by container.peers.collectAsState()
@@ -68,181 +96,218 @@ fun Root(container: AppContainer) {
     var historyTick by remember { mutableIntStateOf(0) }
     var inboxTick by remember { mutableIntStateOf(0) }
     var driveOpen by remember { mutableStateOf(false) }
+    var transferHidden by remember { mutableStateOf(false) }
 
     // Files may land while we're anywhere in the app — keep badges fresh.
     LaunchedEffect(session) { inboxCount = container.inbox.list().size }
-
-    val content: @Composable () -> Unit = {
-        when (tab) {
-            Tab.RADAR -> RadarScreen(
-                selfName = deviceName,
-                peers = peers.values.sortedBy { it.lastSeenMs },
-                onSendTo = { peer, files -> container.coordinator.sendTo(peer, files) },
-                onShareToAnyone = { files -> container.qrShare.start(files) },
-                onMountVault = { peer ->
-                    container.vaultExplorer.mount(peer)
-                },
-                onRename = container::setDeviceName,
-                selfPort = listenerPort,
-            )
-            Tab.TRANSFERS -> TransfersScreen(
-                session = session,
-                history = container.history,
-                onClearHistory = { container.history.clear(); historyTick++ },
-                refreshSignal = listOf(session?.status, historyTick),
-            )
-            Tab.INBOX -> InboxScreen(
-                inbox = container.inbox,
-                onChanged = { inboxCount = container.inbox.list().size },
-                refreshSignal = listOf(session?.status, inboxTick),
-            )
-            Tab.SETTINGS -> SettingsScreen(
-                deviceName = deviceName,
-                instanceId = container.instanceId,
-                port = listenerPort,
-                nsdEnabled = nsdEnabled,
-                onRename = container::setDeviceName,
-                onSetNsd = container::setNsdEnabled,
-                onRescan = container::restartDiscovery,
-                inboxStats = { container.inbox.list().let { it.size to it.sumOf { f -> f.size } } },
-                onWipeInbox = {
-                    container.inbox.shredAll()
-                    inboxCount = 0
-                    inboxTick++
-                },
-                onClearHistory = { container.history.clear(); historyTick++ },
-                vaultState = vaultHost,
-                onOpenDrive = { driveOpen = true },
-                refreshSignal = listOf(session?.status, inboxTick, historyTick),
-            )
-        }
+    // A new session always opens the transfer view.
+    LaunchedEffect(session == null) { if (session == null) transferHidden = false }
+    // A minimised session that finishes is cleared — history already has it.
+    LaunchedEffect(transferHidden, session?.status) {
+        if (transferHidden && session?.status?.isTerminal == true) container.coordinator.dismissSession()
     }
 
-    Box(Modifier.fillMaxSize().background(DeepSpace)) {
+    BackHandler(enabled = tab != Tab.RADAR) { tabName = Tab.RADAR.name }
+
+    Box(Modifier.fillMaxSize().background(Ink)) {
         Row(Modifier.fillMaxSize()) {
-            NavigationRail(containerColor = DeepSpaceSoft) {
-                Tab.entries.forEach { t ->
-                    NavigationRailItem(
-                        selected = tab == t,
-                        onClick = { tabName = t.name },
-                        icon = { TabGlyph(t, if (t == Tab.INBOX) inboxCount else 0) },
-                        label = { Text(t.label, fontSize = 11.sp) },
-                        colors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = RippleTeal,
-                            selectedTextColor = RippleTeal,
-                            unselectedIconColor = TextDim,
-                            unselectedTextColor = TextDim,
-                            indicatorColor = RippleTeal.copy(alpha = 0.12f),
-                        ),
+            SideNav(
+                tab = tab,
+                onSelect = { tabName = it.name },
+                inboxCount = inboxCount,
+                transferLive = transferHidden && session?.status?.isTerminal == false,
+                modifier = Modifier.padding(start = 18.dp, top = 18.dp, bottom = 18.dp),
+            )
+            Box(Modifier.weight(1f).fillMaxHeight()) {
+                when (tab) {
+                    Tab.RADAR -> RadarScreen(
+                        selfName = deviceName,
+                        peers = peers.values.sortedBy { it.lastSeenMs },
+                        onSendTo = { peer, files -> container.coordinator.sendTo(peer, files) },
+                        onShareToAnyone = { files -> container.qrShare.start(files) },
+                        onMountVault = { peer -> container.vaultExplorer.mount(peer) },
+                        onRename = container::setDeviceName,
+                        selfPort = listenerPort,
+                        nsdEnabled = nsdEnabled,
                     )
-                }
-            }
-            Box(Modifier.weight(1f)) { content() }
-        }
-
-        // ---- full-screen transfer overlay (the signature orb experience)
-        AnimatedVisibility(
-            visible = session != null,
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-        ) {
-            session?.let { s ->
-                Surface(Modifier.fillMaxSize(), color = DeepSpace) {
-                    AuroraBackdrop()
-                    TransferScreen(
-                        session = s,
-                        onCancel = container.coordinator::cancelSession,
-                        onClose = container.coordinator::dismissSession,
+                    Tab.TRANSFERS -> TransfersScreen(
+                        session = session,
+                        history = container.history,
+                        onClearHistory = { container.history.clear(); historyTick++ },
+                        refreshSignal = listOf(session?.status, historyTick),
+                        onOpenActive = { transferHidden = false },
                     )
-                }
-            }
-        }
-
-        // ---- "send to anyone" overlay (QR + embedded HTTP share)
-        AnimatedVisibility(
-            visible = shareState != null,
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-        ) {
-            shareState?.let { s ->
-                Surface(Modifier.fillMaxSize(), color = DeepSpace) {
-                    AuroraBackdrop()
-                    com.crossdrop.ui.qrshare.QrShareScreen(
-                        state = s,
-                        onStop = container.qrShare::stop,
+                    Tab.INBOX -> InboxScreen(
+                        inbox = container.inbox,
+                        onChanged = { inboxCount = container.inbox.list().size },
+                        refreshSignal = listOf(session?.status, inboxTick),
                     )
-                }
-            }
-        }
-
-        // ---- wireless drive overlay (this phone as a network drive) ----
-        AnimatedVisibility(
-            visible = driveOpen,
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-        ) {
-            Surface(Modifier.fillMaxSize(), color = DeepSpace) {
-                AuroraBackdrop()
-                com.crossdrop.ui.drive.DriveHostScreen(
-                    state = vaultHost,
-                    onStart = { rw, pin, folder -> container.vaultHost.start(rw, pin, folder = folder) },
-                    onStop = container.vaultHost::stop,
-                    onClose = { driveOpen = false },
-                )
-            }
-        }
-
-        // ---- vault explorer overlay (mounted LAN drive)
-        AnimatedVisibility(
-            visible = vaultUi != null,
-            enter = slideInVertically { it },
-            exit = slideOutVertically { it },
-        ) {
-            vaultUi?.let { v ->
-                Surface(Modifier.fillMaxSize(), color = DeepSpace) {
-                    AuroraBackdrop()
-                    com.crossdrop.ui.vault.VaultExplorerScreen(
-                        state = v,
-                        onBrowse = container.vaultExplorer::browse,
-                        onUp = container.vaultExplorer::up,
-                        onToggleSelect = container.vaultExplorer::toggleSelect,
-                        onDownload = { paths ->
-                            container.vaultExplorer.download(paths)
-                            inboxCount = container.inbox.list().size + paths.size
+                    Tab.SETTINGS -> SettingsScreen(
+                        deviceName = deviceName,
+                        instanceId = container.instanceId,
+                        port = listenerPort,
+                        nsdEnabled = nsdEnabled,
+                        onRename = container::setDeviceName,
+                        onSetNsd = container::setNsdEnabled,
+                        onRescan = container::restartDiscovery,
+                        inboxStats = { container.inbox.list().let { it.size to it.sumOf { f -> f.size } } },
+                        onWipeInbox = {
+                            container.inbox.shredAll()
+                            inboxCount = 0
+                            inboxTick++
                         },
-                        onUpload = container.vaultExplorer::upload,
-                        onStream = { path -> container.vaultExplorer.streamUrl(path) },
-                        isMedia = { e -> container.vaultExplorer.isMediaPath(e.name, e.mime) },
-                        onClose = container.vaultExplorer::close,
-                        onUnlock = container.vaultExplorer::unlock,
+                        onClearHistory = { container.history.clear(); historyTick++ },
+                        vaultState = vaultHost,
+                        onOpenDrive = { driveOpen = true },
+                        refreshSignal = listOf(session?.status, inboxTick, historyTick),
                     )
                 }
             }
         }
 
-        incomingOffer?.let { offer ->
+        // ---- live transfer
+        Overlay(session?.takeIf { !transferHidden }) { s ->
+            BackHandler { if (s.status.isTerminal) container.coordinator.dismissSession() else transferHidden = true }
+            TransferScreen(
+                session = s,
+                selfName = deviceName,
+                onCancel = container.coordinator::cancelSession,
+                onClose = container.coordinator::dismissSession,
+                onHide = { transferHidden = true },
+                onOpenInbox = {
+                    container.coordinator.dismissSession()
+                    tabName = Tab.INBOX.name
+                },
+            )
+        }
+
+        // ---- "send to anyone" (QR + embedded HTTP share)
+        Overlay(shareState) { s ->
+            BackHandler { container.qrShare.stop() }
+            com.crossdrop.ui.qrshare.QrShareScreen(state = s, onStop = container.qrShare::stop)
+        }
+
+        // ---- wireless drive (this computer as a network drive)
+        Overlay(if (driveOpen) Unit else null) {
+            com.crossdrop.ui.drive.DriveHostScreen(
+                state = vaultHost,
+                onStart = { rw, pin, folder -> container.vaultHost.start(rw, pin, folder = folder) },
+                onStop = container.vaultHost::stop,
+                onClose = { driveOpen = false },
+            )
+        }
+
+        // ---- mounted LAN drive
+        Overlay(vaultUi) { v ->
+            com.crossdrop.ui.vault.VaultExplorerScreen(
+                state = v,
+                onBrowse = container.vaultExplorer::browse,
+                onUp = container.vaultExplorer::up,
+                onToggleSelect = container.vaultExplorer::toggleSelect,
+                onDownload = { paths ->
+                    container.vaultExplorer.download(paths)
+                    inboxCount = container.inbox.list().size + paths.size
+                },
+                onUpload = container.vaultExplorer::upload,
+                onStream = { path -> container.vaultExplorer.streamUrl(path) },
+                isMedia = { e -> container.vaultExplorer.isMediaPath(e.name, e.mime) },
+                onClose = container.vaultExplorer::close,
+                onUnlock = container.vaultExplorer::unlock,
+            )
+        }
+
+        // ---- inbound offer — always on top; answered only by its buttons
+        Overlay(incomingOffer, fade = true) { offer ->
             IncomingOfferSheet(offer) { accept -> container.coordinator.respondToOffer(accept) }
         }
     }
 }
 
+/** Full-window layer shown while [value] is non-null; keeps the last value through its exit animation. */
 @Composable
-private fun TabGlyph(tab: Tab, badgeCount: Int) {
-    val tint = androidx.compose.material3.LocalContentColor.current
-    BadgedBox(
-        badge = {
-            if (badgeCount > 0) {
-                Badge(containerColor = RippleTeal, contentColor = DeepSpace) {
-                    Text("$badgeCount")
-                }
-            }
-        },
+private fun <T : Any> Overlay(value: T?, fade: Boolean = false, content: @Composable (T) -> Unit) {
+    var last by remember { mutableStateOf(value) }
+    if (value != null) last = value
+    AnimatedVisibility(
+        visible = value != null,
+        enter = if (fade) fadeIn() else slideInVertically { it / 6 } + fadeIn(),
+        exit = if (fade) fadeOut() else slideOutVertically { it / 6 } + fadeOut(),
     ) {
-        when (tab) {
-            Tab.RADAR -> IconRadar(tint)
-            Tab.TRANSFERS -> IconTransfers(tint)
-            Tab.INBOX -> IconInbox(tint)
-            Tab.SETTINGS -> IconGear(tint)
+        Surface(Modifier.fillMaxSize(), color = Ink) {
+            last?.let { content(it) }
         }
     }
+}
+
+/** The glass pill nav, vertical: brand mark, then one capsule per tab (accent when active). */
+@Composable
+private fun SideNav(
+    tab: Tab,
+    onSelect: (Tab) -> Unit,
+    inboxCount: Int,
+    transferLive: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(36.dp)
+    Column(
+        modifier.width(84.dp).fillMaxHeight()
+            .dropShadow(shape, Shadow(30.dp, Color.Black.copy(alpha = 0.5f), offset = DpOffset(0.dp, 10.dp)))
+            .clip(shape)
+            .background(InkNav)
+            .border(1.dp, Hairline, shape)
+            .padding(7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(Modifier.height(60.dp), contentAlignment = Alignment.Center) {
+            Box(Modifier.size(26.dp).border(2.dp, Accent, CircleShape), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(9.dp).clip(CircleShape).background(Accent))
+            }
+        }
+        Tab.entries.forEach { t ->
+            val selected = t == tab
+            val bg by animateColorAsState(if (selected) Accent else Color.Transparent, label = "tabBg")
+            val fg = if (selected) OnAccent else NavIdle
+            Column(
+                Modifier.fillMaxWidth().height(66.dp).clip(RoundedCornerShape(26.dp)).background(bg)
+                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) })
+                    .semantics {
+                        contentDescription = t.label + when {
+                            t == Tab.INBOX && inboxCount > 0 -> ", $inboxCount files"
+                            t == Tab.TRANSFERS && transferLive -> ", transfer in progress"
+                            else -> ""
+                        }
+                    },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box {
+                    CdIcon(tabIcon(t), fg, size = 22.dp)
+                    val badge = when {
+                        t == Tab.INBOX && inboxCount > 0 -> if (inboxCount > 99) "99+" else "$inboxCount"
+                        t == Tab.TRANSFERS && transferLive -> ""
+                        else -> null
+                    }
+                    if (badge != null && !selected) {
+                        val m = Modifier.align(Alignment.TopEnd).offset(x = 8.dp, y = (-5).dp)
+                        if (badge.isEmpty()) Dot(Accent, m, size = 8.dp)
+                        else Box(
+                            m.height(16.dp).widthIn(min = 16.dp).clip(CircleShape).background(Accent).padding(horizontal = 4.dp),
+                            contentAlignment = Alignment.Center,
+                        ) { Text(badge, color = OnAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold, lineHeight = 10.sp) }
+                    }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(t.label, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.weight(1f).fillMaxWidth())
+    }
+}
+
+private fun tabIcon(t: Tab) = when (t) {
+    Tab.RADAR -> CdIcons.Radar
+    Tab.TRANSFERS -> CdIcons.Transfers
+    Tab.INBOX -> CdIcons.Inbox
+    Tab.SETTINGS -> CdIcons.Sliders
 }

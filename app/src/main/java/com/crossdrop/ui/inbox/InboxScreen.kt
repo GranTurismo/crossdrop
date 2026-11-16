@@ -1,50 +1,89 @@
 package com.crossdrop.ui.inbox
 
 import android.content.Intent
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.crossdrop.storage.InboxStore
+import com.crossdrop.ui.CdIcon
+import com.crossdrop.ui.CdIcons
+import com.crossdrop.ui.ChipButton
+import com.crossdrop.ui.CircleButton
+import com.crossdrop.ui.ConfirmDialog
+import com.crossdrop.ui.FileKind
 import com.crossdrop.ui.FileTypeTile
-import com.crossdrop.ui.IconClose
-import com.crossdrop.ui.IconInbox
-import com.crossdrop.ui.theme.DangerSoft
-import com.crossdrop.ui.theme.DeepSpaceRaised
-import com.crossdrop.ui.theme.GlassEdge
-import com.crossdrop.ui.theme.RippleTeal
+import com.crossdrop.ui.FilterPill
+import com.crossdrop.ui.FootNote
+import com.crossdrop.ui.GlassCard
+import com.crossdrop.ui.GroupCard
+import com.crossdrop.ui.LocalNavInset
+import com.crossdrop.ui.RowSeparator
+import com.crossdrop.ui.ScreenTitle
+import com.crossdrop.ui.theme.Danger
+import com.crossdrop.ui.theme.DangerText
+import com.crossdrop.ui.theme.GlassHigh
+import com.crossdrop.ui.theme.ScreenGlow
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
+import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.Violet
+import com.crossdrop.ui.theme.displayStyle
 import com.crossdrop.ui.transfer.formatBytes
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+
+private enum class InboxFilter(val label: String, val kinds: Set<FileKind>?) {
+    ALL("All", null),
+    PHOTOS("Photos", setOf(FileKind.PHOTO)),
+    VIDEOS("Videos", setOf(FileKind.VIDEO)),
+    DOCS("Docs", setOf(FileKind.DOC)),
+    OTHER("Other", setOf(FileKind.AUDIO, FileKind.ARCHIVE, FileKind.APP, FileKind.OTHER)),
+}
 
 /**
- * Full-screen inbox: received files staged in the app sandbox.
- * Open via FileProvider, or shred (zero-fill + unlink).
+ * Received files staged in the app sandbox: a storage breakdown, type
+ * filters and the list. Open via FileProvider, or shred (zero-fill + unlink).
  */
 @Composable
 fun InboxScreen(
@@ -55,86 +94,202 @@ fun InboxScreen(
     val context = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }
     val files = remember(refreshSignal, tick) { inbox.list() }
-    val totalBytes = files.sumOf { it.size }
+    var filter by remember { mutableStateOf(InboxFilter.ALL) }
+    var confirmWipe by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf<InboxStore.ReceivedFile?>(null) }
+    val kinds = remember(files) { files.associateWith { FileKind.of(it.name) } }
+    val shown = files.filter { f -> filter.kinds?.contains(kinds[f]) ?: true }
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+    Box(Modifier.fillMaxSize()) {
+        ScreenGlow(color = Violet, alpha = 0.18f, centerX = 0.15f, centerY = 100.dp, radius = 220.dp)
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = top + 28.dp, bottom = LocalNavInset.current + 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column {
-                Text("Inbox", color = TextPrimary, fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold)
-                Text(
-                    if (files.isEmpty()) "files you accept land here"
-                    else "${files.size} file${if (files.size == 1) "" else "s"} · ${formatBytes(totalBytes)}",
-                    color = TextDim, fontSize = 12.sp,
-                )
-            }
-            if (files.isNotEmpty()) {
-                TextButton(onClick = { inbox.shredAll(); tick++; onChanged() }) {
-                    Text("Wipe all", color = DangerSoft, fontSize = 13.sp)
+            item {
+                Row(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    ScreenTitle("Inbox", Modifier.weight(1f))
+                    if (files.isNotEmpty()) {
+                        ChipButton(
+                            "Wipe all", { confirmWipe = true }, icon = CdIcons.Trash, height = 40.dp,
+                            fg = DangerText, bg = Danger.copy(alpha = 0.1f), border = Danger.copy(alpha = 0.3f),
+                        )
+                    }
                 }
             }
-        }
-        Spacer(Modifier.height(12.dp))
 
-        if (files.isEmpty()) {
-            Column(
-                Modifier.fillMaxWidth().padding(vertical = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                IconInbox(TextDim.copy(alpha = 0.5f), size = 40.dp)
-                Spacer(Modifier.height(8.dp))
-                Text("Nothing received yet.", color = TextDim, fontSize = 13.sp)
-                Text(
-                    "Files stay in the app sandbox until you open or delete them.",
-                    color = TextDim.copy(alpha = 0.7f), fontSize = 12.sp,
-                )
-            }
-        } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(files) { item ->
-                    Surface(
-                        shape = RoundedCornerShape(18.dp),
-                        color = DeepSpaceRaised,
-                        border = BorderStroke(1.dp, GlassEdge),
-                        modifier = Modifier.fillMaxWidth(),
+            if (files.isEmpty()) {
+                item { EmptyInbox(Modifier.widthIn(max = 640.dp)) }
+            } else {
+                item { StorageCard(files, kinds, Modifier.widthIn(max = 640.dp)) }
+                item {
+                    Row(
+                        Modifier.widthIn(max = 640.dp).fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(
-                            Modifier.padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            FileTypeTile(item.name)
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    item.name, color = TextPrimary, fontSize = 14.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                )
-                                Text(
-                                    "${formatBytes(item.size)} · ${item.receivedAt}",
-                                    color = TextDim, fontSize = 12.sp,
-                                )
-                            }
-                            TextButton(onClick = { openFile(context, inbox, item) }) {
-                                Text("Open", color = RippleTeal, fontSize = 13.sp)
-                            }
-                            TextButton(onClick = { inbox.shred(item.file); tick++; onChanged() }) {
-                                IconClose(DangerSoft, size = 15.dp)
+                        InboxFilter.entries.forEach { f ->
+                            val n = if (f.kinds == null) files.size else files.count { f.kinds.contains(kinds[it]) }
+                            if (f == InboxFilter.ALL || n > 0) {
+                                FilterPill(f.label, filter == f, { filter = f })
                             }
                         }
                     }
                 }
-                item { Spacer(Modifier.height(16.dp)) }
+                item {
+                    if (shown.isEmpty()) {
+                        Text(
+                            "Nothing here in ${filter.label.lowercase()}.", color = TextDim, fontSize = 13.sp,
+                            modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(8.dp),
+                        )
+                    } else {
+                        GroupCard(Modifier.widthIn(max = 640.dp)) {
+                            shown.forEachIndexed { i, item ->
+                                if (i > 0) RowSeparator()
+                                FileRow(
+                                    item,
+                                    onOpen = { openFile(context, item) },
+                                    onDelete = { confirmDelete = item },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                FootNote(
+                    "Kept inside CrossDrop and out of cloud backups. Wiping overwrites each file with zeros first.",
+                    Modifier.widthIn(max = 640.dp).fillMaxWidth(),
+                    icon = CdIcons.Lock,
+                )
+            }
+        }
+    }
+
+    if (confirmWipe) {
+        ConfirmDialog(
+            title = "Wipe the inbox?",
+            text = "All ${files.size} received files are overwritten with zeros and deleted. This can't be undone.",
+            confirmLabel = "Wipe all",
+            onConfirm = {
+                confirmWipe = false
+                inbox.shredAll(); tick++; onChanged()
+            },
+            onDismiss = { confirmWipe = false },
+        )
+    }
+    confirmDelete?.let { item ->
+        ConfirmDialog(
+            title = "Delete ${item.name}?",
+            text = "The file is overwritten with zeros and removed from this device.",
+            confirmLabel = "Delete",
+            onConfirm = {
+                confirmDelete = null
+                inbox.shred(item.file); tick++; onChanged()
+            },
+            onDismiss = { confirmDelete = null },
+        )
+    }
+}
+
+@Composable
+private fun StorageCard(
+    files: List<InboxStore.ReceivedFile>,
+    kinds: Map<InboxStore.ReceivedFile, FileKind>,
+    modifier: Modifier = Modifier,
+) {
+    val sizes = remember(files) { files.associateWith { it.size } }
+    val total = sizes.values.sum()
+    // Category totals, largest first; small categories fold into "Other".
+    val byKind = remember(files) {
+        files.groupBy { kinds[it]!!.let { k -> if (k in MAIN_KINDS) k else FileKind.OTHER } }
+            .mapValues { (_, v) -> v.sumOf { sizes[it] ?: 0L } }
+            .filterValues { it > 0 }
+            .entries.sortedByDescending { it.value }
+    }
+    GlassCard(modifier.fillMaxWidth(), radius = 26.dp, contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(formatBytes(total), style = displayStyle(26), modifier = Modifier.weight(1f))
+            Text("${files.size} file${if (files.size == 1) "" else "s"}", color = TextDim, fontSize = 13.sp)
+        }
+        Row(
+            Modifier.fillMaxWidth().height(10.dp).semantics {
+                contentDescription = byKind.joinToString(", ") { "${it.key.label} ${formatBytes(it.value)}" }
+            },
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            byKind.forEach { (k, bytes) ->
+                val w = (bytes.toFloat() / total.coerceAtLeast(1)).coerceAtLeast(0.02f)
+                Box(Modifier.weight(w).height(10.dp).clip(RoundedCornerShape(5.dp)).background(k.swatch))
+            }
+        }
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            byKind.forEach { (k, _) ->
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(k.swatch))
+                    Text(k.label, color = TextSecondary, fontSize = 12.sp)
+                }
             }
         }
     }
 }
 
-private fun openFile(context: android.content.Context, inbox: InboxStore, item: InboxStore.ReceivedFile) {
+private val MAIN_KINDS = setOf(FileKind.VIDEO, FileKind.PHOTO, FileKind.DOC)
+
+@Composable
+private fun FileRow(item: InboxStore.ReceivedFile, onOpen: () -> Unit, onDelete: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
+            .clickable(role = Role.Button, onClickLabel = "Open", onClick = onOpen)
+            .padding(start = 10.dp, end = 4.dp, top = 9.dp, bottom = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FileTypeTile(item.name, size = 44.dp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                item.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Text("${formatBytes(item.size)} · ${whenLabel(item.file.lastModified())}", color = TextDim, fontSize = 12.sp)
+        }
+        ChipButton("Open", onOpen)
+        CircleButton(CdIcons.Trash, "Delete ${item.name}", onDelete, size = 40.dp, iconSize = 17.dp, fill = androidx.compose.ui.graphics.Color.Transparent, tint = TextDim)
+    }
+}
+
+@Composable
+private fun EmptyInbox(modifier: Modifier = Modifier) {
+    GlassCard(modifier.fillMaxWidth(), contentPadding = PaddingValues(vertical = 36.dp, horizontal = 20.dp)) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(Modifier.size(56.dp).clip(CircleShape).background(GlassHigh), contentAlignment = Alignment.Center) {
+                CdIcon(CdIcons.Inbox, TextSecondary, size = 26.dp)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text("Nothing received yet", style = displayStyle(17))
+            Spacer(Modifier.height(4.dp))
+            Text("Files you accept land here.", color = TextDim, fontSize = 13.sp)
+        }
+    }
+}
+
+private fun whenLabel(ts: Long): String {
+    fun dayStart(back: Int) = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, -back)
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+    val pattern = when {
+        ts >= dayStart(0) -> "HH:mm"
+        ts >= dayStart(1) -> return "Yesterday"
+        ts >= dayStart(6) -> "EEE"
+        else -> "MMM d"
+    }
+    return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(ts))
+}
+
+private fun openFile(context: android.content.Context, item: InboxStore.ReceivedFile) {
     runCatching {
         val uri = FileProvider.getUriForFile(
             context, "${context.packageName}.fileprovider", item.file,

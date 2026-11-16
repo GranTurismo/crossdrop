@@ -11,255 +11,269 @@ struct DriveHostHost: View {
         ZStack {
             if open {
                 DriveHostScreen(host: host, onClose: { open = false })
-                    .background(Aurora.deepSpace.ignoresSafeArea())
-                    .transition(.move(edge: .bottom))
-                    .zIndex(2)
+                    .background(CD.ink.ignoresSafeArea())
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: 0.3), value: open)
     }
 }
 
-/// "Wireless Drive" host screen — the plain-language UX over the vault + WebDAV engine. A start card
-/// (built-in vault or a picked folder, read-only/read-write, optional passcode), then the live card
-/// (status light, shared content, QR + address, 4-digit code). No "server", "mount" or "WebDAV"
-/// anywhere the user can see.
+/// "Wireless Drive" — the plain-language face of the vault + WebDAV engine. Off: choose guest access, then
+/// a folder (or the built-in vault) to share. On: live status, QR + address + passcode, per-platform
+/// connect steps and the stop button. No "server", "mount" or "WebDAV" anywhere a user looks.
 struct DriveHostScreen: View {
     @ObservedObject var host: VaultHostManager
     let onClose: () -> Void
     @State private var showGuide = false
-    /// DEBUG: `-dev_open drive-guide` lands on the guide.
+
     init(host: VaultHostManager, onClose: @escaping () -> Void) {
         self.host = host; self.onClose = onClose
         #if DEBUG
+        // `-dev_open drive-guide` lands on the guide.
         _showGuide = State(initialValue: UserDefaults.standard.string(forKey: "dev_open") == "drive-guide")
         #endif
     }
 
     var body: some View {
         ZStack {
-            AuroraBackdrop()
+            CD.ink.ignoresSafeArea()
+            ScreenGlow(alpha: 0.13, centerX: 0.36, centerY: 160, radius: 260)
             if showGuide, let s = host.state {
                 DriveGuideScreen(state: s, onClose: { showGuide = false })
+                    .transition(.move(edge: .trailing))
             } else {
-                ReadableScroll {
-                    VStack(spacing: 0) {
-                        HStack {
-                            Button { onClose() } label: { Text("‹ back").font(.cd(15)).foregroundColor(Aurora.textDim) }
-                            Spacer()
-                        }
-                        Text("W I R E L E S S   D R I V E").font(.cd(12, weight: .medium)).tracking(1)
-                            .foregroundColor(Aurora.textDim).padding(.top, 8)
-                        Spacer().frame(height: 20)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        BackHeader("Wireless Drive", onBack: onClose).padding(.bottom, 4)
                         if let s = host.state {
-                            LiveCard(state: s, onStop: host.stop, onShowGuide: { showGuide = true })
+                            LiveContent(state: s, onStop: host.stop) { showGuide = true }
                         } else {
-                            StartCard(host: host)
+                            StartContent(host: host)
                         }
-                        Spacer().frame(height: 28)
                     }
-                    .padding(24)
+                    .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 26)
+                    .readableWidth(560)
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: showGuide)
     }
 }
 
-// MARK: start card
+// MARK: - Off
 
-private struct StartCard: View {
+private struct StartContent: View {
     @ObservedObject var host: VaultHostManager
     @State private var writable = false
     @State private var usePin = true
     @State private var pickingFolder = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            Text("Turn this \(Platform.deviceNoun) into a drive").font(.cd(20, weight: .semibold)).foregroundColor(Aurora.textPrimary)
-            Text("Other devices on this Wi-Fi can browse, stream\nand download — like plugging in a USB stick.")
-                .font(.cd(13)).foregroundColor(Aurora.textDim).multilineTextAlignment(.center).padding(.top, 6)
-            Spacer().frame(height: 22)
+        GlassCard(radius: 30, padding: .all(20), spacing: 10) {
+            IconTile(icon: CdIcons.drive, tint: CD.accent, bg: CD.accent.opacity(0.14), size: 52, radius: 17, iconSize: 26)
+            Text("Turn this \(Platform.deviceNoun) into a drive").displayStyle(24, tracking: -0.035)
+                .fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader)
+            Text("Macs, PCs, tablets and phones on this Wi-Fi can browse, stream and download — like plugging in a USB stick.")
+                .body(13, CD.textDim).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+        }
 
-            DriveCard {
-                ActionRow(title: "Share the CrossDrop vault", subtitle: "files saved in this app — also in the Files app", accent: Aurora.teal) {
-                    host.start(writable: writable, usePin: usePin)
-                }
-                RowDivider()
-                ActionRow(title: "Pick a folder to share", subtitle: "any folder — photos, movies, work files", accent: Aurora.cyan) {
-                    pickingFolder = true
-                }
-                RowDivider()
-                ToggleLine(title: "Let guests add & edit files", subtitle: "off = view and download only", checked: $writable)
-                RowDivider()
-                ToggleLine(title: "4-digit passcode", subtitle: "recommended on shared Wi-Fi", checked: $usePin)
-            }
-            if let f = host.failure {
-                Text(f).font(.cd(13)).foregroundColor(Aurora.danger).multilineTextAlignment(.center).padding(.top, 10)
-            }
-            if Platform.pausesInBackground {
-                Text("The drive answers while CrossDrop is open on screen — iOS pauses it when you switch apps.")
-                    .font(.cd(11)).foregroundColor(Aurora.textDim).multilineTextAlignment(.center).padding(.top, 14)
-            }
+        SectionLabel("Guest access").padding(.top, 6)
+        GlassCard(radius: 26, fill: CD.glassLow, padding: .hv(16, 4)) {
+            ToggleRow(title: "Let guests add & edit files", subtitle: "Off: guests can only view and download", isOn: $writable)
+            RowSeparator()
+            ToggleRow(title: "4-digit passcode", subtitle: "Recommended on shared Wi-Fi", isOn: $usePin)
+        }
+
+        SectionLabel("What to share").padding(.top, 6)
+        ShareChoice(icon: CdIcons.folderIcon, title: "Pick a folder", subtitle: "Photos, movies, work files — any folder you choose",
+                    primary: true) { pickingFolder = true }
+        ShareChoice(icon: CdIcons.drive, title: "Share the CrossDrop vault",
+                    subtitle: "Files saved inside this app — also in the Files app", primary: false) {
+            host.start(writable: writable, usePin: usePin)
         }
         .fileImporter(isPresented: $pickingFolder, allowedContentTypes: [.folder]) { result in
             if case .success(let url) = result { host.start(writable: writable, usePin: usePin, folder: url) }
         }
+
+        if let f = host.failure {
+            Text(f).body(13, CD.dangerText).padding(.horizontal, 4).fixedSize(horizontal: false, vertical: true)
+        }
+        FootNote("Everything stays on this Wi-Fi — nothing touches the internet."
+                 + (Platform.pausesInBackground ? " The drive answers while CrossDrop is open on screen — iOS pauses it when you switch apps." : ""),
+                 icon: CdIcons.shield)
+            .padding(.top, 2)
     }
 }
 
-// MARK: live card
+private struct ShareChoice: View {
+    let icon: CdIcon
+    let title: String
+    let subtitle: String
+    let primary: Bool
+    let action: () -> Void
 
-private struct LiveCard: View {
+    var body: some View {
+        GlassCard(radius: 26, fill: primary ? CD.accent : CD.glass, border: primary ? nil : CD.hairline,
+                  glow: primary ? CD.accent.opacity(0.18) : nil, glowOffsetY: 12, padding: .all(18), action: action) {
+            HStack(spacing: 14) {
+                IconTile(icon: icon, tint: primary ? CD.onAccent : CD.amber,
+                         bg: primary ? CD.onAccent.opacity(0.12) : CD.amber.opacity(0.14), size: 46, radius: 16, iconSize: 24)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).displayStyle(17, tracking: -0.02, color: primary ? CD.onAccent : CD.textPrimary)
+                    Text(subtitle).body(12, primary ? CD.onAccentMuted : CD.textDim).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+                CdIconView(CdIcons.chevronRight, color: primary ? CD.onAccent : CD.textDim, size: 20)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - On
+
+private struct LiveContent: View {
     let state: VaultHostManager.State
     let onStop: () -> Void
     let onShowGuide: () -> Void
-    @State private var glow = false
+    @State private var tab = 0
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Circle().fill(Aurora.teal).frame(width: 10, height: 10).opacity(glow ? 1 : 0.45)
-                    .animation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true), value: glow)
-                Text("Drive is on").font(.cd(18, weight: .bold)).foregroundColor(Aurora.teal)
+        // status
+        GlassCard(radius: 30, border: CD.accent.opacity(0.35), glow: CD.accent.opacity(0.13), glowRadius: 50,
+                  padding: .all(20), spacing: 16) {
+            HStack(spacing: 12) {
+                PulseDot()
+                Text("Drive is on").displayStyle(28, tracking: -0.04).accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 4)
+                let n = state.clients.count
+                Text(n == 0 ? "No one connected" : "\(n) connected").body(12, n == 0 ? CD.textDim : CD.accent, weight: .semibold)
             }
-            Text("visible to devices on your Wi-Fi").font(.cd(12)).foregroundColor(Aurora.textDim)
-            Spacer().frame(height: 18)
-
-            DriveCard {
-                HStack(spacing: 10) {
-                    Image(systemName: "folder.fill").font(.cd(20)).foregroundColor(Aurora.cyan)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(state.rootLabel).font(.cd(15, weight: .semibold)).foregroundColor(Aurora.textPrimary)
-                        Text((state.writable ? "view · edit · upload" : "view & download only") + (state.pin != nil ? "  ·  passcode on" : ""))
-                            .font(.cd(12)).foregroundColor(Aurora.textDim)
-                    }
-                    Spacer()
+            HStack(spacing: 10) {
+                CdIconView(CdIcons.folderIcon, color: CD.amber, size: 22)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Sharing").body(11, CD.textDim)
+                    Text(state.rootLabel).body(14, weight: .semibold).lineLimit(1)
                 }
-                .padding(14)
-                RowDivider()
-                HStack {
-                    let n = state.clients.count
-                    Text(n == 0 ? "no devices connected" : "\(n) device\(n > 1 ? "s" : "") connected")
-                        .font(.cd(12)).foregroundColor(n == 0 ? Aurora.textDim : Aurora.phosphor)
-                    Spacer()
-                    Text("↑ \(Fmt.bytes(state.bytesOut))  ↓ \(Fmt.bytes(state.bytesIn))")
-                        .font(.cd(11)).foregroundColor(Aurora.textDim)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 8)
+                Spacer(minLength: 0)
             }
-            Spacer().frame(height: 18)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(CD.glass))
+            .accessibilityElement(children: .combine)
+            HStack(spacing: 10) {
+                Stat(label: "↑ Uploaded by guests", value: Fmt.bytes(state.bytesIn))
+                Stat(label: "↓ Downloaded", value: Fmt.bytes(state.bytesOut))
+            }
+        }
 
-            Text("F A S T E S T").font(.cd(11, weight: .medium)).tracking(1).foregroundColor(Aurora.textDim)
-            QrCard(text: state.url).padding(.top, 6)
-            Text("scan with any camera — files open instantly")
-                .font(.cd(12)).foregroundColor(Aurora.textDim).padding(.top, 6)
-            Spacer().frame(height: 20)
-
-            DriveCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("O R   T Y P E   T H I S   A D D R E S S").font(.cd(10)).tracking(0.8).foregroundColor(Aurora.textDim)
-                    HStack {
-                        Text(state.url).font(.cd(15, weight: .medium, design: .monospaced)).foregroundColor(Aurora.phosphor)
-                            .textSelection(.enabled)
-                        Spacer(minLength: 4)
-                        CopyChip(text: state.url)
+        // QR + address + passcode
+        GlassCard(radius: 28, fill: CD.glassLow, padding: .all(14)) {
+            HStack(spacing: 14) {
+                QrCard(text: state.url, size: 128, halo: false)
+                VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Address").body(11, CD.textDim)
+                        Text(state.url).monoStyle(13).lineLimit(1).minimumScaleFactor(0.6).textSelection(.enabled)
                     }
-                    .padding(.top, 6)
+                    .accessibilityElement(children: .combine)
                     if let pin = state.pin {
-                        HStack(spacing: 10) {
-                            Text("passcode").font(.cd(12)).foregroundColor(Aurora.textDim)
-                            Text(pin.map(String.init).joined(separator: " "))
-                                .font(.cd(22, weight: .bold, design: .monospaced)).tracking(4).foregroundColor(Aurora.textPrimary)
-                            Spacer()
-                            CopyChip(text: pin)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Passcode").body(11, CD.textDim)
+                            Text(pin).font(.mono(20)).tracking(CDFont.scaled(20) * 0.3).foregroundColor(CD.accent)
+                                .textSelection(.enabled)
                         }
-                        .padding(.top, 10)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel("Passcode " + pin.map(String.init).joined(separator: " "))
                     }
+                    CopyButton(value: state.url, label: "Copy address")
                 }
-                .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                Spacer(minLength: 0)
             }
-            Button(action: onShowGuide) {
-                Text("Need help connecting? See the 2-step guide →").font(.cd(13)).foregroundColor(Aurora.cyan)
-            }
-            .padding(.top, 14)
-            Text("Everything stays on this Wi-Fi — nothing touches the internet." + (Platform.pausesInBackground ? "\nKeep CrossDrop open: iOS pauses the drive when you leave the app." : ""))
-                .font(.cd(11)).foregroundColor(Aurora.textDim).multilineTextAlignment(.center).padding(.top, 10)
-            Button(action: onStop) {
-                Text("Stop Sharing Drive").font(.cd(15, weight: .bold)).foregroundColor(Aurora.deepSpace)
-                    .frame(maxWidth: .infinity).frame(height: 48)
-                    .background(Aurora.danger, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
-            .padding(.top, 20)
         }
-        .onAppear { glow = true }
+
+        // guest access (fixed while the drive is on)
+        GlassCard(radius: 26, fill: CD.glassLow, padding: .hv(16, 4)) {
+            ModeRow(title: "Guests can add & edit files",
+                    subtitle: state.writable ? "Guests can upload, rename and delete" : "Guests can only view and download", on: state.writable)
+            RowSeparator()
+            ModeRow(title: "4-digit passcode",
+                    subtitle: state.pin != nil ? "Needed to open the drive" : "Anyone on this Wi-Fi can open it", on: state.pin != nil)
+        }
+
+        // how to connect
+        GlassCard(radius: 28, fill: CD.glassLow, spacing: 14) {
+            Text("Connect from another device").body(14, weight: .semibold).accessibilityAddTraits(.isHeader)
+            SegmentedTabs(options: guideTabs, selected: $tab)
+            VStack(alignment: .leading, spacing: 12) { ConnectSteps(state: state, tab: tab, withCopy: false) }
+        }
+
+        GlassCard(radius: 22, fill: CD.glassLow, border: nil, padding: .hv(16, 14), action: onShowGuide) {
+            HStack(spacing: 12) {
+                CdIconView(CdIcons.help, color: CD.amber, size: 20)
+                Text("Can't connect? Guest Wi-Fi, VPNs, hotels…").body(14, weight: .medium)
+                Spacer(minLength: 4)
+                CdIconView(CdIcons.chevronRight, color: CD.textDim, size: 18)
+            }
+            .frame(minHeight: 24)
+        }
+        .accessibilityElement(children: .combine)
+
+        FootNote((Platform.pausesInBackground
+                  ? "Keep CrossDrop open while others connect — iOS pauses the drive when you switch apps. The screen stays awake."
+                  : "Keeps serving while CrossDrop is running, even with the window closed.")
+                 + (state.pin != nil ? " Five wrong passcodes lock a device out for 60 seconds." : ""))
+        PillButton("Stop sharing drive", style: .danger, height: 56, action: onStop).padding(.top, 4)
     }
 }
 
-// MARK: shared bits
-
-struct DriveCard<Content: View>: View {
-    @ViewBuilder var content: () -> Content
+private struct Stat: View {
+    let label: String
+    let value: String
     var body: some View {
-        VStack(spacing: 0, content: content)
-            .background(Aurora.deepSpaceRaised, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Aurora.glassEdge, lineWidth: 1))
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label).body(11, CD.textDim)
+            Text(value).monoStyle(16)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 
-struct RowDivider: View {
-    var body: some View { Rectangle().fill(Aurora.glassEdge.opacity(0.5)).frame(height: 1) }
-}
-
-private struct ActionRow: View {
+private struct ModeRow: View {
     let title: String
     let subtitle: String
-    let accent: Color
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.cd(15, weight: .semibold)).foregroundColor(accent)
-                    Text(subtitle).font(.cd(12)).foregroundColor(Aurora.textDim).multilineTextAlignment(.leading)
-                }
-                Spacer()
-                Text("›").font(.cd(20)).foregroundColor(Aurora.textDim)
-            }
-            .padding(14).contentShape(Rectangle())
-        }
-        .buttonStyle(.plain).pointerHover()
-    }
-}
-
-private struct ToggleLine: View {
-    let title: String
-    let subtitle: String
-    @Binding var checked: Bool
+    let on: Bool
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.cd(14)).foregroundColor(Aurora.textPrimary)
-                Text(subtitle).font(.cd(11)).foregroundColor(Aurora.textDim)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).body(14, weight: .semibold)
+                Text(subtitle).body(12, CD.textDim)
             }
-            Spacer()
-            Toggle("", isOn: $checked).labelsHidden().tint(Aurora.teal)
+            Spacer(minLength: 8)
+            Text(on ? "On" : "Off").font(.cd(12, weight: .semibold)).foregroundColor(on ? CD.onAccent : CD.textSecondary)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(Capsule().fill(on ? CD.accent : CD.glassHigh))
         }
-        .padding(.horizontal, 14).padding(.vertical, 8)
+        .padding(.vertical, 14)
+        .accessibilityElement(children: .combine)
     }
 }
 
-struct CopyChip: View {
-    let text: String
-    @State private var copied = false
+private struct PulseDot: View {
+    @State private var p = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
-        Button {
-            UIPasteboard.general.string = text
-            copied = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
-        } label: {
-            Text(copied ? "copied ✓" : "copy").font(.cd(13)).foregroundColor(copied ? Aurora.teal : Aurora.cyan)
-                .padding(.horizontal, 6).padding(.vertical, 4)
+        ZStack {
+            Circle().fill(CD.accent).frame(width: 12, height: 12)
+                .scaleEffect(p ? 3 : 1).opacity(p ? 0 : 0.8)
+            Circle().fill(CD.accent).frame(width: 12, height: 12)
         }
-        .buttonStyle(.plain).pointerHover()
+        .frame(width: 12, height: 12)
+        .accessibilityHidden(true)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 1.8).repeatForever(autoreverses: false)) { p = true }
+        }
     }
 }

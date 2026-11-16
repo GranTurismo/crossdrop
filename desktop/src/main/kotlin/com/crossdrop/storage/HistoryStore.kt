@@ -45,5 +45,5 @@ class HistoryStore(private val file: File = File(AppDirs.support, "history.json"
         tmp.renameTo(file)
     }
 
-    private companion object { const val MAX_ENTRIES = 100 }
+    companion object { const val MAX_ENTRIES = 100 }
 }

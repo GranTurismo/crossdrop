@@ -222,11 +222,7 @@ final class AppContainer: ObservableObject {
         }
         if let v = args.string(forKey: "dev_peer"), let (h, p) = hostPort(v) { addManualPeer(name: "dev \(h)", host: h, port: p) }
         if let v = args.string(forKey: "dev_send"), let (h, p) = hostPort(v) {
-            let url = FileManager.default.temporaryDirectory.appendingPathComponent("self-test.bin")
-            let bytes = Data((0..<(4 * 1024 * 1024)).map { UInt8($0 % 251) })
-            try? bytes.write(to: url)
-            let peer = Peer(instanceId: "dev-send", name: "dev \(h)", host: h, port: p, sources: [.manual])
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.coordinator.sendTo(peer, urls: [url]) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.debugSend(host: h, port: p) }
         }
         if args.bool(forKey: "dev_share") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.qrShare.startDebug() } }
         if args.bool(forKey: "dev_autoaccept") { coordinator.autoAcceptAll = true }
@@ -259,6 +255,16 @@ final class AppContainer: ObservableObject {
         if let mode = args.string(forKey: "dev_vault") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.vaultHost.startDebug(mode: mode) }
         }
+    }
+
+    /// Sends a generated 4 MiB file to `host:port` (`-dev_send`, Settings → Developer).
+    func debugSend(host: String, port: Int) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("self-test.bin")
+        if !FileManager.default.fileExists(atPath: url.path) {
+            try? Data((0..<(4 * 1024 * 1024)).map { UInt8($0 % 251) }).write(to: url)
+        }
+        let peer = Peer(instanceId: "dev-send", name: "dev \(host)", host: host, port: port, sources: [.manual])
+        coordinator.sendTo(peer, urls: [url])
     }
     #endif
 

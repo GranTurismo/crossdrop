@@ -26,7 +26,8 @@ final class TransferCoordinator: ObservableObject {
     /// Open inbound connections — capped so a port scanner can't pile up blocked threads.
     private var inboundCount = 0
     private let maxInbound = 4
-    nonisolated private static let offerTimeout: TimeInterval = 45
+    /// How long an inbound offer waits for the human before it is declined (the offer screen's countdown).
+    nonisolated static let offerTimeout: TimeInterval = 45
 
     /// Debug: auto-accept the next inbound offer (loopback self-tests).
     var autoAcceptOnce = false

@@ -3,101 +3,141 @@ package com.crossdrop.ui.theme
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 
-// Neon Aurora palette: dark-only by design. A deep indigo night sky lit by
-// luminous aurora — mint-green rays, electric cyan, ultraviolet, hot magenta
-// curtain edges.
-val DeepSpace = Color(0xFF030014)
-val DeepSpaceSoft = Color(0xFF0A0620)
-val DeepSpaceRaised = Color(0xFF141033)
-val SurfaceHigh = Color(0xFF201851)
-val RippleTeal = Color(0xFF3BFFB0)
-val RippleTealDim = Color(0xFF1FBF8A)
-val FluidCyan = Color(0xFF45E5FF)
-val AuroraViolet = Color(0xFF9D6BFF)
-val NebulaPink = Color(0xFFFF4FD8)
-val Phosphor = Color(0xFFB8FFE9)
-val TextPrimary = Color(0xFFEEF2FF)
-val TextDim = Color(0xFF8B93BB)
-val DangerSoft = Color(0xFFFF5470)
-val GlassEdge = Color(0x3D8BFFDC)
-val GlassFill = Color(0x1478E0FF)
+// Sonar palette — dark-only by design. Near-black ink, one luminous mint
+// accent, translucent "glass" surfaces (white at 4–10 %) and three quiet
+// category hues (amber, violet, sky) for file types and status.
+//
+// Type: Sora for display (titles, big numbers), the platform sans for body,
+// JetBrains Mono for figures (sizes, speeds, codes, addresses). The two
+// bundled families are declared per platform in Fonts.kt.
 
-/** Signature aurora sweep — mint → cyan → violet → magenta. */
-val AuroraBrush: Brush = Brush.linearGradient(
-    listOf(RippleTeal, FluidCyan, AuroraViolet, NebulaPink),
-)
+val Ink = Color(0xFF06080C)
+val InkSheet = Color(0xFF13171D)
+val InkNav = Color(0xFF161A20)
+
+val Accent = Color(0xFF5CF2C0)
+val OnAccent = Color(0xFF04130D)
+val OnAccentMuted = Color(0xFF0C3A2B)
+val AccentText = Color(0xFF7CF5CD)
+
+val TextPrimary = Color(0xFFF4F7F9)
+val TextSecondary = Color(0xFFC8D0D8)
+val TextDim = Color(0xFF9AA6B2)
+val TextFaint = Color(0xFF8B97A3)
+val NavIdle = Color(0xFFAEB8C2)
+
+val Amber = Color(0xFFFFC163)
+val Violet = Color(0xFFA48BFF)
+val VioletText = Color(0xFFC3B5FF)
+val Sky = Color(0xFF4CC9FF)
+val SkyText = Color(0xFF7FD8FF)
+val Danger = Color(0xFFFF6B6B)
+val DangerText = Color(0xFFFF9B9B)
+
+/** Glass fills — white at low alpha over [Ink]. */
+val GlassLow = Color.White.copy(alpha = 0.04f)
+val Glass = Color.White.copy(alpha = 0.05f)
+val GlassMid = Color.White.copy(alpha = 0.06f)
+val GlassRaised = Color.White.copy(alpha = 0.07f)
+val GlassHigh = Color.White.copy(alpha = 0.08f)
+
+/** Hairline borders. */
+val HairlineSoft = Color.White.copy(alpha = 0.06f)
+val Hairline = Color.White.copy(alpha = 0.08f)
+val HairlineStrong = Color.White.copy(alpha = 0.10f)
 
 /**
- * Tonal card surface — a faint top-down light gradient on the raised indigo
- * tone, the modern alternative to a hard hairline border.
- */
-val CardGradient: Brush = Brush.verticalGradient(
-    listOf(Color(0xFF1C1550), Color(0xFF100A2E)),
-)
-
-/** Aurora-tinted tile background for icon chips. */
-fun tintGradient(tint: Color): Brush = Brush.linearGradient(
-    listOf(tint.copy(alpha = 0.26f), tint.copy(alpha = 0.08f)),
-)
-
-/**
- * Ambient aurora haze for full-screen overlays — three faint colored glows
- * (mint high-left, violet right, cyan low) over the night base. Cheap,
- * static, and sits behind content without competing for attention.
+ * One soft radial glow behind a screen's content — the design's ambient
+ * light. [centerX] is a fraction of the width; [centerY] and [radius] are
+ * absolute so the glow sits at the same spot on every phone.
  */
 @Composable
-fun AuroraBackdrop(modifier: Modifier = Modifier) {
+fun ScreenGlow(
+    modifier: Modifier = Modifier,
+    color: Color = Accent,
+    alpha: Float = 0.18f,
+    centerX: Float = 0.5f,
+    centerY: Dp = 300.dp,
+    radius: Dp = 250.dp,
+) {
     Canvas(modifier.fillMaxSize()) {
-        val w = size.width; val h = size.height
-        drawRect(
-            Brush.radialGradient(
-                listOf(RippleTeal.copy(alpha = 0.10f), Color.Transparent),
-                center = Offset(w * 0.18f, h * 0.08f), radius = w * 0.95f),
-        )
-        drawRect(
-            Brush.radialGradient(
-                listOf(AuroraViolet.copy(alpha = 0.11f), Color.Transparent),
-                center = Offset(w * 0.88f, h * 0.30f), radius = w * 0.85f),
-        )
-        drawRect(
-            Brush.radialGradient(
-                listOf(FluidCyan.copy(alpha = 0.06f), Color.Transparent),
-                center = Offset(w * 0.45f, h * 0.95f), radius = w * 1.1f),
-        )
-        drawRect(
-            Brush.radialGradient(
-                listOf(NebulaPink.copy(alpha = 0.05f), Color.Transparent),
-                center = Offset(w * 0.75f, h * 0.78f), radius = w * 0.7f),
+        val c = Offset(size.width * centerX, centerY.toPx())
+        val r = radius.toPx()
+        drawCircle(
+            Brush.radialGradient(listOf(color.copy(alpha = alpha), Color.Transparent), center = c, radius = r),
+            radius = r, center = c,
         )
     }
 }
 
 private val scheme = darkColorScheme(
-    primary = RippleTeal,
-    onPrimary = DeepSpace,
-    secondary = FluidCyan,
-    onSecondary = DeepSpace,
-    tertiary = AuroraViolet,
-    onTertiary = DeepSpace,
-    background = DeepSpace,
+    primary = Accent,
+    onPrimary = OnAccent,
+    secondary = Sky,
+    onSecondary = OnAccent,
+    tertiary = Violet,
+    onTertiary = OnAccent,
+    background = Ink,
     onBackground = TextPrimary,
-    surface = DeepSpaceSoft,
+    surface = InkSheet,
     onSurface = TextPrimary,
-    surfaceVariant = DeepSpaceRaised,
+    surfaceVariant = Color(0xFF12161B),
     onSurfaceVariant = TextDim,
-    outline = GlassEdge,
-    surfaceTint = RippleTeal,
-    error = DangerSoft,
+    surfaceContainerHigh = InkSheet,
+    surfaceContainerHighest = Color(0xFF1B2128),
+    outline = HairlineStrong,
+    outlineVariant = Hairline,
+    surfaceTint = Color.Transparent,
+    error = DangerText,
+    scrim = Color(0xB3040609),
+)
+
+private val typography = Typography().let { t ->
+    // Body/label styles: no extra tracking, proportional leading — the design
+    // sets explicit sizes everywhere, so the line height has to scale with them.
+    fun TextStyle.tight() = copy(letterSpacing = 0.sp, lineHeight = 1.35.em)
+    t.copy(
+        bodyLarge = t.bodyLarge.tight(),
+        bodyMedium = t.bodyMedium.tight(),
+        bodySmall = t.bodySmall.tight(),
+        labelLarge = t.labelLarge.tight(),
+        labelMedium = t.labelMedium.tight(),
+        labelSmall = t.labelSmall.tight(),
+        headlineLarge = t.headlineLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
+        headlineMedium = t.headlineMedium.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
+        headlineSmall = t.headlineSmall.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
+        titleLarge = t.titleLarge.copy(fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold),
+    )
+}
+
+/** Display text (Sora) — titles and big figures. */
+fun displayStyle(size: Int, tracking: Float = -0.03f, color: Color = TextPrimary) = TextStyle(
+    fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold,
+    fontSize = size.sp, letterSpacing = tracking.em, color = color, lineHeight = (size * 1.1f).sp,
+)
+
+/** Figures (JetBrains Mono) — sizes, speeds, codes, addresses. */
+fun monoStyle(size: Int, color: Color = TextPrimary) = TextStyle(
+    fontFamily = MonoFont, fontWeight = FontWeight.SemiBold, fontSize = size.sp, color = color,
+    // No code ligatures: "://" and "//" must read as typed in addresses.
+    fontFeatureSettings = "liga 0, calt 0",
 )
 
 @Composable
 fun CrossDropTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, typography = typography, content = content)
 }

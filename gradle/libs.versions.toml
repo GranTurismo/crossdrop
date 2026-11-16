@@ -14,6 +14,8 @@ slf4j = "2.0.16"
 jna = "5.17.0"
 
 [libraries]
+# Desktop: common BackHandler (Esc = back). Already a transitive runtime dep of Compose Desktop.
+compose-ui-backhandler = { group = "org.jetbrains.compose.ui", name = "ui-backhandler", version.ref = "compose-multiplatform" }
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "compose-bom" }
 compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }

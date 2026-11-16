@@ -1,22 +1,35 @@
 package com.crossdrop.ui.settings
 
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,22 +38,45 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.platform.Platform
+import com.crossdrop.ui.CdIcon
+import com.crossdrop.ui.CdIcons
+import com.crossdrop.ui.CircleButton
+import com.crossdrop.ui.ConfirmDialog
 import com.crossdrop.ui.DeviceNameDialog
-import com.crossdrop.ui.theme.DeepSpace
-import com.crossdrop.ui.theme.DeepSpaceRaised
-import com.crossdrop.ui.theme.DangerSoft
-import com.crossdrop.ui.theme.GlassEdge
-import com.crossdrop.ui.theme.Phosphor
-import com.crossdrop.ui.theme.RippleTeal
+import com.crossdrop.ui.GlassCard
+import com.crossdrop.ui.LocalNavInset
+import com.crossdrop.ui.MonoTag
+import com.crossdrop.ui.RowSeparator
+import com.crossdrop.ui.ScreenTitle
+import com.crossdrop.ui.SectionLabel
+import com.crossdrop.ui.ToggleRow
+import com.crossdrop.ui.theme.Accent
+import com.crossdrop.ui.theme.DangerText
+import com.crossdrop.ui.theme.GlassHigh
+import com.crossdrop.ui.theme.GlassLow
+import com.crossdrop.ui.theme.OnAccent
+import com.crossdrop.ui.theme.OnAccentMuted
+import com.crossdrop.ui.theme.ScreenGlow
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
+import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.displayStyle
+import com.crossdrop.ui.theme.monoStyle
 import com.crossdrop.ui.transfer.formatBytes
 
-/** App-wide settings: identity, discovery layers, storage, about, dev tools. */
+/** App-wide settings: identity, discovery, wireless drive, storage, about. Desktop copy of the Android screen. */
 @Composable
 fun SettingsScreen(
     deviceName: String,
@@ -58,120 +94,104 @@ fun SettingsScreen(
     refreshSignal: Any?,
 ) {
     var renaming by remember { mutableStateOf(false) }
+    var confirmWipe by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
     val stats = remember(refreshSignal) { inboxStats() }
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp),
-    ) {
-        Text(
-            "Settings", color = TextPrimary, fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier.padding(top = 20.dp, bottom = 12.dp),
-        )
+    Box(Modifier.fillMaxSize()) {
+        ScreenGlow(alpha = 0.2f, centerX = 0.26f, centerY = 160.dp, radius = 240.dp)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = top + 28.dp, bottom = LocalNavInset.current + 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                ScreenTitle("Settings", Modifier.padding(bottom = 2.dp))
 
-        // ---------------------------------------------------------- device --
-        SectionLabel("Device")
-        SettingsCard {
-            SettingRow(
-                title = deviceName,
-                subtitle = "visible name · tap to change",
-                onClick = { renaming = true },
-            )
-            RowDivider()
-            SettingRow(
-                title = "Device id",
-                subtitle = instanceId.take(12),
-            )
-            if (port > 0) {
-                RowDivider()
-                SettingRow(
-                    title = "Listening port",
-                    subtitle = ":$port",
-                )
+                // ------------------------------------------------- identity --
+                GlassCard(radius = 28.dp, contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        Box(Modifier.size(56.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.requiredSize(68.dp).clip(CircleShape).background(Accent.copy(alpha = 0.15f)))
+                            Box(
+                                Modifier.fillMaxSize()
+                                    .dropShadow(CircleShape, Shadow(30.dp, Accent.copy(alpha = 0.4f)))
+                                    .clip(CircleShape).background(Accent),
+                                contentAlignment = Alignment.Center,
+                            ) { CdIcon(com.crossdrop.ui.radar.selfDeviceIcon, OnAccent, size = 24.dp) }
+                        }
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Name others see", color = TextDim, fontSize = 12.sp)
+                            Text(deviceName, style = displayStyle(22), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        CircleButton(CdIcons.Pencil, "Rename this device", { renaming = true }, fill = GlassHigh, iconSize = 18.dp)
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(GlassLow)
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("id ${formatId(instanceId)}", style = monoStyle(12, TextSecondary), modifier = Modifier.weight(1f))
+                        Text(
+                            if (port > 0) "port :$port · new every launch" else "new every launch",
+                            color = Accent, fontSize = 11.sp,
+                        )
+                    }
+                }
+
+                // ------------------------------------------------ discovery --
+                SectionLabel("Discovery", Modifier.padding(top = 4.dp))
+                SettingsGroup {
+                    ToggleRow(
+                        "Wi-Fi", "Find devices on this network", nsdEnabled, onSetNsd, icon = CdIcons.Wifi,
+                    )
+                    RowSeparator()
+                    NavRow(
+                        CdIcons.Radar, "Rescan network",
+                        if (Platform.isWindows) "After switching networks or allowing CrossDrop through Windows Firewall"
+                        else "After switching networks or approving CrossDrop under Local Network",
+                        onRescan,
+                    )
+                }
+
+                // ------------------------------------------- wireless drive --
+                DriveCard(vaultState, onOpenDrive)
+
+                // -------------------------------------------------- storage --
+                SectionLabel("Storage", Modifier.padding(top = 4.dp))
+                SettingsGroup {
+                    Row(Modifier.fillMaxWidth().heightIn(min = 54.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text("Inbox", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(
+                            "${stats.first} file${if (stats.first == 1) "" else "s"} · ${formatBytes(stats.second)}",
+                            style = monoStyle(12, TextSecondary),
+                        )
+                    }
+                    RowSeparator()
+                    ActionRow("Wipe inbox", DangerText, enabled = stats.first > 0) { confirmWipe = true }
+                    RowSeparator()
+                    ActionRow("Clear transfer history", TextPrimary) { confirmClear = true }
+                }
+
+                // ---------------------------------------------------- about --
+                GlassCard(
+                    radius = 26.dp, fill = Color.White.copy(alpha = 0.03f), border = null,
+                    contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("CrossDrop", style = displayStyle(15, tracking = 0f), modifier = Modifier.weight(1f))
+                        Text("v${com.crossdrop.APP_VERSION}", style = monoStyle(12, TextDim))
+                    }
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MonoTag("X25519")
+                        MonoTag("HKDF-SHA256")
+                        MonoTag("ChaCha20-Poly1305")
+                    }
+                    Text("No cloud. No accounts. No tracking.", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
-
-        // ------------------------------------------------------- discovery --
-        SectionLabel("Discovery")
-        SettingsCard {
-            ToggleRow(
-                title = "Wi-Fi (mDNS)",
-                subtitle = "find devices on the same network",
-                checked = nsdEnabled,
-                onChecked = onSetNsd,
-            )
-            RowDivider()
-            SettingRow(
-                title = "Rescan network",
-                subtitle = if (Platform.isWindows)
-                    "use after switching Wi-Fi or allowing CrossDrop through Windows Firewall"
-                else "use after switching Wi-Fi or approving CrossDrop in Local Network settings",
-                onClick = onRescan,
-            )
-        }
-
-        // ---------------------------------------------------- wireless drive --
-        SectionLabel("Wireless drive")
-        SettingsCard {
-            val hosting = vaultState != null
-            SettingRow(
-                title = if (hosting) "● Drive is on" else "Turn into drive",
-                subtitle = if (hosting)
-                    "${vaultState!!.rootLabel} · ${vaultState!!.url} · " +
-                        "${vaultState!!.clients.size} connected"
-                else "share this ${Platform.current.computerNoun}'s files with any device on the Wi-Fi",
-                titleColor = if (hosting) Phosphor else TextPrimary,
-                onClick = onOpenDrive,
-            )
-        }
-
-        // --------------------------------------------------------- storage --
-        SectionLabel("Storage")
-        SettingsCard {
-            SettingRow(
-                title = "Inbox",
-                subtitle = "${stats.first} file${if (stats.first == 1) "" else "s"} · ${formatBytes(stats.second)}",
-            )
-            if (stats.first > 0) {
-                RowDivider()
-                SettingRow(
-                    title = "Wipe inbox",
-                    subtitle = "zero-fill and delete every received file",
-                    titleColor = DangerSoft,
-                    onClick = onWipeInbox,
-                )
-            }
-            RowDivider()
-            SettingRow(
-                title = "Clear transfer history",
-                subtitle = "forget the log of past transfers",
-                titleColor = DangerSoft,
-                onClick = onClearHistory,
-            )
-        }
-
-        // ----------------------------------------------------------- about --
-        SectionLabel("About")
-        SettingsCard {
-            SettingRow(
-                title = "CrossDrop ${com.crossdrop.APP_VERSION}",
-                subtitle = "local-only file sharing",
-            )
-            RowDivider()
-            SettingRow(
-                title = "Encryption",
-                subtitle = "X25519 · HKDF-SHA256 · ChaCha20-Poly1305",
-            )
-            RowDivider()
-            SettingRow(
-                title = "No cloud. No accounts. No tracking.",
-                subtitle = "files travel directly between devices on your network",
-                titleColor = Phosphor,
-            )
-        }
-
-        Spacer(Modifier.height(24.dp))
     }
 
     if (renaming) {
@@ -180,87 +200,114 @@ fun SettingsScreen(
             new?.let(onRename)
         })
     }
-}
-
-@Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text.uppercase(),
-        color = TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-        letterSpacing = 2.sp,
-        modifier = Modifier.padding(start = 6.dp, top = 18.dp, bottom = 6.dp),
-    )
-}
-
-@Composable
-private fun SettingsCard(content: @Composable () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = DeepSpaceRaised,
-        border = BorderStroke(1.dp, GlassEdge),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column { content() }
-    }
-}
-
-@Composable
-private fun RowDivider() {
-    androidx.compose.material3.HorizontalDivider(
-        color = GlassEdge.copy(alpha = 0.5f),
-        modifier = Modifier.padding(horizontal = 14.dp),
-    )
-}
-
-@Composable
-private fun SettingRow(
-    title: String,
-    subtitle: String,
-    titleColor: androidx.compose.ui.graphics.Color = TextPrimary,
-    onClick: (() -> Unit)? = null,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .let { if (onClick != null) it.clickable(onClick = onClick) else it }
-            .padding(horizontal = 16.dp, vertical = 13.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = titleColor, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text(subtitle, color = TextDim, fontSize = 12.sp)
-        }
-        if (onClick != null) {
-            Spacer(Modifier.width(8.dp))
-            Text("›", color = TextDim, fontSize = 18.sp)
-        }
-    }
-}
-
-@Composable
-private fun ToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onChecked: (Boolean) -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text(subtitle, color = TextDim, fontSize = 12.sp)
-        }
-        Spacer(Modifier.width(12.dp))
-        Switch(
-            checked = checked,
-            onCheckedChange = onChecked,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = DeepSpace,
-                checkedTrackColor = RippleTeal,
-            ),
+    if (confirmWipe) {
+        ConfirmDialog(
+            title = "Wipe the inbox?",
+            text = "Every received file is overwritten with zeros and deleted. This can't be undone.",
+            confirmLabel = "Wipe inbox",
+            onConfirm = { confirmWipe = false; onWipeInbox() },
+            onDismiss = { confirmWipe = false },
         )
+    }
+    if (confirmClear) {
+        ConfirmDialog(
+            title = "Clear transfer history?",
+            text = "This forgets the log of past transfers. Received files stay in your inbox.",
+            confirmLabel = "Clear",
+            onConfirm = { confirmClear = false; onClearHistory() },
+            onDismiss = { confirmClear = false },
+        )
+    }
+}
+
+/** "a3f9·71c2·e08b" — the rotating instance id, grouped for reading. */
+private fun formatId(id: String): String = id.take(12).chunked(4).joinToString("·")
+
+@Composable
+private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 26.dp, fill = GlassLow,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp), content = content,
+    )
+}
+
+@Composable
+private fun ActionRow(title: String, color: Color, enabled: Boolean = true, onClick: () -> Unit) {
+    Box(
+        Modifier.fillMaxWidth().heightIn(min = 54.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.4f),
+        contentAlignment = Alignment.CenterStart,
+    ) { Text(title, color = color, fontSize = 14.sp, fontWeight = FontWeight.SemiBold) }
+}
+
+@Composable
+private fun NavRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CdIcon(icon, TextPrimary, size = 22.dp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = TextDim, fontSize = 12.sp)
+        }
+        CdIcon(CdIcons.ChevronRight, TextDim, size = 18.dp)
+    }
+}
+
+/** Accent call-to-action while off; a live status card (pulsing dot) while the drive is on. */
+@Composable
+private fun DriveCard(state: com.crossdrop.net.VaultHostManager.State?, onOpen: () -> Unit) {
+    if (state == null) {
+        GlassCard(
+            Modifier.fillMaxWidth(), radius = 28.dp, fill = Accent, border = null,
+            glow = Accent.copy(alpha = 0.2f), glowRadius = 44.dp, glowOffsetY = 14.dp,
+            contentPadding = PaddingValues(18.dp), onClick = onOpen,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(
+                    Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(OnAccent.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) { CdIcon(CdIcons.Drive, OnAccent, size = 24.dp) }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Turn into drive", style = displayStyle(17, tracking = -0.02f, color = OnAccent))
+                    Text(
+                        "Open this ${Platform.current.computerNoun} from other computers, phones or any browser",
+                        color = OnAccentMuted, fontSize = 12.sp, lineHeight = 16.sp,
+                    )
+                }
+                CdIcon(CdIcons.ChevronRight, OnAccent, size = 20.dp)
+            }
+        }
+    } else {
+        val glow by rememberInfiniteTransition(label = "drive").animateFloat(
+            0.4f, 1f, infiniteRepeatable(tween(1100), RepeatMode.Reverse), label = "g",
+        )
+        GlassCard(
+            Modifier.fillMaxWidth(), radius = 28.dp, border = Accent.copy(alpha = 0.35f),
+            glow = Accent.copy(alpha = 0.13f), contentPadding = PaddingValues(18.dp), onClick = onOpen,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Box(
+                    Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Accent.copy(alpha = 0.14f)),
+                    contentAlignment = Alignment.Center,
+                ) { CdIcon(CdIcons.Drive, Accent, size = 24.dp) }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(8.dp).alpha(glow).clip(CircleShape).background(Accent))
+                        Spacer(Modifier.size(8.dp))
+                        Text("Drive is on", style = displayStyle(17, tracking = -0.02f))
+                    }
+                    val n = state.clients.size
+                    Text(
+                        "${state.rootLabel} · " + if (n == 0) "no one connected" else "$n connected",
+                        color = TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                CdIcon(CdIcons.ChevronRight, TextDim, size = 20.dp)
+            }
+        }
     }
 }

@@ -14,6 +14,9 @@ struct CrossDropApp: App {
                 .onAppear {
                     container.start()
                     Self.configureWindows()
+                    #if DEBUG
+                    CDFont.checkRegistered()
+                    #endif
                 }
                 .onOpenURL { url in container.queueShare([url]) }
                 .onChange(of: scenePhase) { phase in

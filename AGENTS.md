@@ -2,7 +2,7 @@
 
 Cross-platform (Android-first) local Wi-Fi file sharing. Full spec lives in the
 project brief; pillars: ad-free/privacy-first, line-rate local speed, <15 MB
-installed size, ambient "sonar + liquid orb" UX.
+installed size, ambient "Sonar" UX (radar, glass, one mint accent).
 
 ## Layout
 
@@ -24,15 +24,47 @@ installed size, ambient "sonar + liquid orb" UX.
 
 ## App structure
 
-Four tabs behind a `NavigationBar` (a `NavigationRail` on ≥600dp widths), in
-`ui/Root.kt`: **Radar** (discovery + tap-to-send + "to anyone" QR share),
-**Transfers** (live session card + persisted history via
-`storage/HistoryStore`), **Inbox** (full-screen received files),
-**Settings** (identity, NSD/BLE toggles, storage, about, debug tools). The
-transfer view is a full-screen overlay over the shell; inbound offers stay
-modal sheets. History records each terminal session once —
-direction is taken from the emitting call site (not `_session`, which can hold
-the opposite leg of a loopback).
+Four tabs behind a floating glass pill nav (`FloatingNav` in `ui/Root.kt`; the
+active tab expands into an accent capsule): **Radar** (discovery + tap-to-send
+sheet + "Send to anyone" card + drive rows), **Transfers** (live session card +
+persisted history via `storage/HistoryStore`, grouped Today/Earlier),
+**Inbox** (storage breakdown, type filters, received files), **Settings**
+(identity, NSD/BLE toggles, "Turn into drive", storage, about, debug tools).
+The transfer view is a full-screen overlay that can be minimised to the
+Transfers tab (its card reopens it; a minimised session that ends is dismissed).
+Inbound offers are a full-screen layer on top with an auto-decline countdown
+(`TransferCoordinator.OFFER_TIMEOUT_MS`); system Back declines. History records
+each terminal session once — direction is taken from the emitting call site
+(not `_session`, which can hold the opposite leg of a loopback).
+
+## Look & feel ("Sonar" design)
+
+Implemented from the "CrossDrop mobile app" design canvas: near-black ink
+`#06080C`, one mint accent `#5CF2C0`, translucent white "glass" cards, amber /
+violet / sky only for file types and status. Sora (display) and JetBrains Mono
+(figures) are bundled as Latin subsets, SemiBold only (~90 KB, OFL notice in
+`assets/licenses/FONTS-OFL.txt`); body text is the platform sans.
+
+- Tokens + `displayStyle`/`monoStyle` live in `ui/theme/Theme.kt`. Font families are
+  per-platform (`ui/theme/Fonts.kt` in `:app` from `res/font`, in `:desktop`
+  from resources).
+- Building blocks are shared: `ui/Components.kt` (GlassCard, GroupCard,
+  PillButton, CdSwitch, BackHeader, SegmentedTabs, ConfirmDialog, …) and
+  `ui/CdIcons.kt` (stroke icons built from the design's SVG path data — no
+  material-icons). `LocalNavInset` tells scrolling tabs how much the floating
+  nav covers.
+- `Modifier.dropShadow` paints its whole blurred shape *behind* a view, so a
+  glow under a translucent fill bleeds through; `GlassCard` lays an ink base
+  under glowing glass. `monoStyle` turns ligatures off (`://` must stay as typed).
+- Radar nodes are real composables (focusable, TalkBack labels), not canvas
+  hit-testing; device glyphs are guessed from the advertised name.
+- App icons everywhere are the brand mark (mint ring + dot) on ink with a glow,
+  radar sweep and two faint sonar rings. Raster icons (iOS AppIcon + LaunchMark,
+  desktop `icon.png`/`tray.png`/`.icns`/`.ico`, `store-assets/crossdrop_icon.png`) come
+  from `tools/icons/render_icons.py` (numpy + pillow; `iconutil` for `.icns`) — edit
+  the script, don't hand-edit the PNGs. Android's adaptive icon is vector
+  (`res/drawable/ic_launcher_*.xml`, same geometry, mark at 0.43 of the canvas)
+  and doubles as the Android 12+ splash icon (`values-v31/themes.xml`).
 
 ## "Send to anyone" (zero-install receiver)
 
@@ -100,8 +132,15 @@ same class names (`AppContainer`, `TransferCoordinator`, `QrShareManager`,
 `VaultHostManager`, `VaultExplorerManager`, `HistoryStore`, `InboxStore`).
 
 - **Shared UI**: `desktop/build.gradle.kts` `syncSharedUi` copies the
-  platform-free Compose files (theme, radar canvas, liquid orb, icons, offer
-  sheet, history…) out of `:app` at build time — one source of truth. Files that
+  platform-free Compose files (theme, radar canvas, icons, offer
+  sheet, history, `Components.kt`, `CdIcons.kt`…) out of `:app` at build time — one
+  source of truth. The desktop screen copies follow the Android Sonar screens
+  line for line except for platform hooks (native file/folder pickers instead of
+  the photo picker/SAF, Finder/Explorer reveal in the inbox, "Rescan network"
+  instead of the BLE toggle, no runtime permissions or haptics); the shell puts the
+  glass pill nav on its side as a left rail (`SideNav`). Esc = Back via CMP's
+  `androidx.compose.ui.backhandler.BackHandler` (`libs.compose.ui.backhandler`).
+  Overlays can be checked headlessly with `ImageComposeScene` in a throwaway test. Files that
   touch platform APIs (Radar/Inbox/Drive/Vault/Settings/Transfer/QrShare screens,
   Root) are desktop copies under `desktop/src/main/kotlin/.../ui`; when you change
   one on Android, port the change. Shared files must stay free of `android.*`
@@ -201,8 +240,12 @@ BSD sockets on dedicated threads, events via callback, `CancelToken` to abort),
 `Info.plist` are gitignored): `Services/` (`AppContainer`, `TransferCoordinator`,
 `BonjourDiscovery` = NetService advertise + browse with the same service types/TXT keys
 as Android NSD/desktop JmDNS, `InboxStore` = `Documents/Received`, `HistoryStore`),
-`UI/` (aurora theme, `RadarCanvas` = SwiftUI `Canvas` + `TimelineView`, `LiquidOrb`,
-transfer overlay, offer sheet, inbox with QuickLook, settings, `QrShare/`). Files other
+`UI/` (Sonar design, mirroring the Android screens: `Theme.swift` tokens + fonts,
+`CdIcons.swift` (the same SVG icon paths), `Components.swift`, `FloatingSheet.swift`
+(in-app inset sheet, so the offer can still cover it), `RadarCanvas` = SwiftUI `Canvas` +
+`TimelineView`, `Transfer/TransferScreen`, full-screen offer, inbox with QuickLook,
+settings, `QrShare/`, `Drive/`, `Vault/`). Sora/JetBrains Mono ship in
+`Resources/Fonts` via `UIAppFonts`. Files other
 apps open in CrossDrop (`onOpenURL`) wait on the radar for a device tap
 (`AppContainer.pendingShare`).
 
@@ -219,7 +262,8 @@ CROSSDROP_SWIFT_CLI=$PWD/ios/CrossDropCore/.build/release/crossdrop-cli \
 Simulator debug hooks (DEBUG builds, pass as launch args to `xcrun simctl launch`):
 `-dev_peer host:port` (radar peer), `-dev_send host:port` (send a generated 4 MiB file),
 `-dev_autoaccept YES` (accept every offer), `-dev_share YES` (start a QR share, URL is
-NSLogged). The simulator shares the Mac's network, so `dns-sd -B _crossdrop._tcp` sees
+NSLogged), `-dev_tab <radar|transfers|inbox|settings>`, `-dev_sheet peer|anyone` (raise the
+send sheet), `-dev_hide_transfer YES` (start with the live transfer minimised). The simulator shares the Mac's network, so `dns-sd -B _crossdrop._tcp` sees
 the app and a Mac-side `crossdrop-cli recv/send` can talk to it directly. The app logs
 `CrossDrop listening on :<port>` — read it with
 `xcrun simctl spawn <sim> log show --last 1m --predicate 'eventMessage contains "CrossDrop listening"'`.

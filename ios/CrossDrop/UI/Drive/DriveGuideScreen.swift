@@ -1,172 +1,165 @@
 import SwiftUI
 
-/// "Need help connecting?" — the foolproof per-platform guide. Mac (Finder), Windows (File Explorer)
-/// and Browser (any device, including another iPhone/iPad via Safari). Every address/code is
-/// one-tap copyable. Language stays physical: "address", "passcode".
+let guideTabs = ["Mac", "Windows", "Browser"]
+
+/// "Can't connect?" — the full per-platform guide with copyable address and passcode, plus
+/// troubleshooting for guest Wi-Fi, VPNs and public networks. Language stays physical: "address",
+/// "passcode", never "server".
 struct DriveGuideScreen: View {
     let state: VaultHostManager.State
     let onClose: () -> Void
-    @State private var tab: GuideTab = .mac
-
-    enum GuideTab: String, CaseIterable { case mac = "Mac", windows = "Windows", browser = "Browser" }
+    @State private var tab = 0
 
     var body: some View {
-        ReadableScroll {
-            VStack(alignment: .leading, spacing: 0) {
-                Button(action: onClose) { Text("‹ back").font(.cd(15)).foregroundColor(Aurora.textDim) }
-                Text("Connect to your drive").font(.cd(22, weight: .bold)).foregroundColor(Aurora.textPrimary).padding(.top, 8)
-                Text("pick your device — two steps, no apps to install").font(.cd(13)).foregroundColor(Aurora.textDim)
-                HStack(spacing: 4) {
-                    ForEach(GuideTab.allCases, id: \.self) { t in
-                        Button { tab = t } label: {
-                            Text(t.rawValue).font(.cd(13, weight: .semibold))
-                                .foregroundColor(tab == t ? Aurora.teal : Aurora.textDim)
-                                .frame(maxWidth: .infinity).padding(.vertical, 9)
-                                .background(tab == t ? Aurora.teal.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 10))
-                        }
-                        .buttonStyle(.plain).pointerHover()
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                BackHeader("Connect to your drive", onBack: onClose)
+                Text("Pick the device you're connecting from — no apps to install.").body(13, CD.textDim)
+                    .padding(.horizontal, 4)
+                SegmentedTabs(options: guideTabs, selected: $tab)
+                GlassCard(radius: 28, fill: CD.glassLow, spacing: 14) {
+                    ConnectSteps(state: state, tab: tab, withCopy: true)
                 }
-                .padding(.top, 16)
-
-                DriveCard {
-                    VStack(alignment: .leading, spacing: 0) {
-                        switch tab {
-                        case .mac: macSteps
-                        case .windows: windowsSteps
-                        case .browser: browserSteps
-                        }
-                    }
-                    .padding(16).frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.top, 16)
-
-                Text("T R O U B L E S H O O T I N G").font(.cd(11, weight: .medium)).tracking(1).foregroundColor(Aurora.textDim)
-                    .padding(.top, 22).padding(.bottom, 8)
-                DriveCard {
+                SectionLabel("Troubleshooting").padding(.top, 6)
+                GroupCard(padding: .hv(6, 2)) {
                     TroubleItem(title: "Devices can't see the drive?",
-                                body: "Check both devices are on the exact same Wi-Fi — not one on Guest and one on Main. Turn off any VPN apps on both devices. If asked to allow CrossDrop on your local network, make sure it's switched on in Settings (System Settings → Privacy & Security → Local Network on a Mac).")
+                                text: "Check both devices are on the exact same Wi-Fi — not one on Guest and one on Main. Turn off any VPN apps on both devices. If asked to allow CrossDrop on your local network, make sure it's switched on in Settings (System Settings → Privacy & Security → Local Network on a Mac).")
                     if Platform.pausesInBackground {
-                        RowDivider()
+                        RowSeparator()
                         TroubleItem(title: "The drive stops when I switch apps?",
-                                    body: "iOS pauses apps in the background, so the drive only answers while CrossDrop is open. Keep it on screen while others connect — the screen stays awake automatically.")
+                                    text: "iOS pauses apps in the background, so the drive only answers while CrossDrop is open. Keep it on screen while others connect — the screen stays awake automatically.")
                     }
-                    RowDivider()
+                    RowSeparator()
                     TroubleItem(title: "On hotel, school or public Wi-Fi?",
-                                body: "Public networks often block devices from talking to each other. Fix: turn on a phone's Personal Hotspot and join it from both devices — the drive works instantly at full speed.")
-                    RowDivider()
+                                text: "Public networks often block devices from talking to each other. Turn on a phone's Personal Hotspot and connect the other device to it — the drive works instantly at full speed.")
+                    RowSeparator()
                     TroubleItem(title: "Video buffers or previews are slow?",
-                                body: "Move the devices closer to each other or to the router — the drive runs at the speed of your Wi-Fi.")
+                                text: "Move the devices closer to each other or to the router — the drive runs at the speed of your Wi-Fi.")
                 }
-                Spacer().frame(height: 24)
             }
-            .padding(24)
+            .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 28)
+            .readableWidth(560)
         }
-    }
-
-    // MARK: steps
-
-    @ViewBuilder private var macSteps: some View {
-        Step(n: 1, text: "Open Finder, then press ⌘ + K (\"Connect to Server\").")
-        Step(n: 2, text: "Paste this address and click Connect:") { CopyRow(text: state.url) }
-        if let pin = state.pin {
-            Step(n: 3, text: "Choose \"Registered User\" and enter:") {
-                CopyRow(text: "drive", label: "name")
-                CopyRow(text: pin, label: "passcode")
-            }
-        }
-        ResultLine("Your \(Platform.deviceNoun) appears as a disk on the Mac desktop. Drag files in or out, open them in Final Cut, or scrub through 4K video right on the drive.")
-    }
-
-    @ViewBuilder private var windowsSteps: some View {
-        Step(n: 1, text: "Open \"This PC\", click ••• (or right-click empty space) → \"Add a network location\".")
-        Step(n: 2, text: "Choose \"Custom network location\" and paste:") { CopyRow(text: state.url) }
-        if let pin = state.pin {
-            Step(n: 3, text: "When asked for a password:") {
-                CopyRow(text: "drive", label: "name")
-                CopyRow(text: pin, label: "passcode")
-            }
-        }
-        ResultLine("A new drive folder shows up under \"This PC\". It behaves like a plugged-in USB drive.")
-    }
-
-    @ViewBuilder private var browserSteps: some View {
-        Step(n: 1, text: "On any laptop, tablet or phone on this Wi-Fi, open any browser — Safari, Chrome, Edge.")
-        Step(n: 2, text: "Scan the QR on the previous screen, or type:") { CopyRow(text: state.url) }
-        if let pin = state.pin {
-            Step(n: 3, text: "Enter the 4-digit passcode when asked:") { CopyRow(text: pin) }
-        }
-        ResultLine("Browse folders, stream video, or download any file — nothing to install. Works on iPhone and iPad too.")
     }
 }
 
-private struct Step<Extra: View>: View {
-    let n: Int
-    let text: String
-    @ViewBuilder var extra: () -> Extra
-
-    init(n: Int, text: String, @ViewBuilder extra: @escaping () -> Extra) { self.n = n; self.text = text; self.extra = extra }
+/// Numbered steps for one platform. `withCopy` adds copy buttons for the address, name and passcode
+/// (the full guide); the live drive card uses the compact form.
+struct ConnectSteps: View {
+    let state: VaultHostManager.State
+    let tab: Int
+    let withCopy: Bool
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text("\(n)").font(.cd(13, weight: .bold)).foregroundColor(Aurora.teal)
-                .padding(.horizontal, 8).padding(.vertical, 2).background(Aurora.teal.opacity(0.2), in: Capsule())
-            VStack(alignment: .leading, spacing: 6) {
-                Text(text).font(.cd(14)).foregroundColor(Aurora.textPrimary).fixedSize(horizontal: false, vertical: true)
-                extra()
+        let pin = state.pin
+        switch tab {
+        case 0:
+            GuideStep(n: 1) {
+                (Text("In Finder, press ") + Text(" ⌘K ").font(.mono(13)).foregroundColor(CD.textPrimary))
+                    .body(13, CD.textSecondary)
             }
-            Spacer(minLength: 0)
+            GuideStep(n: 2, text: "Paste the address and press Connect", copy: withCopy ? state.url : nil)
+            if let pin {
+                GuideStep(n: 3, text: "Choose Registered User and sign in with name “drive” and the passcode. It mounts like a disk.")
+                if withCopy { CredentialRows(pin: pin) }
+            } else {
+                GuideStep(n: 3, text: "Choose Guest. It mounts like a disk — drag files in or out, or scrub video right on the drive.")
+            }
+        case 1:
+            GuideStep(n: 1, text: "Open This PC, then ••• (or right-click empty space) → Add a network location")
+            GuideStep(n: 2, text: "Choose a custom network location and paste the address", copy: withCopy ? state.url : nil)
+            if let pin {
+                GuideStep(n: 3, text: "When asked, sign in with name “drive” and the passcode. A drive folder appears under This PC.")
+                if withCopy { CredentialRows(pin: pin) }
+            } else {
+                GuideStep(n: 3, text: "A drive folder appears under This PC — it behaves like a plugged-in USB stick.")
+            }
+        default:
+            GuideStep(n: 1, text: "On any laptop, tablet or phone on this Wi-Fi, open a browser — Safari, Chrome, Edge")
+            GuideStep(n: 2, text: "Scan the QR, or type the address", copy: withCopy ? state.url : nil)
+            GuideStep(n: 3, text: pin != nil ? "Enter the 4-digit passcode. Browse, stream or download — works on iPhone and iPad too."
+                                             : "Browse folders, stream video or download any file — works on iPhone and iPad too.",
+                      copy: withCopy ? pin : nil)
         }
-        .padding(.vertical, 6)
     }
 }
 
-extension Step where Extra == EmptyView {
-    fileprivate init(n: Int, text: String) { self.init(n: n, text: text) { EmptyView() } }
+private struct GuideStep<Body_: View>: View {
+    let n: Int
+    var copy: String?
+    @ViewBuilder var content: () -> Body_
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            StepNumber(n: n)
+            VStack(alignment: .leading, spacing: 8) {
+                content().fixedSize(horizontal: false, vertical: true)
+                if let copy { CopyField(value: copy) }
+            }
+            .padding(.top, 3)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .accessibilityElement(children: .contain)
+    }
 }
 
-private struct CopyRow: View {
-    let text: String
+extension GuideStep where Body_ == Text {
+    init(n: Int, text: String, copy: String? = nil) {
+        self.init(n: n, copy: copy) { Text(text).body(13, CD.textSecondary) }
+    }
+}
+
+private struct CredentialRows: View {
+    let pin: String
+    var body: some View {
+        VStack(spacing: 8) {
+            CopyField(value: "drive", label: "name")
+            CopyField(value: pin, label: "passcode")
+        }
+        .padding(.leading, 38)
+    }
+}
+
+struct CopyField: View {
+    let value: String
     var label: String?
     var body: some View {
-        HStack(spacing: 8) {
-            if let label { Text("\(label)  ").font(.cd(12)).foregroundColor(Aurora.textDim) }
-            Text(text).font(.cd(14, design: .monospaced)).foregroundColor(Aurora.phosphor).textSelection(.enabled)
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Aurora.deepSpaceSoft, in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Aurora.glassEdge, lineWidth: 1))
-            CopyChip(text: text)
+        HStack(spacing: 0) {
+            if let label { Text("\(label)  ").body(12, CD.textDim) }
+            Text(value).monoStyle(13, color: CD.accent).lineLimit(1).minimumScaleFactor(0.7).truncationMode(.middle)
+                .textSelection(.enabled)
+            Spacer(minLength: 8)
+            CopyButton(value: value)
         }
-    }
-}
-
-private struct ResultLine: View {
-    let text: String
-    init(_ t: String) { text = t }
-    var body: some View {
-        Text(text).font(.cd(12)).foregroundColor(Aurora.phosphor).padding(10).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Aurora.teal.opacity(0.1), in: RoundedRectangle(cornerRadius: 10)).padding(.top, 10)
+        .padding(.leading, 12).padding(.trailing, 4).padding(.vertical, 0)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(CD.glassLow))
     }
 }
 
 private struct TroubleItem: View {
     let title: String
-    let body_: String
+    let text: String
     @State private var open = false
-    init(title: String, body: String) { self.title = title; self.body_ = body }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Button { open.toggle() } label: {
-                HStack {
-                    Text(title).font(.cd(14)).foregroundColor(Aurora.textPrimary).multilineTextAlignment(.leading)
-                    Spacer()
-                    Text(open ? "−" : "+").font(.cd(18)).foregroundColor(Aurora.textDim)
+            Button { withAnimation(.easeInOut(duration: 0.2)) { open.toggle() } } label: {
+                HStack(spacing: 12) {
+                    CdIconView(CdIcons.help, color: CD.amber, size: 20)
+                    Text(title).body(14, weight: .medium).multilineTextAlignment(.leading)
+                    Spacer(minLength: 4)
+                    CdIconView(open ? CdIcons.arrowUp : CdIcons.chevronRight, color: CD.textDim, size: 16)
                 }
-                .padding(14).contentShape(Rectangle())
+                .padding(.horizontal, 10).padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain).pointerHover()
+            .buttonStyle(PressableStyle())
+            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            .pointerHover()
             if open {
-                Text(body_).font(.cd(13)).foregroundColor(Aurora.textDim).padding(.horizontal, 14).padding(.bottom, 14)
+                Text(text).body(13, CD.textSecondary).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 42).padding(.trailing, 12).padding(.bottom, 14)
+                    .transition(.opacity)
             }
         }
     }

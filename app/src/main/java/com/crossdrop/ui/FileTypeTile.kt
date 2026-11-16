@@ -1,53 +1,86 @@
 package com.crossdrop.ui
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.crossdrop.ui.theme.AuroraViolet
-import com.crossdrop.ui.theme.FluidCyan
-import com.crossdrop.ui.theme.NebulaPink
-import com.crossdrop.ui.theme.Phosphor
-import com.crossdrop.ui.theme.RippleTeal
-import com.crossdrop.ui.theme.TextDim
-import com.crossdrop.ui.theme.tintGradient
+import com.crossdrop.ui.theme.Accent
+import com.crossdrop.ui.theme.Amber
+import com.crossdrop.ui.theme.GlassHigh
+import com.crossdrop.ui.theme.Sky
+import com.crossdrop.ui.theme.SkyText
+import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.Violet
+import com.crossdrop.ui.theme.VioletText
 
-/** Small tinted tile showing a file's extension — the app's file-type glyph. */
-@Composable
-fun FileTypeTile(fileName: String, size: Dp = 42.dp) {
-    val ext = fileName.substringAfterLast('.', "").take(4).uppercase().ifBlank { "···" }
-    val tint = tintFor(ext.lowercase())
-    Box(
-        Modifier.size(size)
-            .clip(RoundedCornerShape(12.dp))
-            .background(tintGradient(tint))
-            .border(1.dp, tint.copy(alpha = 0.35f), RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            ext, color = tint, fontSize = if (ext.length > 3) 8.sp else 9.5.sp,
-            fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp,
-        )
+/** What a file is, for its tile and the inbox's storage breakdown. */
+enum class FileKind(val label: String) {
+    PHOTO("Photos"), VIDEO("Videos"), AUDIO("Audio"), DOC("Documents"),
+    ARCHIVE("Archives"), APP("Apps"), FOLDER("Folders"), OTHER("Other");
+
+    val icon: ImageVector
+        get() = when (this) {
+            PHOTO -> CdIcons.Photo
+            VIDEO -> CdIcons.Video
+            AUDIO -> CdIcons.Music
+            DOC -> CdIcons.Doc
+            ARCHIVE -> CdIcons.Archive
+            APP -> CdIcons.Apk
+            FOLDER -> CdIcons.Folder
+            OTHER -> CdIcons.File
+        }
+
+    /** Icon colour on the tile. */
+    val tint: Color
+        get() = when (this) {
+            PHOTO, APP -> Accent
+            VIDEO -> VioletText
+            AUDIO, ARCHIVE -> SkyText
+            DOC, FOLDER -> Amber
+            OTHER -> TextSecondary
+        }
+
+    /** Solid swatch for charts and legends. */
+    val swatch: Color
+        get() = when (this) {
+            PHOTO, APP -> Accent
+            VIDEO -> Violet
+            AUDIO, ARCHIVE, OTHER -> Sky
+            DOC, FOLDER -> Amber
+        }
+
+    val tileBg: Color
+        get() = when (this) {
+            OTHER -> GlassHigh
+            VIDEO -> Violet.copy(alpha = 0.16f)
+            else -> swatch.copy(alpha = 0.14f)
+        }
+
+    companion object {
+        fun of(fileName: String, isDir: Boolean = false): FileKind {
+            if (isDir) return FOLDER
+            return when (fileName.substringAfterLast('.', "").lowercase()) {
+                "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "svg", "bmp", "avif", "dng", "raw" -> PHOTO
+                "mp4", "mkv", "mov", "webm", "avi", "m4v", "3gp" -> VIDEO
+                "mp3", "m4a", "flac", "ogg", "wav", "opus", "aac" -> AUDIO
+                "pdf", "doc", "docx", "txt", "md", "epub", "rtf", "odt", "xls", "xlsx", "csv",
+                "ppt", "pptx", "key", "pages", "numbers", "fig" -> DOC
+                "zip", "rar", "7z", "tar", "gz", "tgz", "xz", "bz2" -> ARCHIVE
+                "apk", "aab", "xapk", "ipa", "dmg", "exe", "msi" -> APP
+                else -> OTHER
+            }
+        }
     }
 }
 
-private fun tintFor(ext: String): Color = when (ext) {
-    "jpg", "jpeg", "png", "gif", "webp", "heic", "svg" -> FluidCyan
-    "mp4", "mkv", "mov", "webm", "avi" -> AuroraViolet
-    "mp3", "m4a", "flac", "ogg", "wav", "opus" -> Phosphor
-    "pdf", "doc", "docx", "txt", "md", "epub" -> NebulaPink
-    "apk" -> RippleTeal
-    "zip", "rar", "7z", "tar", "gz" -> AuroraViolet
-    else -> TextDim
+/** Tinted tile with the file's category icon — the app's file-type glyph. */
+@Composable
+fun FileTypeTile(fileName: String, size: Dp = 42.dp, modifier: Modifier = Modifier, isDir: Boolean = false) {
+    val kind = FileKind.of(fileName, isDir || fileName == "dir")
+    IconTile(
+        kind.icon, kind.tint, modifier, bg = kind.tileBg,
+        size = size, radius = size * 0.32f, iconSize = size * 0.46f,
+    )
 }

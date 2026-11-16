@@ -29,6 +29,7 @@ targets:
         CFBundleDisplayName: CrossDrop
         UILaunchScreen:
           UIColorName: LaunchBackground
+          UIImageName: LaunchMark
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
         UISupportedInterfaceOrientations:
@@ -41,6 +42,11 @@ targets:
         LSApplicationCategoryType: public.app-category.utilities
         ITSAppUsesNonExemptEncryption: false   # encryption only via Apple CryptoKit; matches the export-compliance answer in App Store Connect
         UIUserInterfaceStyle: Dark
+        # Sonar type: Sora (display) + JetBrains Mono (figures), Latin subsets, SemiBold only.
+        # OFL notice ships next to them (Resources/Fonts/FONTS-OFL.txt). Also read by Mac Catalyst.
+        UIAppFonts:
+          - Sora-SemiBold.ttf
+          - JetBrainsMono-SemiBold.ttf
         NSLocalNetworkUsageDescription: CrossDrop uses your local network to find nearby devices and send files directly to them — nothing leaves your Wi-Fi.
         NSBonjourServices:
           - _crossdrop._tcp

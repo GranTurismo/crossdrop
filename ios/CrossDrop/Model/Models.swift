@@ -60,6 +60,8 @@ final class IncomingOffer: Identifiable, @unchecked Sendable {   // all mutable 
     let id = UUID()
     let peerName: String
     let offer: Offer
+    /// When the offer reached us — the auto-decline countdown runs from here.
+    let receivedAt = Date()
     private let sem = DispatchSemaphore(value: 0)
     private let lock = NSLock()
     private var answer: Bool?

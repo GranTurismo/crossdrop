@@ -12,6 +12,7 @@ dependencies {
 
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
+    implementation(libs.compose.ui.backhandler)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
@@ -40,6 +41,8 @@ kotlin {
 // that touches platform APIs lives in this module under the same package
 // names, so the shared files compile unchanged.
 val sharedUi = listOf(
+    "CdIcons.kt",
+    "Components.kt",
     "DeviceNameDialog.kt",
     "FileTypeTile.kt",
     "IncomingOfferSheet.kt",
@@ -47,7 +50,6 @@ val sharedUi = listOf(
     "UiIcons.kt",
     "theme/Theme.kt",
     "radar/RadarCanvas.kt",
-    "transfer/LiquidOrb.kt",
     "transfers/TransfersScreen.kt",
 )
 val syncSharedUi by tasks.registering(Sync::class) {

@@ -1,70 +1,89 @@
 package com.crossdrop.ui.drive
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.crossdrop.net.VaultHostManager
 import com.crossdrop.platform.Platform
 import com.crossdrop.platform.SystemActions
 import java.io.File
-import com.crossdrop.ui.theme.DeepSpace
-import com.crossdrop.ui.theme.DeepSpaceRaised
-import com.crossdrop.ui.theme.DangerSoft
-import com.crossdrop.ui.theme.FluidCyan
-import com.crossdrop.ui.theme.GlassEdge
-import com.crossdrop.ui.theme.Phosphor
-import com.crossdrop.ui.theme.RippleTeal
+import com.crossdrop.ui.BackHeader
+import com.crossdrop.ui.CdIcon
+import com.crossdrop.ui.CdIcons
+import com.crossdrop.ui.CopyButton
+import com.crossdrop.ui.FootNote
+import com.crossdrop.ui.GlassCard
+import com.crossdrop.ui.PillButton
+import com.crossdrop.ui.PillStyle
+import com.crossdrop.ui.QrCard
+import com.crossdrop.ui.RowSeparator
+import com.crossdrop.ui.SectionLabel
+import com.crossdrop.ui.SegmentedTabs
+import com.crossdrop.ui.ToggleRow
+import com.crossdrop.ui.theme.Accent
+import com.crossdrop.ui.theme.Amber
+import com.crossdrop.ui.theme.DangerText
+import com.crossdrop.ui.theme.Glass
+import com.crossdrop.ui.theme.GlassHigh
+import com.crossdrop.ui.theme.GlassLow
+import com.crossdrop.ui.theme.OnAccent
+import com.crossdrop.ui.theme.OnAccentMuted
+import com.crossdrop.ui.theme.ScreenGlow
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
+import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.displayStyle
+import com.crossdrop.ui.theme.monoStyle
 import com.crossdrop.ui.transfer.formatBytes
 
 /**
- * "Wireless Drive" host screen — the plain-language UX over the vault +
- * WebDAV engine. Two states: a start card (choose the built-in vault or a
- * picked folder, read-only/read-write, optional passcode) and the live
- * drive card (status light, shared content, QR + address, 4-digit code).
- *
- * All labels follow the physical metaphor — no "server", "mount", or
- * "WebDAV" anywhere the user can see them.
+ * "Wireless Drive" — the plain-language face of the vault + WebDAV engine.
+ * Off: choose guest access, then a folder (or the built-in vault) to share.
+ * On: live status, QR + address + passcode, per-platform connect steps and
+ * the stop button. No "server", "mount" or "WebDAV" anywhere a user looks.
+ * Desktop copy of the Android screen (native folder picker, Esc = back).
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun DriveHostScreen(
     state: VaultHostManager.State?,
@@ -73,270 +92,235 @@ fun DriveHostScreen(
     onClose: () -> Unit,
 ) {
     var showGuide by remember { mutableStateOf(false) }
+    BackHandler {
+        if (showGuide) showGuide = false else onClose()
+    }
     if (showGuide && state != null) {
         DriveGuideScreen(state = state, onClose = { showGuide = false })
         return
     }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onClose) { Text("‹ back", color = TextDim) }
-            Spacer(Modifier.weight(1f))
+    Box(Modifier.fillMaxSize()) {
+        ScreenGlow(alpha = 0.13f, centerX = 0.36f, centerY = 160.dp, radius = 260.dp)
+        Column(
+            Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                BackHeader("Wireless Drive", onClose, Modifier.padding(bottom = 4.dp))
+                if (state == null) StartContent(onStart) else LiveContent(state, onStop) { showGuide = true }
+            }
         }
-        Text(
-            "W I R E L E S S   D R I V E",
-            color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-            letterSpacing = 3.sp,
-        )
-        Spacer(Modifier.height(20.dp))
-
-        if (state == null) {
-            StartCard(onStart)
-        } else {
-            LiveCard(state, onStop, onShowGuide = { showGuide = true })
-        }
-        Spacer(Modifier.height(28.dp))
     }
 }
 
-// -------------------------------------------------------------- start card --
+// ----------------------------------------------------------------- off --
 
 @Composable
-private fun StartCard(onStart: (Boolean, Boolean, File?) -> Boolean) {
+private fun ColumnScope.StartContent(onStart: (Boolean, Boolean, File?) -> Boolean) {
     var writable by remember { mutableStateOf(false) }
     var usePin by remember { mutableStateOf(true) }
     var startFailed by remember { mutableStateOf(false) }
-    fun pickFolder() {
-        SystemActions.pickFolder()?.let { startFailed = !onStart(writable, usePin, it) }
+    GlassCard(Modifier.fillMaxWidth(), radius = 30.dp, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(
+            Modifier.size(52.dp).clip(RoundedCornerShape(17.dp)).background(Accent.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) { CdIcon(CdIcons.Drive, Accent, size = 26.dp) }
+        Text("Turn this ${Platform.current.computerNoun} into a drive", style = displayStyle(24, tracking = -0.035f).copy(lineHeight = 27.sp))
+        Text(
+            "Other computers, tablets and phones on this network can browse, stream and download — like plugging in a USB drive.",
+            color = TextDim, fontSize = 13.sp, lineHeight = 19.sp,
+        )
     }
 
-    fun tryStartVault() {
-        startFailed = !onStart(writable, usePin, null)
+    SectionLabel("Guest access", Modifier.padding(top = 6.dp))
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 26.dp, fill = GlassLow,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        ToggleRow("Let guests add & edit files", "Off: guests can only view and download", writable, { writable = it })
+        RowSeparator()
+        ToggleRow("4-digit passcode", "Recommended on shared Wi-Fi", usePin, { usePin = it })
     }
 
-    Text(
-        "Turn this ${Platform.current.computerNoun} into a drive",
-        color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.SemiBold,
-    )
-    Spacer(Modifier.height(6.dp))
-    Text(
-        "Other devices on this Wi-Fi can browse, stream\nand download — like plugging in a USB stick.",
-        color = TextDim, fontSize = 13.sp, textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(22.dp))
+    SectionLabel("What to share", Modifier.padding(top = 6.dp))
+    ShareChoice(
+        CdIcons.Folder, "Pick a folder", "Photos, movies, work files — any folder you choose",
+        primary = true,
+    ) { SystemActions.pickFolder()?.let { startFailed = !onStart(writable, usePin, it) } }
+    ShareChoice(
+        CdIcons.Drive, "Share the CrossDrop vault", "Files saved inside this app",
+        primary = false,
+    ) { startFailed = !onStart(writable, usePin, null) }
 
-    DriveCard {
-        ActionRow(
-            title = "Share the CrossDrop vault",
-            subtitle = "files saved in this app",
-            accent = RippleTeal,
-        ) { tryStartVault() }
-        RowDivider()
-        ActionRow(
-            title = "Pick a folder to share",
-            subtitle = "any folder — Documents, Movies, work files",
-            accent = FluidCyan,
-        ) { pickFolder() }
-        RowDivider()
-        ToggleLine(
-            title = "Let guests add & edit files",
-            subtitle = "off = view and download only",
-            checked = writable,
-        ) { writable = it }
-        RowDivider()
-        ToggleLine(
-            title = "4-digit passcode",
-            subtitle = "recommended on shared Wi-Fi",
-            checked = usePin,
-        ) { usePin = it }
-    }
     if (startFailed) {
-        Spacer(Modifier.height(10.dp))
         Text(
             "Couldn't turn on the drive — that folder can't be shared (try Documents, Movies or a project folder).",
-            color = DangerSoft, fontSize = 13.sp, textAlign = TextAlign.Center,
+            color = DangerText, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
+    FootNote("Everything stays on this network — nothing touches the internet.", Modifier.padding(top = 2.dp), icon = CdIcons.Shield)
+}
+
+@Composable
+private fun ShareChoice(icon: ImageVector, title: String, subtitle: String, primary: Boolean, onClick: () -> Unit) {
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 26.dp,
+        fill = if (primary) Accent else Glass, border = if (primary) null else com.crossdrop.ui.theme.Hairline,
+        glow = if (primary) Accent.copy(alpha = 0.18f) else null, glowOffsetY = 12.dp,
+        contentPadding = PaddingValues(18.dp), onClick = onClick,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(
+                Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
+                    .background(if (primary) OnAccent.copy(alpha = 0.12f) else Amber.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) { CdIcon(icon, if (primary) OnAccent else Amber, size = 24.dp) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, style = displayStyle(17, tracking = -0.02f, color = if (primary) OnAccent else TextPrimary))
+                Text(subtitle, color = if (primary) OnAccentMuted else TextDim, fontSize = 12.sp, lineHeight = 16.sp)
+            }
+            CdIcon(CdIcons.ChevronRight, if (primary) OnAccent else TextDim, size = 20.dp)
+        }
+    }
+}
+
+// ------------------------------------------------------------------ on --
+
+@Composable
+private fun ColumnScope.LiveContent(state: VaultHostManager.State, onStop: () -> Unit, onShowGuide: () -> Unit) {
+    var tab by remember { mutableIntStateOf(0) }
+
+    // status
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 30.dp, border = Accent.copy(alpha = 0.35f),
+        glow = Accent.copy(alpha = 0.13f), glowRadius = 50.dp,
+        contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            PulseDot()
+            Text("Drive is on", style = displayStyle(28, tracking = -0.04f), modifier = Modifier.weight(1f))
+            val n = state.clients.size
+            Text(
+                if (n == 0) "No one connected" else "$n connected",
+                color = if (n == 0) TextDim else Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Row(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Glass)
+                .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            CdIcon(CdIcons.Folder, Amber, size = 22.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text("Sharing", color = TextDim, fontSize = 11.sp)
+                Text(state.rootLabel, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Stat("↑ Uploaded by guests", formatBytes(state.bytesIn), Modifier.weight(1f))
+            Stat("↓ Downloaded", formatBytes(state.bytesOut), Modifier.weight(1f))
+        }
+    }
+
+    // QR + address + passcode
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 28.dp, fill = GlassLow,
+        contentPadding = PaddingValues(14.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            QrCard(state.url, size = 128.dp, halo = false)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Address", color = TextDim, fontSize = 11.sp)
+                    Text(state.url, style = monoStyle(13), maxLines = 2)
+                }
+                state.pin?.let { pin ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text("Passcode", color = TextDim, fontSize = 11.sp)
+                        Text(pin, style = monoStyle(20, Accent).copy(letterSpacing = 0.3.em))
+                    }
+                }
+                CopyButton(state.url, label = "Copy address")
+            }
+        }
+    }
+
+    // guest access (fixed while the drive is on)
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 26.dp, fill = GlassLow,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        ModeRow("Guests can add & edit files", if (state.writable) "Guests can upload, rename and delete" else "Guests can only view and download", state.writable)
+        RowSeparator()
+        ModeRow("4-digit passcode", if (state.pin != null) "Needed to open the drive" else "Anyone on this Wi-Fi can open it", state.pin != null)
+    }
+
+    // how to connect
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 28.dp, fill = GlassLow,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Text("Connect from another device", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        SegmentedTabs(GUIDE_TABS, tab, { tab = it })
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { ConnectSteps(state, tab, withCopy = false) }
+    }
+
+    GlassCard(
+        Modifier.fillMaxWidth().heightIn(min = 52.dp), radius = 22.dp, fill = GlassLow, border = null,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp), onClick = onShowGuide,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            CdIcon(CdIcons.Help, Amber, size = 20.dp)
+            Text("Can't connect? Guest Wi-Fi, VPNs, hotels…", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            CdIcon(CdIcons.ChevronRight, TextDim, size = 18.dp)
+        }
+    }
+
+    FootNote(
+        "Keeps serving while the window is closed — CrossDrop stays in the ${Platform.current.trayName}." +
+            if (state.pin != null) " Five wrong passcodes lock a device out for 60 seconds." else "",
+    )
+    Spacer(Modifier.height(4.dp))
+    PillButton("Stop sharing drive", onStop, Modifier.fillMaxWidth(), style = PillStyle.Danger, height = 56.dp)
+}
+
+@Composable
+private fun Stat(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(label, color = TextDim, fontSize = 11.sp)
+        Text(value, style = monoStyle(16))
+    }
+}
+
+@Composable
+private fun ModeRow(title: String, subtitle: String, on: Boolean) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(subtitle, color = TextDim, fontSize = 12.sp)
+        }
+        Text(
+            if (on) "On" else "Off", color = if (on) OnAccent else TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) Accent else GlassHigh).padding(horizontal = 12.dp, vertical = 5.dp),
         )
     }
 }
 
-// --------------------------------------------------------------- live card --
-
 @Composable
-private fun LiveCard(state: VaultHostManager.State,
-                     onStop: () -> Unit,
-                     onShowGuide: () -> Unit) {
-    // pulsing status light
-    val pulse = rememberInfiniteTransition(label = "drive")
-    val glow by pulse.animateFloat(
-        0.45f, 1f, infiniteRepeatable(tween(1100), RepeatMode.Reverse), label = "g",
+private fun PulseDot() {
+    val p by rememberInfiniteTransition(label = "live").animateFloat(
+        0f, 1f, infiniteRepeatable(tween(1800)), label = "p",
     )
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Surface(shape = CircleShape, color = RippleTeal, modifier = Modifier
-            .size(10.dp).alpha(glow)) {}
-        Spacer(Modifier.width(8.dp))
-        Text("Drive is on", color = RippleTeal, fontSize = 18.sp,
-            fontWeight = FontWeight.Bold)
-    }
-    Text("visible to devices on your Wi-Fi", color = TextDim, fontSize = 12.sp)
-    Spacer(Modifier.height(18.dp))
-
-    // shared content + mode
-    DriveCard {
-        Row(Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text("📁", fontSize = 22.sp)
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text(state.rootLabel, color = TextPrimary, fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold)
-                Text(
-                    buildString {
-                        append(if (state.writable) "view · edit · upload"
-                            else "view & download only")
-                        if (state.pin != null) append("  ·  passcode on")
-                    },
-                    color = TextDim, fontSize = 12.sp,
-                )
-            }
-        }
-        RowDivider()
-        Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            val n = state.clients.size
-            Text(
-                if (n == 0) "no devices connected"
-                else "$n device${if (n > 1) "s" else ""} connected",
-                color = if (n == 0) TextDim else Phosphor, fontSize = 12.sp,
-            )
-            Spacer(Modifier.weight(1f))
-            Text("↑ ${formatBytes(state.bytesOut)}  ↓ ${formatBytes(state.bytesIn)}",
-                color = TextDim, fontSize = 11.sp)
-        }
-    }
-    Spacer(Modifier.height(18.dp))
-
-    // option A — scan
-    Text("F A S T E S T", color = TextDim, fontSize = 11.sp,
-        fontWeight = FontWeight.Medium, letterSpacing = 2.sp)
-    Spacer(Modifier.height(6.dp))
-    com.crossdrop.ui.QrCard(state.url)
-    Spacer(Modifier.height(6.dp))
-    Text(
-        "scan with any camera — files open instantly",
-        color = TextDim, fontSize = 12.sp, textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(20.dp))
-
-    // option B — address + passcode
-    DriveCard {
-        Column(Modifier.fillMaxWidth().padding(14.dp)) {
-            Text("O R   T Y P E   T H I S   A D D R E S S", color = TextDim,
-                fontSize = 10.sp, letterSpacing = 1.6.sp)
-            Spacer(Modifier.height(6.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(state.url, color = Phosphor, fontSize = 15.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f))
-                CopyChip(state.url)
-            }
-            if (state.pin != null) {
-                Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("passcode", color = TextDim, fontSize = 12.sp)
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        state.pin.toCharArray().joinToString(" "),
-                        color = TextPrimary, fontSize = 22.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold, letterSpacing = 6.sp,
-                    )
-                    Spacer(Modifier.weight(1f))
-                    CopyChip(state.pin)
-                }
-            }
-        }
-    }
-    Spacer(Modifier.height(10.dp))
-    TextButton(onClick = onShowGuide) {
-        Text("Need help connecting? See the 2-step guide →", color = FluidCyan,
-            fontSize = 13.sp)
-    }
-    Spacer(Modifier.height(8.dp))
-    Text(
-        "Everything stays on this Wi-Fi — nothing touches the internet.",
-        color = TextDim, fontSize = 11.sp, textAlign = TextAlign.Center,
-    )
-    Spacer(Modifier.height(20.dp))
-    Button(
-        onClick = onStop,
-        colors = ButtonDefaults.buttonColors(containerColor = DangerSoft),
-        modifier = Modifier.fillMaxWidth().height(48.dp),
-        shape = RoundedCornerShape(14.dp),
-    ) { Text("Stop Sharing Drive", color = DeepSpace,
-        fontWeight = FontWeight.Bold) }
-}
-
-// --------------------------------------------------------------- bits --
-
-@Composable
-fun DriveCard(content: @Composable () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(18.dp), color = DeepSpaceRaised,
-        border = BorderStroke(1.dp, GlassEdge),
-        modifier = Modifier.fillMaxWidth(),
-    ) { Column { content() } }
-}
-
-@Composable
-private fun ActionRow(title: String, subtitle: String,
-                      accent: androidx.compose.ui.graphics.Color,
-                      onClick: () -> Unit) {
-    Surface(onClick = onClick, color = androidx.compose.ui.graphics.Color.Transparent) {
-        Row(Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(title, color = accent, fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold)
-                Text(subtitle, color = TextDim, fontSize = 12.sp)
-            }
-            Text("›", color = TextDim, fontSize = 20.sp)
-        }
-    }
-}
-
-@Composable
-private fun ToggleLine(title: String, subtitle: String, checked: Boolean,
-                       onChecked: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = TextPrimary, fontSize = 14.sp)
-            Text(subtitle, color = TextDim, fontSize = 11.sp)
-        }
-        Switch(checked = checked, onCheckedChange = onChecked,
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = RippleTeal.copy(alpha = .45f),
-                checkedThumbColor = RippleTeal))
-    }
-}
-
-@Composable
-fun RowDivider() = androidx.compose.material3.HorizontalDivider(
-    color = GlassEdge.copy(alpha = .5f))
-
-@Composable
-private fun CopyChip(text: String) {
-    val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
-    var copied by remember { mutableStateOf(false) }
-    TextButton(onClick = {
-        clipboard.setText(androidx.compose.ui.text.AnnotatedString(text))
-        copied = true
-    }) {
-        Text(if (copied) "copied ✓" else "copy",
-            color = if (copied) RippleTeal else FluidCyan, fontSize = 13.sp)
+    Box(Modifier.size(12.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.size(12.dp).graphicsLayer {
+                val s = 1f + 2f * p
+                scaleX = s; scaleY = s; alpha = 0.8f * (1f - p)
+            }.clip(CircleShape).background(Accent),
+        )
+        Box(Modifier.size(12.dp).clip(CircleShape).background(Accent))
     }
 }

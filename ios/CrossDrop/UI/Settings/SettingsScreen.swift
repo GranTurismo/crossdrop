@@ -1,149 +1,265 @@
 import SwiftUI
 
+/// App-wide settings: identity, discovery, wireless drive, storage, about, developer tools.
 struct SettingsScreen: View {
     @EnvironmentObject var container: AppContainer
-    @EnvironmentObject var coordinator: TransferCoordinator
     @ObservedObject var inbox: InboxStore
     @ObservedObject var history: HistoryStore
+    @Environment(\.navInset) private var navInset
     @State private var renaming = false
+    @State private var renameText = ""
     @State private var addingPeer = false
     @State private var peerAddress = ""
+    @State private var confirmWipe = false
+    @State private var confirmClear = false
+    @State private var rescanned = false
 
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
 
     var body: some View {
-        ReadableScroll(maxWidth: 720) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Settings").font(.cd(24, weight: .heavy)).foregroundColor(Aurora.textPrimary)
-                    .padding(.top, 20).padding(.bottom, 6)
+        let files = inbox.files
+        ZStack {
+            CD.ink.ignoresSafeArea()
+            ScreenGlow(alpha: 0.2, centerX: 0.26, centerY: 160, radius: 240)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    ScreenTitle("Settings").padding(.bottom, 2)
+                    identity
 
-                section("Device") {
-                    row("\(container.deviceName)", "visible name · tap to change") { renaming = true }
-                    divider
-                    row("Device id", String(container.instanceId.prefix(12)))
-                    if container.listenerPort > 0 { divider; row("Listening port", ":\(container.listenerPort)") }
-                }
-
-                section("Discovery") {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Wi-Fi (Bonjour)").font(.cd(14, weight: .medium)).foregroundColor(Aurora.textPrimary)
-                            Text("find devices on the same network").font(.cd(12)).foregroundColor(Aurora.textDim)
+                    SectionLabel("Discovery").padding(.top, 4)
+                    SettingsGroup {
+                        ToggleRow(title: "Wi-Fi", subtitle: "Find devices on this network",
+                                  isOn: Binding(get: { container.discoveryEnabled }, set: { container.setDiscoveryEnabled($0) }),
+                                  icon: CdIcons.wifi)
+                        RowSeparator()
+                        NavRow(icon: CdIcons.radar, title: rescanned ? "Rescanning…" : "Rescan network",
+                               subtitle: "After allowing Local Network access, or switching Wi-Fi") {
+                            container.restartDiscovery()
+                            rescanned = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { rescanned = false }
                         }
-                        Spacer()
-                        Toggle("", isOn: Binding(get: { container.discoveryEnabled }, set: { container.setDiscoveryEnabled($0) }))
-                            .labelsHidden().tint(Aurora.teal)
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 8)
-                    divider
-                    row("Rescan network", "re-bind after approving the Local Network prompt") { container.restartDiscovery() }
-                }
 
-                section("Wireless drive") {
-                    DriveSettingsRow(host: container.vaultHost) { container.driveOpen = true }
-                }
+                    DriveSettingsCard(host: container.vaultHost) { container.driveOpen = true }
 
-                section("Storage") {
-                    let files = inbox.files
-                    row("Inbox", "\(files.count) file\(files.count == 1 ? "" : "s") · \(Fmt.bytes(files.reduce(0) { $0 + $1.size }))")
-                    if !files.isEmpty {
-                        divider
-                        row("Wipe inbox", "zero-fill and delete every received file", color: Aurora.danger) { inbox.shredAll() }
+                    SectionLabel("Storage").padding(.top, 4)
+                    SettingsGroup {
+                        HStack {
+                            Text("Inbox").body(14, weight: .semibold)
+                            Spacer()
+                            Text("\(files.count) file\(files.count == 1 ? "" : "s") · \(Fmt.bytes(files.reduce(0) { $0 + $1.size }))")
+                                .monoStyle(12, color: CD.textSecondary)
+                        }
+                        .frame(minHeight: 54)
+                        .accessibilityElement(children: .combine)
+                        RowSeparator()
+                        ActionRow(title: "Wipe inbox", color: CD.dangerText, enabled: !files.isEmpty) { confirmWipe = true }
+                        RowSeparator()
+                        ActionRow(title: "Clear transfer history", color: CD.textPrimary, enabled: !history.entries.isEmpty) { confirmClear = true }
                     }
-                    divider
-                    row("Clear transfer history", "forget the log of past transfers", color: Aurora.danger) { history.clear() }
-                }
 
-                section("About") {
-                    row("CrossDrop \(version)", "local-only file sharing")
-                    divider
-                    row("Encryption", "X25519 · HKDF-SHA256 · ChaCha20-Poly1305")
-                    divider
-                    row("No cloud. No accounts. No tracking.", "files travel directly between devices on your network", color: Aurora.phosphor)
-                }
+                    about
 
-                #if DEBUG
-                section("Developer") {
-                    row("Add peer by address", "place a peer on the radar manually") { addingPeer = true }
+                    #if DEBUG
+                    SectionLabel("Developer").padding(.top, 4)
+                    SettingsGroup {
+                        NavRow(icon: CdIcons.wrench, title: "Add peer by address", subtitle: "Place a peer on the radar manually") {
+                            addingPeer = true
+                        }
+                    }
+                    #endif
                 }
-                #endif
-                Spacer(minLength: 24)
+                .padding(.horizontal, 16).padding(.top, 28).padding(.bottom, navInset + 8)
+                .readableWidth()
             }
-            .padding(.horizontal, 20)
         }
-        .background(Aurora.deepSpace)
-        .sheet(isPresented: $renaming) {
-            DeviceNameSheet(current: container.deviceName) { new in
-                renaming = false
-                if let new { container.setDeviceName(new) }
-            }.presentationDetents([.height(260)])
-        }
-        .alert("Add peer", isPresented: $addingPeer) {
-            TextField("host:port", text: $peerAddress).textInputAutocapitalization(.never).autocorrectionDisabled()
+        .renameDialog(isPresented: $renaming, text: $renameText) { container.setDeviceName($0) }
+        .confirmDialog("Wipe the inbox?", isPresented: $confirmWipe,
+                       message: "Every received file is overwritten with zeros and deleted. This can't be undone.",
+                       confirmLabel: "Wipe inbox") { inbox.shredAll() }
+        .confirmDialog("Clear transfer history?", isPresented: $confirmClear,
+                       message: "This forgets the log of past transfers. Received files stay in your inbox.",
+                       confirmLabel: "Clear") { history.clear() }
+        .alert("Add peer by address", isPresented: $addingPeer) {
+            TextField("host:port — e.g. 192.168.1.20:43595", text: $peerAddress)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
             Button("Add") {
-                let parts = peerAddress.split(separator: ":", maxSplits: 1).map(String.init)
-                if parts.count == 2, let p = Int(parts[1]) { container.addManualPeer(name: nil, host: parts[0], port: p) }
+                let parts = peerAddress.trimmingCharacters(in: .whitespaces).split(separator: ":", maxSplits: 1).map(String.init)
+                if parts.count == 2, let p = Int(parts[1]), (1...65535).contains(p), !parts[0].isEmpty {
+                    container.addManualPeer(name: nil, host: parts[0], port: p)
+                }
                 peerAddress = ""
             }
             Button("Cancel", role: .cancel) { peerAddress = "" }
+        } message: {
+            Text("Places a peer on the radar as if discovery had found it. Useful when Bonjour can't cross a network.")
         }
     }
 
-    private var divider: some View {
-        Rectangle().fill(Aurora.glassEdge.opacity(0.5)).frame(height: 1).padding(.horizontal, 14)
-    }
+    // MARK: identity
 
-    private func section<C: View>(_ title: String, @ViewBuilder _ content: @escaping () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title.uppercased()).font(.cd(11, weight: .semibold)).tracking(2).foregroundColor(Aurora.textDim)
-                .padding(.leading, 6).padding(.top, 18).padding(.bottom, 6)
-            GlassCard(radius: 20) { VStack(spacing: 0, content: content) }
-        }
-    }
-
-    private func row(_ title: String, _ subtitle: String, color: Color = Aurora.textPrimary, action: (() -> Void)? = nil) -> some View {
-        Button { action?() } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.cd(14, weight: .medium)).foregroundColor(color).multilineTextAlignment(.leading)
-                    Text(subtitle).font(.cd(12)).foregroundColor(Aurora.textDim).multilineTextAlignment(.leading)
+    private var identity: some View {
+        GlassCard(radius: 28, padding: .all(18), spacing: 14) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle().fill(CD.accent.opacity(0.15)).frame(width: 68, height: 68)
+                    Circle().fill(CD.accent).frame(width: 56, height: 56).shadow(color: CD.accent.opacity(0.4), radius: 15)
+                    CdIconView(Platform.deviceIcon, color: CD.onAccent, size: 24)
                 }
-                Spacer(minLength: 8)
-                if action != nil { Text("›").font(.cd(18)).foregroundColor(Aurora.textDim) }
+                .frame(width: 56, height: 56)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Name others see").body(12, CD.textDim)
+                    Text(container.deviceName).displayStyle(22).lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+                Spacer(minLength: 4)
+                CircleButton(icon: CdIcons.pencil, label: "Rename this device", iconSize: 18, fill: CD.glassHigh) {
+                    renameText = container.deviceName
+                    renaming = true
+                }
             }
-            .padding(.horizontal, 16).padding(.vertical, 13)
-            .contentShape(Rectangle())
+            HStack {
+                Text("id \(Self.formatId(container.instanceId))").monoStyle(12, color: CD.textSecondary)
+                Spacer(minLength: 8)
+                Text(portLabel).body(11, CD.accent)
+            }
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(CD.glassLow))
+            .accessibilityElement(children: .combine)
         }
-        .buttonStyle(.plain).pointerHover()
-        .disabled(action == nil)
+    }
+
+    private var portLabel: String {
+        #if DEBUG
+        if container.listenerPort > 0 { return "port :\(container.listenerPort) · new every launch" }
+        #endif
+        return "new every launch"
+    }
+
+    /// "a3f9·71c2·e08b" — the rotating instance id, grouped for reading.
+    static func formatId(_ id: String) -> String {
+        var groups: [String] = []
+        var rest = Substring(id.prefix(12))
+        while !rest.isEmpty { groups.append(String(rest.prefix(4))); rest = rest.dropFirst(4) }
+        return groups.joined(separator: "·")
+    }
+
+    // MARK: about
+
+    private var about: some View {
+        GlassCard(radius: 26, fill: Color.white.opacity(0.03), border: nil, padding: .all(18), spacing: 12) {
+            HStack {
+                Text("CrossDrop").displayStyle(15, tracking: 0)
+                Spacer()
+                Text("v\(version)").monoStyle(12, color: CD.textDim)
+            }
+            HStack(spacing: 6) {
+                MonoTag(text: "X25519")
+                MonoTag(text: "HKDF-SHA256")
+                MonoTag(text: "ChaCha20-Poly1305")
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Encryption: X25519, HKDF-SHA256, ChaCha20-Poly1305")
+            Text("No cloud. No accounts. No tracking.").body(13, CD.accent, weight: .semibold)
+        }
     }
 }
 
-/// "Turn into drive" / "● Drive is on" row. Observes the host directly — nested ObservableObjects
-/// don't propagate through `AppContainer`.
-struct DriveSettingsRow: View {
-    @ObservedObject var host: VaultHostManager
-    let onOpen: () -> Void
-
+private struct SettingsGroup<Content: View>: View {
+    @ViewBuilder var content: () -> Content
     var body: some View {
-        let s = host.state
-        Button(action: onOpen) {
-            HStack {
+        GlassCard(radius: 26, fill: CD.glassLow, padding: .hv(16, 2), content: content)
+    }
+}
+
+private struct ActionRow: View {
+    let title: String
+    let color: Color
+    var enabled = true
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(title).body(14, color, weight: .semibold)
+                .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableStyle())
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .pointerHover()
+    }
+}
+
+private struct NavRow: View {
+    let icon: CdIcon
+    let title: String
+    let subtitle: String
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                CdIconView(icon, color: CD.textPrimary, size: 22)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(s != nil ? "● Drive is on" : "Turn into drive")
-                        .font(.cd(14, weight: .medium)).foregroundColor(s != nil ? Aurora.phosphor : Aurora.textPrimary)
-                    Text(s.map { "\($0.rootLabel) · \($0.url) · \($0.clients.count) connected" }
-                         ?? "share this \(Platform.deviceNoun)'s files with any device on the Wi-Fi")
-                        .font(.cd(12)).foregroundColor(Aurora.textDim).multilineTextAlignment(.leading)
+                    Text(title).body(14, weight: .semibold)
+                    Text(subtitle).body(12, CD.textDim).fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer(minLength: 8)
-                Text("›").font(.cd(18)).foregroundColor(Aurora.textDim)
+                Spacer(minLength: 4)
+                CdIconView(CdIcons.chevronRight, color: CD.textDim, size: 18)
             }
-            .padding(.horizontal, 16).padding(.vertical, 13)
+            .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain).pointerHover()
+        .buttonStyle(PressableStyle())
+        .accessibilityElement(children: .combine)
+        .pointerHover()
+    }
+}
+
+/// Accent call-to-action while off; a live status card (pulsing dot) while the drive is on. Observes the
+/// host directly — nested ObservableObjects don't propagate through `AppContainer`.
+struct DriveSettingsCard: View {
+    @ObservedObject var host: VaultHostManager
+    let onOpen: () -> Void
+    @State private var glow = false
+
+    var body: some View {
+        if let s = host.state {
+            GlassCard(radius: 28, border: CD.accent.opacity(0.35), glow: CD.accent.opacity(0.13), padding: .all(18),
+                      action: onOpen, actionLabel: "Opens the drive") {
+                HStack(spacing: 14) {
+                    IconTile(icon: CdIcons.drive, tint: CD.accent, bg: CD.accent.opacity(0.14), size: 48, radius: 16, iconSize: 24)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 8) {
+                            Circle().fill(CD.accent).frame(width: 8, height: 8).opacity(glow ? 1 : 0.4)
+                            Text("Drive is on").displayStyle(17, tracking: -0.02)
+                        }
+                        let n = s.clients.count
+                        Text("\(s.rootLabel) · " + (n == 0 ? "no one connected" : "\(n) connected"))
+                            .body(12, CD.textDim).lineLimit(1)
+                    }
+                    Spacer(minLength: 4)
+                    CdIconView(CdIcons.chevronRight, color: CD.textDim, size: 20)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .onAppear { withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) { glow = true } }
+        } else {
+            GlassCard(radius: 28, fill: CD.accent, border: nil, glow: CD.accent.opacity(0.2), glowRadius: 44, glowOffsetY: 14,
+                      padding: .all(18), action: onOpen, actionLabel: "Opens the drive setup") {
+                HStack(spacing: 14) {
+                    IconTile(icon: CdIcons.drive, tint: CD.onAccent, bg: CD.onAccent.opacity(0.12), size: 48, radius: 16, iconSize: 24)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Turn into drive").displayStyle(17, tracking: -0.02, color: CD.onAccent)
+                        Text("Open this \(Platform.deviceNoun) from Finder, Windows or any browser").body(12, CD.onAccentMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 4)
+                    CdIconView(CdIcons.chevronRight, color: CD.onAccent, size: 20)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 }

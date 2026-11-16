@@ -6,58 +6,79 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.dropShadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
-import com.crossdrop.ui.theme.AuroraViolet
-import com.crossdrop.ui.theme.DeepSpace
-import com.crossdrop.ui.theme.DeepSpaceSoft
-import com.crossdrop.ui.theme.FluidCyan
-import com.crossdrop.ui.theme.GlassEdge
-import com.crossdrop.ui.theme.NebulaPink
-import com.crossdrop.ui.theme.Phosphor
-import com.crossdrop.ui.theme.RippleTeal
+import com.crossdrop.core.UNNAMED_PEER
+import com.crossdrop.ui.CdIcon
+import com.crossdrop.ui.CdIcons
+import com.crossdrop.ui.theme.Accent
+import com.crossdrop.ui.theme.Amber
+import com.crossdrop.ui.theme.OnAccent
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
-import kotlin.math.cos
-import kotlin.math.min
-import kotlin.math.sin
+import com.crossdrop.ui.theme.displayStyle
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
 
 /**
- * The ambient sonar screen: concentric ripples, a rotating sweep, and orbiting
- * peer nodes whose radial distance tracks BLE RSSI (Kalman-smoothed input
- * arrives via [Peer.estimatedDistanceMeters]). NSD-only peers orbit a default
- * ring. A peer's angle is a stable hash of its instance id so nodes don't
- * teleport between recompositions.
+ * The sonar: three quiet rings, a rotating sweep and two accent pulses behind
+ * real, focusable device nodes. A node's radius tracks BLE distance
+ * ([Peer.estimatedDistanceMeters]); Wi-Fi-only peers sit on an outer ring
+ * with a dashed outline ("no distance"). The angle is a stable hash of the
+ * instance id so nodes never jump between recompositions. The nearest
+ * device glows. Vault beacons, if passed in, render as amber drive nodes.
+ *
+ * Animation state is read only in draw/layout lambdas, so the sweep and the
+ * gentle float never recompose the node tree.
  */
 @Composable
 fun RadarCanvas(
@@ -65,357 +86,258 @@ fun RadarCanvas(
     peers: List<Peer>,
     onPeerTap: (Peer) -> Unit,
     modifier: Modifier = Modifier,
+    onSelfTap: (() -> Unit)? = null,
+    selfIcon: ImageVector = CdIcons.Phone,
 ) {
-    val textMeasurer = rememberTextMeasurer()
-    var canvasSize by remember { mutableStateOf(Size.Zero) }
-
     val transition = rememberInfiniteTransition(label = "sonar")
-    val rippleT by transition.animateFloat(
-        initialValue = 0f, targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(4200, easing = LinearEasing)),
-        label = "ripple",
+    val sweep = transition.animateFloat(
+        0f, 360f, infiniteRepeatable(tween(5000, easing = LinearEasing)), label = "sweep",
     )
-    val sweepT by transition.animateFloat(
-        initialValue = 0f, targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(6000, easing = LinearEasing)),
-        label = "sweep",
+    val pulse = transition.animateFloat(
+        0f, 1f, infiniteRepeatable(tween(3200, easing = LinearEasing)), label = "pulse",
     )
-    val bobT by transition.animateFloat(
-        initialValue = 0f, targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
-        label = "bob",
-    )
-    val tA by transition.animateFloat(
-        initialValue = 0f, targetValue = (2 * PI).toFloat(),
-        animationSpec = infiniteRepeatable(tween(9000, easing = LinearEasing)),
-        label = "ambient",
+    val drift = transition.animateFloat(
+        0f, (2 * PI).toFloat(), infiniteRepeatable(tween(4300, easing = LinearEasing)), label = "float",
     )
 
-    // Stable geometry shared by drawing + hit-testing.
-    val positions = remember(peers, canvasSize, bobT) {
-        if (canvasSize == Size.Zero) emptyMap() else {
-            val center = Offset(canvasSize.width / 2, canvasSize.height / 2)
-            val maxR = min(canvasSize.width, canvasSize.height) / 2 * 0.86f
-            peers.associate { peer ->
-                val angle = angleFor(peer.instanceId)
-                val norm = normalizedDistance(peer)
-                val bob = sin(bobT + (abs(peer.instanceId.hashCode()) % 7)).toFloat() * 6f
-                val r = maxR * norm + bob
-                peer.instanceId to Offset(
-                    center.x + r * cos(angle), center.y + r * sin(angle)
-                )
-            }
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val w = maxWidth
+        val h = maxHeight
+        val maxR = (minOf(w - 20.dp, h - 8.dp) / 2).coerceAtLeast(70.dp)
+        val cx = w / 2
+        val cy = h / 2
+
+        SonarBackdrop(maxR, sweep, pulse)
+
+        val nearest = peers
+            .filter { it.endpoint != null && it.vault == null && it.estimatedDistanceMeters != null }
+            .minByOrNull { it.estimatedDistanceMeters!! }?.instanceId
+
+        peers.forEach { peer ->
+            val angle = angleFor(peer.instanceId)
+            val r = maxR * radiusFraction(peer)
+            val px = cx + r * cos(angle)
+            val py = cy + r * sin(angle)
+            // Keep the whole node (circle + two label lines) inside the box.
+            val left = (px - NODE_W / 2).coerceIn(0.dp, (w - NODE_W).coerceAtLeast(0.dp))
+            val top = (py - NODE_D / 2).coerceIn(0.dp, (h - NODE_H).coerceAtLeast(0.dp))
+            val phase = (abs(peer.instanceId.hashCode()) % 7).toFloat()
+            PeerNode(
+                peer = peer,
+                nearest = peer.instanceId == nearest,
+                onTap = { onPeerTap(peer) },
+                modifier = Modifier.offset {
+                    val bob = sin(drift.value + phase) * 4.dp.toPx()
+                    IntOffset(left.roundToPx(), (top.toPx() + bob).roundToInt())
+                },
+            )
         }
-    }
 
-    // pointerInput must NOT key on `positions` — it changes every frame (bobT),
-    // which would restart detectTapGestures mid-gesture and eat every tap.
-    val latestPositions by rememberUpdatedState(positions)
-    val latestPeers by rememberUpdatedState(peers)
-    Canvas(
-        modifier = modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures { tap ->
-                    latestPositions.entries
-                        .minByOrNull { (_, pos) -> (pos - tap).getDistance() }
-                        ?.takeIf { (_, pos) -> (pos - tap).getDistance() < 140f }
-                        ?.let { (id, _) -> latestPeers.firstOrNull { it.instanceId == id }?.let(onPeerTap) }
-                }
-            },
-    ) {
-        canvasSize = size
-        val center = Offset(size.width / 2, size.height / 2)
-        val maxR = min(size.width, size.height) / 2 * 0.86f
-
-        drawBackground()
-        drawAmbient(center, maxR, tA)
-        drawGrid(center, maxR)
-        drawSweep(center, maxR, sweepT)
-        drawRipples(center, maxR, rippleT)
-
-        positions.forEach { (id, pos) ->
-            peers.firstOrNull { it.instanceId == id }?.let { peer ->
-                if (peer.vault != null) drawVaultBeacon(pos, peer, textMeasurer, bobT, tA)
-                else drawPeerNode(pos, peer, textMeasurer, bobT)
-            }
-        }
-        drawSelfNode(center, selfName, textMeasurer, rippleT)
-    }
-}
-
-// ------------------------------------------------------------------ layers --
-
-private fun DrawScope.drawBackground() {
-    drawRect(
-        Brush.radialGradient(
-            colors = listOf(Color(0xFF0C0628), DeepSpace),
-            center = center, radius = size.maxDimension / 1.6f,
-        )
-    )
-}
-
-/** Nebula washes + twinkling starfield — deterministic placement, ambient drift. */
-private fun DrawScope.drawAmbient(center: Offset, maxR: Float, tA: Float) {
-    val blobs = listOf(
-        Triple(AuroraViolet, Offset(-0.9f, -0.5f), 1.1f),
-        Triple(FluidCyan, Offset(0.8f, -0.9f), 0.9f),
-        Triple(RippleTeal, Offset(0.4f, 0.95f), 1.0f),
-        Triple(NebulaPink, Offset(-0.75f, 0.6f), 0.7f),
-    )
-    blobs.forEachIndexed { i, (color, off, scale) ->
-        val drift = Offset(sin(tA * 0.4f + i * 2.1f) * 0.08f, cos(tA * 0.3f + i) * 0.06f)
-        val pos = center + Offset(off.x * maxR + drift.x * maxR, off.y * maxR + drift.y * maxR)
-        drawCircle(
-            Brush.radialGradient(listOf(color.copy(alpha = 0.075f), Color.Transparent),
-                center = pos, radius = maxR * scale),
-            radius = maxR * scale, center = pos,
-        )
-    }
-    // Stars: hash-seeded positions, gentle twinkle. Cheap ambience, no state.
-    for (i in 0 until 90) {
-        val h = (i.toLong() * 2654435761L) xor 0x9E3779B9L
-        val px = ((h ushr 33) % 1000).toFloat() / 1000f
-        val py = ((h ushr 11) % 1023).toFloat() / 1023f
-        val tw = 0.5f + 0.5f * sin(tA * (0.8f + (i % 7) * 0.22f) + i * 1.7f)
-        drawCircle(
-            Color.White.copy(alpha = 0.05f + 0.10f * tw),
-            radius = 0.8f + (i % 3) * 0.5f,
-            center = Offset(px * size.width, py * size.height),
+        SelfNode(
+            name = selfName,
+            icon = selfIcon,
+            onTap = onSelfTap,
+            modifier = Modifier.offset(x = cx - SELF_W / 2, y = cy - SELF_D / 2),
         )
     }
 }
 
-private fun DrawScope.drawGrid(center: Offset, maxR: Float) {
-    val ringColor = RippleTeal.copy(alpha = 0.10f)
-    for (i in 1..4) {
-        drawCircle(ringColor, maxR * i / 4f, center, style = Stroke(1.2f))
-    }
-    val lineColor = RippleTeal.copy(alpha = 0.05f)
-    drawLine(lineColor, center - Offset(maxR, 0f), center + Offset(maxR, 0f), 1f)
-    drawLine(lineColor, center - Offset(0f, maxR), center + Offset(0f, maxR), 1f)
-}
+private val NODE_W = 112.dp
+private val NODE_D = 56.dp
+private val NODE_H = 98.dp
+private val SELF_W = 140.dp
+private val SELF_D = 76.dp
 
-private fun DrawScope.drawSweep(center: Offset, maxR: Float, sweepDeg: Float) {
-    val wedge = Path().apply {
-        moveTo(center.x, center.y)
-        arcTo(Rect(center = center, radius = maxR), 0f, 60f, false)
-        close()
-    }
-    clipPath(wedge) {
-        rotate(sweepDeg, center) {
+// ------------------------------------------------------------- backdrop --
+
+@Composable
+private fun SonarBackdrop(maxR: Dp, sweep: State<Float>, pulse: State<Float>) {
+    Canvas(Modifier.fillMaxSize()) {
+        val c = center
+        val r = maxR.toPx()
+
+        // sweep — a soft wedge with a crisp leading edge, rotating clockwise
+        rotate(sweep.value, c) {
             drawCircle(
                 Brush.sweepGradient(
-                    0f to RippleTeal.copy(alpha = 0.30f),
-                    0.07f to FluidCyan.copy(alpha = 0.16f),
-                    0.13f to AuroraViolet.copy(alpha = 0.07f),
-                    0.18f to Color.Transparent,
+                    0f to Color.Transparent,
+                    (70f / 360f) to Accent.copy(alpha = 0.25f),
+                    (70.5f / 360f) to Color.Transparent,
                     1f to Color.Transparent,
-                    center = center,
+                    center = c,
                 ),
-                radius = maxR, center = center,
+                radius = r, center = c,
             )
         }
+
+        // two expanding pulses, half a cycle apart, eased out
+        for (k in 0..1) {
+            val p = (pulse.value + k * 0.5f) % 1f
+            val e = 1f - (1f - p).pow(2.4f)
+            drawCircle(
+                Accent.copy(alpha = 0.7f * (1f - p)),
+                radius = r * (0.35f + 0.65f * e), center = c,
+                style = Stroke(1.5.dp.toPx()),
+            )
+        }
+
+        // static rings
+        drawCircle(Color.White.copy(alpha = 0.12f), r * 0.35f, c, style = Stroke(1.dp.toPx()))
+        drawCircle(Color.White.copy(alpha = 0.08f), r * 0.676f, c, style = Stroke(1.dp.toPx()))
+        drawCircle(Color.White.copy(alpha = 0.05f), r, c, style = Stroke(1.dp.toPx()))
     }
 }
 
-private fun DrawScope.drawRipples(center: Offset, maxR: Float, t: Float) {
-    for (i in 0 until 4) {
-        val phase = (t + i / 4f) % 1f
-        drawCircle(
-            RippleTeal.copy(alpha = (1f - phase) * 0.35f),
-            radius = phase * maxR,
-            center = center,
-            style = Stroke(width = (3f - phase * 2f).coerceAtLeast(0.6f)),
+// ---------------------------------------------------------------- nodes --
+
+@Composable
+private fun SelfNode(name: String, icon: ImageVector, onTap: (() -> Unit)?, modifier: Modifier) {
+    Column(
+        modifier.width(SELF_W)
+            .then(
+                if (onTap != null) Modifier.clickable(
+                    interactionSource = null, indication = ripple(bounded = false, radius = 64.dp),
+                    role = Role.Button, onClickLabel = "Rename", onClick = onTap,
+                ) else Modifier,
+            )
+            .semantics(mergeDescendants = true) {
+                contentDescription = "Your device, $name" + if (onTap != null) ". Tap to rename" else ""
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Box(Modifier.size(SELF_D), contentAlignment = Alignment.Center) {
+            // 8dp halo ring (a spread shadow on a circle renders as a rounded square)
+            Box(Modifier.requiredSize(SELF_D + 16.dp).clip(CircleShape).background(Accent.copy(alpha = 0.15f)))
+            Box(
+                Modifier.fillMaxSize()
+                    .dropShadow(CircleShape, Shadow(48.dp, Accent.copy(alpha = 0.5f)))
+                    .clip(CircleShape).background(Accent),
+                contentAlignment = Alignment.Center,
+            ) { CdIcon(icon, OnAccent, size = 28.dp) }
+        }
+        Spacer(Modifier.height(12.dp))
+        Text(
+            name, style = displayStyle(14, tracking = 0f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            if (onTap != null) "you · tap to rename" else "you",
+            color = TextDim, fontSize = 11.sp, lineHeight = 12.sp,
         )
     }
 }
 
-private fun DrawScope.drawPeerNode(pos: Offset, peer: Peer, measurer: TextMeasurer, t: Float) {
+@Composable
+private fun PeerNode(peer: Peer, nearest: Boolean, onTap: () -> Unit, modifier: Modifier) {
+    val vault = peer.vault
     val reachable = peer.endpoint != null
-    val alpha = if (reachable) 1f else 0.45f
-    val nodeR = 30.dp.toPx()
-    // breathing pulse on the glow — each peer phased by its id hash
-    val pulse = 1f + 0.08f * sin(t + abs(peer.instanceId.hashCode()) % 11)
+    val distance = peer.estimatedDistanceMeters
+    val name = vault?.vaultName ?: peer.name
+    val icon: ImageVector = if (vault != null) CdIcons.Drive else deviceIconFor(peer.name)
+    val dashed = vault == null && (distance == null || !reachable)
 
-    // soft glow halo
-    drawCircle(
-        Brush.radialGradient(
-            colors = listOf(
-                (if (reachable) RippleTeal else FluidCyan).copy(alpha = 0.40f * alpha),
-                Color.Transparent,
-            ),
-            center = pos, radius = nodeR * 2.0f * pulse,
-        ),
-        radius = nodeR * 2.0f * pulse, center = pos,
-    )
-    // body
-    drawCircle(
-        Brush.radialGradient(
-            colors = listOf(Phosphor.copy(alpha = alpha), RippleTealDimSafe(alpha)),
-            center = pos.copy(y = pos.y - nodeR * 0.3f), radius = nodeR,
-        ),
-        radius = nodeR * 0.62f, center = pos,
-    )
-    // orbit ring for reachable peers
-    if (reachable) {
-        drawCircle(
-            RippleTeal.copy(alpha = 0.6f), radius = nodeR * 0.8f, center = pos,
-            style = Stroke(1.4f),
-        )
+    val (sub, subColor) = when {
+        vault != null -> (if (vault.needsPin) "Drive · PIN" else "Drive") to Amber
+        !reachable -> "Bluetooth only" to TextDim
+        distance != null -> distanceLabel(distance) to (if (nearest) Accent else TextDim)
+        else -> "Wi-Fi" to TextDim
     }
-    // glass-pill label
-    val label = measurer.measure(
-        peer.name,
-        TextStyle(
-            color = TextPrimary.copy(alpha = alpha), fontSize = 12.sp,
-            fontWeight = FontWeight.Medium, textAlign = TextAlign.Center,
-        ),
-        maxLines = 1, overflow = TextOverflow.Ellipsis,
-        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 120.dp.toPx().toInt()),
-    )
-    val padH = 10.dp.toPx(); val padV = 4.dp.toPx()
-    val pillW = label.size.width + padH * 2
-    val pillH = label.size.height + padV * 2
-    val pillTop = pos + Offset(-pillW / 2f, nodeR * 0.85f)
-    drawRoundRect(
-        DeepSpaceSoft.copy(alpha = 0.85f),
-        topLeft = pillTop, size = Size(pillW, pillH),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
-    )
-    drawRoundRect(
-        GlassEdge, topLeft = pillTop, size = Size(pillW, pillH),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
-        style = Stroke(1f),
-    )
-    drawText(label, topLeft = pillTop + Offset(padH, padV))
-}
-
-private fun RippleTealDimSafe(alpha: Float) = RippleTeal.copy(alpha = 0.85f * alpha)
-
-/**
- * Orbital Beacon — the vault node: violet core, segmented orbit ring that
- * slowly rotates, and an [RO]/[RW] badge above the name pill.
- */
-private fun DrawScope.drawVaultBeacon(
-    pos: Offset, peer: Peer, measurer: TextMeasurer, t: Float, orbit: Float,
-) {
-    val vault = peer.vault ?: return
-    val nodeR = 30.dp.toPx()
-    val pulse = 1f + 0.10f * sin(t + abs(peer.instanceId.hashCode()) % 11)
-    val tint = AuroraViolet
-
-    // halo
-    drawCircle(
-        Brush.radialGradient(
-            colors = listOf(tint.copy(alpha = 0.45f), Color.Transparent),
-            center = pos, radius = nodeR * 2.2f * pulse,
-        ),
-        radius = nodeR * 2.2f * pulse, center = pos,
-    )
-    // core
-    drawCircle(
-        Brush.radialGradient(
-            colors = listOf(Phosphor, tint.copy(alpha = 0.85f)),
-            center = pos.copy(y = pos.y - nodeR * 0.3f), radius = nodeR,
-        ),
-        radius = nodeR * 0.58f, center = pos,
-    )
-    // segmented orbit ring — dashes rotating around the node
-    val ringR = nodeR * 1.02f
-    rotate(orbit * 180f / PI.toFloat(), pivot = pos) {
-        for (i in 0 until 12) {
-            // alternating violet/magenta dashes — the aurora curtain edge
-            val c = when (i % 3) { 0 -> NebulaPink; else -> tint }
-            drawArc(
-                color = c.copy(alpha = if (i % 2 == 0) 0.9f else 0.42f),
-                startAngle = i * 30f, sweepAngle = 16f, useCenter = false,
-                topLeft = pos - Offset(ringR, ringR), size = Size(ringR * 2, ringR * 2),
-                style = Stroke(2.dp.toPx()),
-            )
+    val ringColor = when {
+        vault != null -> Amber.copy(alpha = 0.5f)
+        nearest -> Accent.copy(alpha = 0.5f)
+        dashed -> Color.White.copy(alpha = 0.25f)
+        else -> Color.White.copy(alpha = 0.14f)
+    }
+    val spoken = buildString {
+        append(if (vault != null) "Open drive $name" else "Send to $name")
+        when {
+            vault != null && vault.needsPin -> append(", PIN protected")
+            !reachable -> append(", seen over Bluetooth only, not reachable yet")
+            distance != null -> append(", about ${distance.roundToInt().coerceAtLeast(1)} metres away")
+            else -> append(", seen over Wi-Fi")
         }
     }
-    // [RW]/[RO] badge above the node
-    val badgeText = if (vault.writable) "RW" else "RO"
-    val badge = measurer.measure(
-        badgeText,
-        TextStyle(color = if (vault.writable) Phosphor else tint,
-            fontSize = 9.sp, fontWeight = FontWeight.Bold),
-    )
-    val bPadH = 6.dp.toPx(); val bPadV = 2.dp.toPx()
-    val bw = badge.size.width + bPadH * 2
-    val bh = badge.size.height + bPadV * 2
-    val bTop = pos - Offset(bw / 2f, nodeR * 1.35f + bh)
-    drawRoundRect(
-        DeepSpaceSoft.copy(alpha = 0.9f), topLeft = bTop, size = Size(bw, bh),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(bh / 2f),
-    )
-    drawRoundRect(
-        tint.copy(alpha = 0.7f), topLeft = bTop, size = Size(bw, bh),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(bh / 2f),
-        style = Stroke(1f),
-    )
-    drawText(badge, topLeft = bTop + Offset(bPadH, bPadV))
-    // name pill (same chrome as peers)
-    val label = measurer.measure(
-        vault.vaultName,
-        TextStyle(color = TextPrimary, fontSize = 12.sp,
-            fontWeight = FontWeight.Medium, textAlign = TextAlign.Center),
-        maxLines = 1, overflow = TextOverflow.Ellipsis,
-        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 120.dp.toPx().toInt()),
-    )
-    val padH = 10.dp.toPx(); val padV = 4.dp.toPx()
-    val pillW = label.size.width + padH * 2
-    val pillH = label.size.height + padV * 2
-    val pillTop = pos + Offset(-pillW / 2f, nodeR * 0.85f)
-    drawRoundRect(
-        DeepSpaceSoft.copy(alpha = 0.85f),
-        topLeft = pillTop, size = Size(pillW, pillH),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
-    )
-    drawRoundRect(
-        tint.copy(alpha = 0.6f), topLeft = pillTop, size = Size(pillW, pillH),
-        cornerRadius = androidx.compose.ui.geometry.CornerRadius(pillH / 2f),
-        style = Stroke(1f),
-    )
-    drawText(label, topLeft = pillTop + Offset(padH, padV))
-}
 
-private fun DrawScope.drawSelfNode(center: Offset, name: String, measurer: TextMeasurer, t: Float) {
-    // expanding heartbeat ring
-    val phase = t % 1f
-    drawCircle(
-        RippleTeal.copy(alpha = (1f - phase) * 0.30f),
-        radius = 14.dp.toPx() + phase * 34.dp.toPx(),
-        center = center, style = Stroke(1.2f + (1f - phase) * 1.4f),
-    )
-    drawCircle(
-        Brush.radialGradient(
-            colors = listOf(RippleTeal.copy(alpha = 0.5f), Color.Transparent),
-            center = center, radius = 44.dp.toPx(),
-        ),
-        radius = 44.dp.toPx(), center = center,
-    )
-    drawCircle(Phosphor, radius = 9.dp.toPx(), center = center)
-    drawCircle(RippleTeal, radius = 14.dp.toPx(), center = center, style = Stroke(1.6f))
-    val label = measurer.measure(
-        name, TextStyle(color = TextDim, fontSize = 11.sp, textAlign = TextAlign.Center),
-        constraints = androidx.compose.ui.unit.Constraints(maxWidth = 120.dp.toPx().toInt()),
-    )
-    drawText(label, topLeft = center + Offset(-label.size.width / 2f, 18.dp.toPx()))
+    Column(
+        modifier.width(NODE_W)
+            // Unbounded ripple: a clip here would also cut the node's glow.
+            .clickable(
+                interactionSource = null, indication = ripple(bounded = false, radius = 52.dp),
+                enabled = reachable, role = Role.Button, onClick = onTap,
+            )
+            .semantics(mergeDescendants = true) { contentDescription = spoken }
+            .alpha(if (reachable) 1f else 0.6f),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            Modifier.size(NODE_D)
+                .then(
+                    if (nearest || vault != null)
+                        Modifier.dropShadow(CircleShape, Shadow(24.dp, (if (vault != null) Amber else Accent).copy(alpha = 0.18f)))
+                    else Modifier,
+                )
+                .clip(CircleShape)
+                .background(Color.White.copy(alpha = if (dashed) 0.04f else 0.08f))
+                .then(
+                    if (dashed) Modifier.drawBehind {
+                        val s = 1.dp.toPx()
+                        drawCircle(
+                            ringColor, radius = size.minDimension / 2 - s / 2,
+                            style = Stroke(s, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx()))),
+                        )
+                    } else Modifier.border(1.dp, ringColor, CircleShape),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            CdIcon(
+                icon,
+                when {
+                    vault != null -> Amber
+                    icon == CdIcons.Wifi -> TextDim
+                    else -> TextPrimary
+                },
+                size = 24.dp,
+            )
+        }
+        Text(
+            name, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            lineHeight = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center,
+        )
+        Text(sub, color = subColor, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 12.sp, maxLines = 1)
+    }
 }
 
 // ------------------------------------------------------------------- math --
+
+/** Best-guess device glyph from the advertised name. */
+internal fun deviceIconFor(name: String): ImageVector {
+    val n = name.lowercase()
+    return when {
+        n == UNNAMED_PEER.lowercase() || n.isBlank() -> CdIcons.Wifi
+        "ipad" in n || "tablet" in n || n.startsWith("galaxy tab") || " tab " in " $n " -> CdIcons.Tablet
+        "macbook" in n || "laptop" in n || "notebook" in n || "thinkpad" in n || "chromebook" in n -> CdIcons.Laptop
+        "imac" in n || "desktop" in n || "windows" in n || "mac mini" in n || "mac studio" in n ||
+            Regex("\\bpc\\b").containsMatchIn(n) || n == "mac" -> CdIcons.Monitor
+        else -> CdIcons.Phone
+    }
+}
+
+private fun distanceLabel(m: Double): String = if (m < 1.0) "< 1 m" else "≈ ${m.roundToInt()} m"
 
 private fun angleFor(instanceId: String): Float {
     val h = instanceId.fold(7) { acc, c -> acc * 31 + c.code }
     return ((h and 0x7fffffff) % 360) * PI.toFloat() / 180f
 }
 
-/** RSSI → normalized radar radius [0.14, 1.0]; no signal → default ring. */
-private fun normalizedDistance(peer: Peer): Float {
-    val meters = peer.estimatedDistanceMeters ?: return 0.55f
-    // 0.3 m … ~12 m compressed logarithmically.
-    val n = (kotlin.math.ln(meters.coerceIn(0.3, 12.0) / 0.3) / kotlin.math.ln(12.0 / 0.3))
-    return (0.14f + n.toFloat() * 0.86f)
+/**
+ * Fraction of the radar radius for a peer. BLE distance (0.3 m … 12 m,
+ * log-compressed) maps to 0.48…0.92 so even the closest device clears the
+ * centre node; no signal → the outer ring.
+ */
+private fun radiusFraction(peer: Peer): Float {
+    val meters = peer.estimatedDistanceMeters ?: return 0.80f
+    val n = ln(meters.coerceIn(0.3, 12.0) / 0.3) / ln(12.0 / 0.3)
+    return 0.48f + n.toFloat() * 0.44f
 }

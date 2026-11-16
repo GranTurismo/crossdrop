@@ -1,5 +1,4 @@
 import SwiftUI
-import CoreImage.CIFilterBuiltins
 import CrossDropCore
 
 /// Observes the share manager directly (nested ObservableObjects don't propagate through AppContainer)
@@ -11,134 +10,138 @@ struct QrShareHost: View {
         ZStack {
             if let s = qrShare.state {
                 QrShareScreen(state: s, onStop: qrShare.stop)
-                    .background(Aurora.deepSpace.ignoresSafeArea())
-                    .transition(.move(edge: .bottom))
-                    .zIndex(2)
+                    .background(CD.ink.ignoresSafeArea())
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeInOut(duration: 0.3), value: qrShare.state != nil)
     }
 }
 
-/// "Send to anyone": the receiver scans the QR with any camera app and gets a browser-hosted file
-/// list — no CrossDrop install needed on their end.
+/// "Send to anyone": the receiver scans the QR with any camera and gets a browser page with the files —
+/// no CrossDrop needed on their end. A three-step strip tracks scan → connected → delivered. The screen
+/// stays awake (KeepAwake "share") so the code stays scannable; leaving it stops the share.
 struct QrShareScreen: View {
     let state: QrShareManager.State
     let onStop: () -> Void
-    @State private var copied = false
+
+    private var step: Int {
+        if state.delivered { return 2 }
+        if state.connected || state.downloadsStarted > 0 { return 1 }
+        return 0
+    }
 
     var body: some View {
         ZStack {
-            AuroraBackdrop()
-            ReadableScroll {
-                VStack(spacing: 0) {
-                    Text("S H A R E   T O   A N Y O N E").font(.cd(12, weight: .medium)).tracking(1)
-                        .foregroundColor(Aurora.textDim).padding(.top, 24)
-                    Text("Scan with any camera — no app needed")
-                        .font(.cd(18, weight: .semibold)).foregroundColor(Aurora.textPrimary)
-                        .padding(.top, 4).padding(.bottom, 22)
-
-                    QrCard(text: state.url)
-
-                    Button {
-                        UIPasteboard.general.string = state.url
-                        copied = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { copied = false }
-                    } label: {
-                        VStack(spacing: 3) {
-                            Text(state.url).font(.cd(11)).foregroundColor(Aurora.textDim)
-                                .multilineTextAlignment(.center).textSelection(.enabled)
-                            Text(copied ? "copied" : "tap to copy").font(.cd(10, weight: .medium))
-                                .foregroundColor(copied ? Aurora.phosphor : Aurora.teal)
+            CD.ink.ignoresSafeArea()
+            ScreenGlow(alpha: 0.14, centerY: 310, radius: 240)
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        BackHeader("Send to anyone", backLabel: "Stop sharing and go back", onBack: onStop)
+                        StepStrip(step: step, state: state)
+                        GeometryReader { g in
+                            QrCard(text: state.url, size: min(236, g.size.width - 40)).frame(maxWidth: .infinity)
                         }
-                        .padding(.horizontal, 20)
-                    }
-                    .buttonStyle(.plain).padding(.top, 14)
+                        .frame(height: 236)
+                        .padding(.top, 8)
+                        Text("Scan with any camera — no app needed").body(14, CD.textSecondary)
+                            .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 6)
 
-                    statusLine.padding(.top, 10)
-
-                    GlassCard(radius: 18) {
-                        VStack(spacing: 8) {
-                            ForEach(Array(state.files.prefix(6).enumerated()), id: \.offset) { _, f in
-                                HStack(spacing: 10) {
-                                    FileTypeTile(fileName: f.name, size: 34)
-                                    Text(f.name).font(.cd(13)).foregroundColor(Aurora.textPrimary).lineLimit(1)
-                                    Spacer(minLength: 8)
-                                    Text(Fmt.bytes(f.size)).font(.cd(12)).foregroundColor(Aurora.textDim)
-                                }
-                            }
-                            if state.files.count > 6 {
-                                Text("+ \(state.files.count - 6) more").font(.cd(11)).foregroundColor(Aurora.textDim)
-                                    .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 44)
-                            }
+                        HStack(spacing: 10) {
+                            Text(state.url.replacingOccurrences(of: "http://", with: ""))
+                                .monoStyle(13, color: CD.textSecondary).lineLimit(1).truncationMode(.middle)
+                                .textSelection(.enabled)
+                            Spacer(minLength: 0)
+                            CopyButton(value: state.url, label: "Copy link", accent: true, height: 44)
                         }
-                        .padding(12)
-                    }
-                    .padding(.top, 18)
+                        .padding(.leading, 16).padding(.trailing, 6).padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(CD.glass))
+                        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).strokeBorder(CD.hairline, lineWidth: 1))
 
-                    Text("Both devices must stay on this Wi-Fi. The link stops working when you close this screen.")
-                        .font(.cd(11)).foregroundColor(Aurora.textDim).multilineTextAlignment(.center)
-                        .padding(.horizontal, 12).padding(.top, 16)
+                        FilesSummary(files: state.files)
 
-                    Group {
-                        if state.delivered {
-                            Button("Done", action: onStop).buttonStyle(PrimaryButtonStyle()).frame(maxWidth: 220)
-                        } else {
-                            Button("Stop sharing", action: onStop)
-                                .font(.cd(15, weight: .medium)).foregroundColor(Aurora.danger).padding(.vertical, 12)
-                        }
+                        FootNote("They need to be on this Wi-Fi. Without the secret link the page doesn't exist, "
+                                 + "and it stops working the moment you leave this screen."
+                                 + (Platform.pausesInBackground ? " Keep CrossDrop open while they download." : ""))
                     }
-                    .padding(.top, 20).padding(.bottom, 24)
                 }
-                .padding(.horizontal, 24)
+                Group {
+                    if state.delivered { PillButton("Done", height: 56, action: onStop) }
+                    else { PillButton("Stop sharing", style: .danger, height: 56, action: onStop) }
+                }
+                .padding(.top, 16)
             }
+            .frame(maxWidth: 560)
+            .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 22)
         }
-    }
-
-    @ViewBuilder private var statusLine: some View {
-        let (text, color): (String, Color) = {
-            if state.delivered { return ("Delivered — all files downloaded", Aurora.phosphor) }
-            if state.downloadsStarted > 0 {
-                return ("\(state.downloadsDone) of \(state.downloadsStarted) downloads done · \(Fmt.bytes(state.bytesServed))", Aurora.cyan)
-            }
-            if state.connected { return ("Receiver connected — waiting for downloads", Aurora.teal) }
-            return ("Waiting for a scan…", Aurora.textDim)
-        }()
-        Text(text).font(.cd(13, weight: .medium)).foregroundColor(color)
     }
 }
 
-/// QR drawn on a light card — scanners need a light quiet zone, so the dark theme inverts here.
-struct QrCard: View {
-    let text: String
-    var size: CGFloat = 252
+private struct StepStrip: View {
+    let step: Int
+    let state: QrShareManager.State
+    @State private var blink = false
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .fill(Color(hex: 0xF2FBFF))
-            .frame(width: size, height: size)
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Aurora.gradient, lineWidth: 2))
-            .overlay(
-                Group {
-                    if let img = Self.image(for: text) {
-                        Image(uiImage: img).interpolation(.none).resizable().scaledToFit().padding(18)
+        let labels = [
+            "Waiting for a scan",
+            state.downloadsStarted > 0 && !state.delivered ? "\(state.downloadsDone) of \(state.files.count) downloaded" : "Receiver connected",
+            "Delivered",
+        ]
+        HStack(alignment: .top, spacing: 6) {
+            ForEach(0..<3, id: \.self) { i in
+                let done = i < step || (i == 2 && step == 2)
+                let current = i == step
+                let lit = done || current
+                VStack(alignment: .leading, spacing: 6) {
+                    Capsule().fill(lit ? CD.accent : Color.white.opacity(0.1)).frame(height: 4)
+                        .shadow(color: current ? CD.accent : .clear, radius: current ? 5 : 0)
+                    HStack(spacing: 5) {
+                        if current && step < 2 {
+                            Circle().fill(CD.accent).frame(width: 6, height: 6).opacity(blink ? 0.35 : 1)
+                        }
+                        Text(labels[i]).font(.cd(11, weight: lit ? .semibold : .regular))
+                            .foregroundColor(lit ? CD.accent : CD.textFaint).lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
-            )
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(step + 1) of 3: \(labels[step])")
+        .onAppear { withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { blink = true } }
+        .onChange(of: step) { _ in UIAccessibility.post(notification: .announcement, argument: labels[step]) }
     }
+}
 
-    /// Dark modules on a light ground, rendered at an integer module scale so edges stay crisp.
-    static func image(for text: String) -> UIImage? {
-        let f = CIFilter.qrCodeGenerator()
-        f.message = Data(text.utf8)
-        f.correctionLevel = "M"
-        guard let raw = f.outputImage else { return nil }
-        let tint = CIFilter.falseColor()
-        tint.inputImage = raw
-        tint.color0 = CIColor(red: 3 / 255, green: 0, blue: 20 / 255)
-        tint.color1 = CIColor(red: 0xF2 / 255, green: 0xFB / 255, blue: 1)
-        guard let colored = tint.outputImage?.transformed(by: CGAffineTransform(scaleX: 12, y: 12)),
-              let cg = CIContext().createCGImage(colored, from: colored.extent) else { return nil }
-        return UIImage(cgImage: cg)
+private struct FilesSummary: View {
+    let files: [FileMeta]
+    var body: some View {
+        GlassCard(radius: 22, fill: CD.glassLow, border: nil, padding: .hv(14, 12)) {
+            HStack(spacing: 0) {
+                ZStack(alignment: .leading) {
+                    ForEach(Array(files.prefix(2).enumerated()), id: \.offset) { i, f in
+                        FileTypeTile(fileName: f.name, size: 36)
+                            .padding(2)
+                            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(CD.inkSheet))
+                            .offset(x: CGFloat(i) * 26)
+                    }
+                }
+                .frame(width: files.count > 1 ? 66 : 40, alignment: .leading)
+                .padding(.trailing, 12)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(files.count) file\(files.count == 1 ? "" : "s") · \(Fmt.bytes(files.reduce(0) { $0 + $1.size }))")
+                        .body(14, weight: .semibold)
+                    Text(files.prefix(3).map(\.name).joined(separator: ", ")
+                         + (files.count > 3 ? " +\(files.count - 3)" : "")
+                         + (files.count > 1 ? " · or all as one zip" : ""))
+                        .body(12, CD.textDim).lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }

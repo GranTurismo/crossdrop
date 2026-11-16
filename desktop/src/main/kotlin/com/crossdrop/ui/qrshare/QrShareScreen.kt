@@ -1,154 +1,211 @@
 package com.crossdrop.ui.qrshare
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.crossdrop.core.share.QrCode
 import com.crossdrop.net.QrShareManager
+import com.crossdrop.ui.BackHeader
+import com.crossdrop.ui.CopyButton
 import com.crossdrop.ui.FileTypeTile
-import com.crossdrop.ui.theme.DeepSpace
-import com.crossdrop.ui.theme.DeepSpaceRaised
-import com.crossdrop.ui.theme.DeepSpaceSoft
-import com.crossdrop.ui.theme.DangerSoft
-import com.crossdrop.ui.theme.FluidCyan
-import com.crossdrop.ui.theme.GlassEdge
-import com.crossdrop.ui.theme.Phosphor
-import com.crossdrop.ui.theme.RippleTeal
+import com.crossdrop.ui.FootNote
+import com.crossdrop.ui.GlassCard
+import com.crossdrop.ui.PillButton
+import com.crossdrop.ui.PillStyle
+import com.crossdrop.ui.QrCard
+import com.crossdrop.ui.theme.Accent
+import com.crossdrop.ui.theme.Glass
+import com.crossdrop.ui.theme.GlassLow
+import com.crossdrop.ui.theme.Hairline
+import com.crossdrop.ui.theme.InkSheet
+import com.crossdrop.ui.theme.ScreenGlow
 import com.crossdrop.ui.theme.TextDim
+import com.crossdrop.ui.theme.TextFaint
 import com.crossdrop.ui.theme.TextPrimary
+import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.monoStyle
 import com.crossdrop.ui.transfer.formatBytes
 
 /**
- * "Send to anyone" overlay: the receiver scans the QR with any camera app and
- * gets a browser-hosted file list — no CrossDrop install needed on their end.
- * Screen is kept awake while showing so the QR stays scannable.
+ * "Send to anyone": the receiver scans the QR with any camera and gets a
+ * browser page with the files — no CrossDrop needed on their end. A three
+ * step strip tracks scan → connected → delivered. Leaving it stops the share.
+ * Desktop copy of the Android screen (SleepGuard keeps the machine awake).
  */
 @Composable
 fun QrShareScreen(
     state: QrShareManager.State,
     onStop: () -> Unit,
 ) {
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            "S H A R E   T O   A N Y O N E",
-            color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-            letterSpacing = 3.sp,
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Scan with any camera — no app needed",
-            color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
-        )
-        Spacer(Modifier.height(22.dp))
+    val step = when {
+        state.delivered -> 2
+        state.connected || state.downloadsStarted > 0 -> 1
+        else -> 0
+    }
 
-        com.crossdrop.ui.QrCard(state.url)
-        Spacer(Modifier.height(14.dp))
-
-        SelectionContainer {
-            Text(
-                state.url,
-                color = TextDim, fontSize = 11.sp, textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 20.dp),
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-        StatusLine(state)
-        Spacer(Modifier.height(18.dp))
-
-        // shared files
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = DeepSpaceRaised,
-            border = BorderStroke(1.dp, GlassEdge),
-            modifier = Modifier.fillMaxWidth(),
+    Box(Modifier.fillMaxSize()) {
+        ScreenGlow(alpha = 0.14f, centerY = 310.dp, radius = 240.dp)
+        Column(
+            Modifier.fillMaxSize().systemBarsPadding().padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(Modifier.padding(12.dp)) {
-                state.files.take(6).forEach { f ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        FileTypeTile(f.name, size = 34.dp)
-                        Spacer(Modifier.width(10.dp))
-                        Text(
-                            f.name, color = TextPrimary, fontSize = 13.sp,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(formatBytes(f.size), color = TextDim, fontSize = 12.sp)
-                    }
-                }
-                if (state.files.size > 6) {
-                    Text(
-                        "+ ${state.files.size - 6} more",
-                        color = TextDim, fontSize = 11.sp,
-                        modifier = Modifier.padding(start = 44.dp, top = 2.dp),
-                    )
-                }
-            }
-        }
-        Spacer(Modifier.height(16.dp))
+            Column(
+                Modifier.weight(1f).widthIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                BackHeader("Send to anyone", onStop, backLabel = "Stop sharing and go back")
+                StepStrip(step, state)
 
-        Text(
-            "Both devices must stay on this Wi-Fi. The link stops working when you close this screen.",
-            color = TextDim, fontSize = 11.sp, textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 12.dp),
-        )
-        Spacer(Modifier.height(20.dp))
-        if (state.delivered) {
-            Button(
-                onClick = onStop,
-                colors = ButtonDefaults.buttonColors(containerColor = RippleTeal),
-            ) { Text("Done", color = DeepSpace) }
-        } else {
-            TextButton(onClick = onStop) { Text("Stop sharing", color = DangerSoft) }
+                BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
+                    QrCard(state.url, size = minOf(236.dp, maxWidth - 40.dp))
+                }
+                Text(
+                    "Scan with any camera — no app needed", color = TextSecondary, fontSize = 14.sp,
+                    textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+
+                // link + copy
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(26.dp)).background(Glass)
+                        .border(1.dp, Hairline, RoundedCornerShape(26.dp))
+                        .padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        state.url.removePrefix("http://"), style = monoStyle(13, TextSecondary),
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.size(10.dp))
+                    CopyButton(state.url, label = "Copy link", accent = true, height = 44.dp)
+                }
+
+                FilesSummary(state)
+
+                FootNote(
+                    "They need to be on this network. Without the secret link the page doesn't exist, " +
+                        "and it stops working the moment you leave this screen.",
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            if (state.delivered) {
+                PillButton("Done", onStop, Modifier.widthIn(max = 560.dp).fillMaxWidth(), height = 56.dp)
+            } else {
+                PillButton("Stop sharing", onStop, Modifier.widthIn(max = 560.dp).fillMaxWidth(), style = PillStyle.Danger, height = 56.dp)
+            }
         }
     }
 }
 
 @Composable
-private fun StatusLine(state: QrShareManager.State) {
-    val (text, color) = when {
-        state.delivered -> "Delivered — all files downloaded" to Phosphor
-        state.downloadsStarted > 0 ->
-            "${state.downloadsDone} of ${state.downloadsStarted} downloads done · ${formatBytes(state.bytesServed)}" to FluidCyan
-        state.connected -> "Receiver connected — waiting for downloads" to RippleTeal
-        else -> "Waiting for a scan…" to TextDim
+private fun StepStrip(step: Int, state: QrShareManager.State) {
+    val blink by rememberInfiniteTransition(label = "blink").animateFloat(
+        1f, 0.35f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "b",
+    )
+    val labels = listOf(
+        "Waiting for a scan",
+        if (state.downloadsStarted > 0 && !state.delivered) "${state.downloadsDone} of ${state.files.size} downloaded" else "Receiver connected",
+        "Delivered",
+    )
+    Row(
+        Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        labels.forEachIndexed { i, label ->
+            val done = i < step || (i == 2 && step == 2)
+            val current = i == step
+            val lit = done || current
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    Modifier.fillMaxWidth().height(4.dp)
+                        .then(if (current) Modifier.dropShadow(RoundedCornerShape(2.dp), Shadow(10.dp, Accent)) else Modifier)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(if (lit) Accent else Color.White.copy(alpha = 0.1f)),
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (current && step < 2) {
+                        Box(Modifier.size(6.dp).alpha(blink).clip(CircleShape).background(Accent))
+                        Spacer(Modifier.size(5.dp))
+                    }
+                    Text(
+                        label, color = if (lit) Accent else TextFaint, fontSize = 11.sp,
+                        fontWeight = if (lit) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 2, lineHeight = 14.sp,
+                    )
+                }
+            }
+        }
     }
-    Text(text, color = color, fontSize = 13.sp, fontWeight = FontWeight.Medium)
 }
 
-
+@Composable
+private fun FilesSummary(state: QrShareManager.State) {
+    val files = state.files
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 22.dp, fill = GlassLow, border = null,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box {
+                files.take(2).forEachIndexed { i, f ->
+                    Box(
+                        Modifier.offset(x = (i * 26).dp).size(40.dp).clip(RoundedCornerShape(13.dp))
+                            .background(InkSheet).padding(2.dp),
+                    ) { FileTypeTile(f.name, size = 36.dp) }
+                }
+            }
+            Spacer(Modifier.size(if (files.size > 1) 38.dp else 12.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    "${files.size} file${if (files.size == 1) "" else "s"} · ${formatBytes(files.sumOf { it.size })}",
+                    color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    files.take(3).joinToString(", ") { it.name } +
+                        (if (files.size > 3) " +${files.size - 3}" else "") +
+                        (if (files.size > 1) " · or all as one zip" else ""),
+                    color = TextDim, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
