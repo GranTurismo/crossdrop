@@ -28,6 +28,8 @@ class SessionKeys(
     val sas: String,
     /** Raw X25519 shared secret — input to extra derivations (vault PIN auth). */
     val shared: ByteArray,
+    /** Same on both ends of this connection, unique to it — trust proofs are bound to it. */
+    val binding: ByteArray = ByteArray(32),
 )
 
 object SessionCrypto {
@@ -60,14 +62,26 @@ object SessionCrypto {
             (sasBytes.readUInt() % 1_000_000L)
         )
 
-        return if (isInitiator) SessionKeys(i2r, r2i, sas, shared)
-            else SessionKeys(r2i, i2r, sas, shared)
+        val binding = hkdf(shared, salt, "crossdrop/v1/binding", 32)
+
+        return if (isInitiator) SessionKeys(i2r, r2i, sas, shared, binding)
+            else SessionKeys(r2i, i2r, sas, shared, binding)
     }
 
     /** Vault PIN proof — HKDF(ECDH secret, salt = PIN utf8). A wrong PIN yields
      *  a wrong token; only compared, never transmitted in the clear (AEAD). */
     fun vaultAuthToken(shared: ByteArray, pin: String): ByteArray =
         hkdf(shared, pin.toByteArray(Charsets.UTF_8), "crossdrop/v1/vault-auth", 32)
+
+    /** HMAC-SHA256(token, binding ‖ transferId) — what an [com.crossdrop.core.protocol.Offer] carries
+     *  as `trustProof`. */
+    fun trustProof(token: ByteArray, binding: ByteArray, transferId: String): ByteArray {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(token, "HmacSHA256"))
+        mac.update(binding)
+        mac.update(transferId.toByteArray(Charsets.UTF_8))
+        return mac.doFinal()
+    }
 
     internal fun hkdf(ikm: ByteArray, salt: ByteArray, info: String, outLen: Int): ByteArray {
         val out = ByteArray(outLen)

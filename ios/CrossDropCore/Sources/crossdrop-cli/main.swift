@@ -31,6 +31,7 @@ func onEvent(_ e: TransferEvent) {
     case .declinedByPeer: print("EVENT declined"); done.signal()
     case .cancelled: print("EVENT cancelled"); done.signal()
     case .failed(let m): print("EVENT failed \(m)"); done.signal()
+    case .trustGranted(let g): print("EVENT trust \(g.kind)")
     }
 }
 

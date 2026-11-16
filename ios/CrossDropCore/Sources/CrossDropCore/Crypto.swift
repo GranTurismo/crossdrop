@@ -17,6 +17,8 @@ public struct SessionKeys {
     public let sas: String
     /// Raw X25519 shared secret — input to extra derivations (vault PIN auth).
     public let shared: [UInt8]
+    /// Same on both ends of this connection, unique to it — trust proofs are bound to it.
+    public let binding: [UInt8]
 }
 
 public enum SessionCrypto {
@@ -37,13 +39,23 @@ public enum SessionCrypto {
         let n = (UInt32(sasBytes[0]) << 24) | (UInt32(sasBytes[1]) << 16) | (UInt32(sasBytes[2]) << 8) | UInt32(sasBytes[3])
         let sas = String(format: "%06d", n % 1_000_000)
 
+        let binding = hkdf(shared, salt, "crossdrop/v1/binding", 32)
+
         return isInitiator
-            ? SessionKeys(sendKey: i2r, recvKey: r2i, sas: sas, shared: shared)
-            : SessionKeys(sendKey: r2i, recvKey: i2r, sas: sas, shared: shared)
+            ? SessionKeys(sendKey: i2r, recvKey: r2i, sas: sas, shared: shared, binding: binding)
+            : SessionKeys(sendKey: r2i, recvKey: i2r, sas: sas, shared: shared, binding: binding)
     }
 
     public static func vaultAuthToken(shared: [UInt8], pin: String) -> [UInt8] {
         hkdf(shared, Array(pin.utf8), "crossdrop/v1/vault-auth", 32)
+    }
+
+    /// HMAC-SHA256(token, binding ‖ transferId) — an offer's `trustProof`.
+    public static func trustProof(token: [UInt8], binding: [UInt8], transferId: String) -> [UInt8] {
+        var mac = HMAC<SHA256>(key: SymmetricKey(data: token))
+        mac.update(data: binding)
+        mac.update(data: Data(transferId.utf8))
+        return [UInt8](mac.finalize())
     }
 
     static func hkdf(_ ikm: [UInt8], _ salt: [UInt8], _ info: String, _ outLen: Int) -> [UInt8] {

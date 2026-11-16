@@ -46,29 +46,107 @@ public struct FileMeta: Codable, Equatable {
     public var name: String
     public var size: Int64
     public var mime: String?
-    public init(name: String, size: Int64, mime: String? = nil) { self.name = name; self.size = size; self.mime = mime }
+    /// What the item is in a "Switch phones" move (`ItemCategory`); nil = an ordinary file.
+    public var cat: String?
+    /// Original capture/modification time, epoch ms.
+    public var mtime: Int64?
+    public init(name: String, size: Int64, mime: String? = nil, cat: String? = nil, mtime: Int64? = nil) {
+        self.name = name; self.size = size; self.mime = mime; self.cat = cat; self.mtime = mtime
+    }
 }
+
+/// Values of `FileMeta.cat`.
+public enum ItemCategory {
+    public static let photo = "photo"
+    public static let video = "video"
+    public static let contacts = "contacts"
+}
+
+/// Values of `Offer.kind`. Receivers that predate a kind treat the offer as plain files.
+public enum OfferKind {
+    public static let files = "files"
+    public static let text = "text"
+    public static let camera = "camera"
+    public static let switchPhones = "switch"
+}
+
+/// Longest `Offer.text` a sender inlines (the file copy carries anything longer).
+public let maxInlineText = 64 * 1024
 
 public struct Offer: Codable {
     public var transferId: String
     public var files: [FileMeta]
-    public init(transferId: String, files: [FileMeta]) { self.transferId = transferId; self.files = files }
+    public var kind: String?
+    /// `OfferKind.text`: the shared text itself.
+    public var text: String?
+    /// Set when the sender holds a `TrustGrant` from this receiver: its id and
+    /// base64 HMAC-SHA256(token, session binding ‖ transferId).
+    public var trustId: String?
+    public var trustProof: String?
+    /// `OfferKind.switchPhones`: where this batch sits in the whole move.
+    public var batch: BatchInfo?
+    public init(transferId: String, files: [FileMeta], kind: String? = nil, text: String? = nil,
+                trustId: String? = nil, trustProof: String? = nil, batch: BatchInfo? = nil) {
+        self.transferId = transferId; self.files = files; self.kind = kind; self.text = text
+        self.trustId = trustId; self.trustProof = trustProof; self.batch = batch
+    }
+}
+
+/// Totals of a whole "Switch phones" move, repeated on each batch's offer.
+public struct BatchInfo: Codable, Equatable {
+    public var index: Int
+    public var count: Int
+    public var photos: Int
+    public var videos: Int
+    public var contacts: Int
+    public var files: Int
+    public var totalBytes: Int64
+    public init(index: Int, count: Int, photos: Int = 0, videos: Int = 0, contacts: Int = 0, files: Int = 0, totalBytes: Int64 = 0) {
+        self.index = index; self.count = count; self.photos = photos; self.videos = videos
+        self.contacts = contacts; self.files = files; self.totalBytes = totalBytes
+    }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        index = try c.decode(Int.self, forKey: .index)
+        count = try c.decode(Int.self, forKey: .count)
+        photos = try c.decodeIfPresent(Int.self, forKey: .photos) ?? 0
+        videos = try c.decodeIfPresent(Int.self, forKey: .videos) ?? 0
+        contacts = try c.decodeIfPresent(Int.self, forKey: .contacts) ?? 0
+        files = try c.decodeIfPresent(Int.self, forKey: .files) ?? 0
+        totalBytes = try c.decodeIfPresent(Int64.self, forKey: .totalBytes) ?? 0
+    }
+    enum K: String, CodingKey { case index, count, photos, videos, contacts, files, totalBytes }
+}
+
+/// Receiver → sender inside an encrypted ACCEPT: offers of `kind` that prove they hold `token`
+/// skip the receiver's prompt until it stops trusting or `ttlMs` passes. Memory only.
+public struct TrustGrant: Codable, Equatable {
+    public var id: String
+    /// 32 random bytes, base64.
+    public var token: String
+    public var kind: String
+    public var ttlMs: Int64
+    public init(id: String, token: String, kind: String, ttlMs: Int64) {
+        self.id = id; self.token = token; self.kind = kind; self.ttlMs = ttlMs
+    }
 }
 
 public struct Accept: Codable {
     public var transferId: String
     public var delta: Bool
     public var push: Bool
-    public init(transferId: String, delta: Bool = false, push: Bool = false) {
-        self.transferId = transferId; self.delta = delta; self.push = push
+    public var trust: TrustGrant?
+    public init(transferId: String, delta: Bool = false, push: Bool = false, trust: TrustGrant? = nil) {
+        self.transferId = transferId; self.delta = delta; self.push = push; self.trust = trust
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
         transferId = try c.decode(String.self, forKey: .transferId)
         delta = try c.decodeIfPresent(Bool.self, forKey: .delta) ?? false
         push = try c.decodeIfPresent(Bool.self, forKey: .push) ?? false
+        trust = try? c.decodeIfPresent(TrustGrant.self, forKey: .trust)
     }
-    enum K: String, CodingKey { case transferId, delta, push }
+    enum K: String, CodingKey { case transferId, delta, push, trust }
 }
 
 public struct Decline: Codable {

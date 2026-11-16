@@ -39,6 +39,8 @@ sealed interface TransferEvent {
         val bytesSkipped: Long = 0,
     ) : TransferEvent
     data class Completed(val offer: Offer, val elapsedMs: Long) : TransferEvent
+    /** The receiver accepted and let later offers of [TrustGrant.kind] skip its prompt. */
+    data class TrustGranted(val grant: TrustGrant) : TransferEvent
     data object DeclinedByPeer : TransferEvent
     data object Cancelled : TransferEvent
     data class Failed(val message: String, val cause: Throwable? = null) : TransferEvent
@@ -47,6 +49,42 @@ sealed interface TransferEvent {
 /** A file the app layer wants to ship. [open] must return a fresh readable stream. */
 class OutgoingFile(val meta: FileMeta, val open: () -> InputStream)
 
+/** A [TrustGrant] the sender received earlier, decoded. */
+class TrustCredential(val id: String, val token: ByteArray) {
+    companion object {
+        fun of(grant: TrustGrant): TrustCredential? = runCatching {
+            TrustCredential(grant.id, java.util.Base64.getDecoder().decode(grant.token))
+        }.getOrNull()
+    }
+}
+
+/** Extra offer fields: what kind of offer this is and, when held, a trust credential. */
+data class SendOptions(
+    val kind: String? = null,
+    val text: String? = null,
+    val trust: TrustCredential? = null,
+    val batch: BatchInfo? = null,
+)
+
+/**
+ * An OFFER that arrived on an authenticated channel, handed to the receiver's decision.
+ * [provesTrust] checks the offer's trust proof against a token this side granted earlier.
+ */
+class InboundRequest(
+    val peerName: String,
+    val peerInstanceId: String,
+    val sas: String,
+    val offer: Offer,
+    private val binding: ByteArray,
+) {
+    fun provesTrust(token: ByteArray): Boolean {
+        val proof = offer.trustProof?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
+            ?: return false
+        val expected = SessionCrypto.trustProof(token, binding, offer.transferId)
+        return MessageDigest.isEqual(proof, expected)
+    }
+}
+
 /** Receiver's answer to an [Offer]. */
 sealed interface ReceiveDecision {
     /** [sinkFor] serves the v1 monolithic path; [delta] (when non-null and the
@@ -54,6 +92,8 @@ sealed interface ReceiveDecision {
     data class Accept(
         val sinkFor: (FileMeta) -> OutputStream,
         val delta: DeltaReceiver? = null,
+        /** Sent back inside the ACCEPT so later offers of the same kind can skip the prompt. */
+        val grant: TrustGrant? = null,
     ) : ReceiveDecision
     data class Reject(val reason: String? = null) : ReceiveDecision
 }
@@ -83,7 +123,7 @@ class TransferEngine(
 ) {
     // ------------------------------------------------------------- sender --
 
-    fun send(endpoint: Endpoint, files: List<OutgoingFile>): Flow<TransferEvent> = flow {
+    fun send(endpoint: Endpoint, files: List<OutgoingFile>, options: SendOptions = SendOptions()): Flow<TransferEvent> = flow {
         val started = System.currentTimeMillis()
         var socket: Socket? = null
         var io: FrameIO? = null
@@ -95,7 +135,7 @@ class TransferEngine(
             }
             io = FrameIO(socket.getInputStream(), socket.getOutputStream())
             val io = io!!
-            val offer = Offer(UUID.randomUUID().toString(), files.map { it.meta })
+            val transferId = UUID.randomUUID().toString()
 
             // -- handshake
             io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
@@ -107,6 +147,15 @@ class TransferEngine(
             io.readCipher = com.crossdrop.core.crypto.RecordCipher(keys.recvKey)
             socket.soTimeout = 0
             emit(TransferEvent.Secured(ack.deviceName, keys.sas))
+
+            val offer = Offer(
+                transferId, files.map { it.meta },
+                kind = options.kind,
+                text = options.text?.takeIf { it.length <= MAX_INLINE_TEXT },
+                trustId = options.trust?.id,
+                trustProof = options.trust?.let { b64(SessionCrypto.trustProof(it.token, keys.binding, transferId)) },
+                batch = options.batch,
+            )
 
             // -- offer / accept
             io.write(FrameType.OFFER, offer.encode())
@@ -121,6 +170,7 @@ class TransferEngine(
 
             // Receiver opts in: v2 delta / v3 push only when both sides agreed.
             val accept = ansPayload.decode<Accept>()
+            accept.trust?.let { emit(TransferEvent.TrustGranted(it)) }
             if (ack.version >= 3 && accept.delta && accept.push)
                 sendPush(io, offer, files, started) { emit(it) }
             else if (ack.version >= 2 && accept.delta)
@@ -364,7 +414,11 @@ class TransferEngine(
      * [decide] is invoked once the (decrypted) OFFER arrives — return
      * [ReceiveDecision.Accept] or [ReceiveDecision.Reject].
      */
-    fun receive(socket: Socket, decide: suspend (peerName: String, offer: Offer) -> ReceiveDecision): Flow<TransferEvent> = flow {
+    fun receive(socket: Socket, decide: suspend (peerName: String, offer: Offer) -> ReceiveDecision): Flow<TransferEvent> =
+        receiveRequest(socket) { decide(it.peerName, it.offer) }
+
+    /** [receive] with the whole [InboundRequest] — sender identity, code and trust check. */
+    fun receiveRequest(socket: Socket, decide: suspend (InboundRequest) -> ReceiveDecision): Flow<TransferEvent> = flow {
         val started = System.currentTimeMillis()
         var io: FrameIO? = null
         var pushMode = false
@@ -399,7 +453,7 @@ class TransferEngine(
             val (offerType, offerPayload) = io.read()
             if (offerType != FrameType.OFFER) throw ProtocolException("expected OFFER, got $offerType")
             val offer = offerPayload.decode<Offer>()
-            val decision = decide(hello.deviceName, offer)
+            val decision = decide(InboundRequest(hello.deviceName, hello.instanceId, keys.sas, offer, keys.binding))
             when (decision) {
                 is ReceiveDecision.Reject -> {
                     io.write(FrameType.DECLINE, Decline(offer.transferId, decision.reason).encode())
@@ -410,7 +464,7 @@ class TransferEngine(
                     val delta = negotiated >= 2 && decision.delta != null
                     val push = negotiated >= 3 && decision.delta?.canPush(offer.files) == true
                     io.write(FrameType.ACCEPT,
-                        Accept(offer.transferId, delta = delta, push = push).encode())
+                        Accept(offer.transferId, delta = delta, push = push, trust = decision.grant).encode())
                     pushMode = push
                 }
             }

@@ -36,10 +36,83 @@ data class HelloAck(
 )
 
 @Serializable
-data class FileMeta(val name: String, val size: Long, val mime: String? = null)
+data class FileMeta(
+    val name: String,
+    val size: Long,
+    val mime: String? = null,
+    /** What the item is in a "Switch phones" move ([ItemCategory]); null = an ordinary file. */
+    val cat: String? = null,
+    /** Original capture/modification time, epoch ms — kept when the receiver imports it into a gallery. */
+    val mtime: Long? = null,
+)
+
+/** Values of [FileMeta.cat]. */
+object ItemCategory {
+    const val PHOTO = "photo"
+    const val VIDEO = "video"
+    const val CONTACTS = "contacts"
+}
+
+/**
+ * Values of [Offer.kind]. Receivers that predate a kind ignore it and treat the offer as plain
+ * files, so every kind must also make sense as ordinary files.
+ */
+object OfferKind {
+    /** Ordinary files (also what an absent kind means). */
+    const val FILES = "files"
+    /** A piece of text or a link; [Offer.text] carries it, the single file is a `.txt` copy. */
+    const val TEXT = "text"
+    /** Photos/videos taken in CrossDrop's camera. */
+    const val CAMERA = "camera"
+    /** One batch of a "Switch phones" move; see [Offer.batch]. */
+    const val SWITCH = "switch"
+}
+
+/** Longest [Offer.text] a sender inlines (the file copy carries anything longer). */
+const val MAX_INLINE_TEXT = 64 * 1024
 
 @Serializable
-data class Offer(val transferId: String, val files: List<FileMeta>)
+data class Offer(
+    val transferId: String,
+    val files: List<FileMeta>,
+    /** [OfferKind]; null = plain files (and every older sender). */
+    val kind: String? = null,
+    /** [OfferKind.TEXT]: the shared text itself, so the receiver can show it before accepting. */
+    val text: String? = null,
+    /** Set when the sender holds a [TrustGrant] from this receiver: the grant's id… */
+    val trustId: String? = null,
+    /** …and HMAC-SHA256(token, session binding ‖ transferId), base64 — proves the sender holds the
+     *  token without revealing it, and can't be replayed on another connection. */
+    val trustProof: String? = null,
+    /** [OfferKind.SWITCH]: where this batch sits in the whole move. */
+    val batch: BatchInfo? = null,
+)
+
+/** Totals of a whole "Switch phones" move, repeated on each batch's offer. */
+@Serializable
+data class BatchInfo(
+    val index: Int,
+    val count: Int,
+    val photos: Int = 0,
+    val videos: Int = 0,
+    val contacts: Int = 0,
+    val files: Int = 0,
+    val totalBytes: Long = 0,
+)
+
+/**
+ * Receiver → sender, inside an encrypted ACCEPT: "offers that prove they hold [token] are accepted
+ * without asking me, for this [kind], until I stop it or [ttlMs] passes". Lives only in memory on
+ * both sides.
+ */
+@Serializable
+data class TrustGrant(
+    val id: String,
+    /** 32 random bytes, base64. */
+    val token: String,
+    val kind: String,
+    val ttlMs: Long,
+)
 
 @Serializable
 data class Accept(
@@ -49,6 +122,8 @@ data class Accept(
     /** v3: receiver holds nothing reusable for this offer, so the sender
      *  streams chunks immediately instead of sending a manifest first. */
     val push: Boolean = false,
+    /** Receiver lets later offers of the same kind skip its accept prompt (see [TrustGrant]). */
+    val trust: TrustGrant? = null,
 )
 
 @Serializable

@@ -7,6 +7,8 @@ public enum TransferEvent {
     case awaitingAccept(Offer)
     case progress(bytesDone: Int64, bytesTotal: Int64, bytesPerSec: Int64, currentFile: FileMeta, bytesSkipped: Int64)
     case completed(Offer, elapsedMs: Int64)
+    /// The receiver accepted and let later offers of `grant.kind` skip its prompt.
+    case trustGranted(TrustGrant)
     case declinedByPeer
     case cancelled
     case failed(String)
@@ -26,9 +28,50 @@ public protocol OutputSink: AnyObject {
 
 public enum ReceiveDecision {
     /// `sinkFor` serves the v1 monolithic path; `delta` (when non-nil and the peer speaks v2+)
-    /// engages chunked delta/resume storage instead.
-    case accept(sinkFor: (FileMeta) throws -> OutputSink, delta: DeltaReceiver?)
+    /// engages chunked delta/resume storage instead. `grant` goes back inside the ACCEPT.
+    case accept(sinkFor: (FileMeta) throws -> OutputSink, delta: DeltaReceiver?, grant: TrustGrant? = nil)
     case reject(String?)
+}
+
+/// A trust grant the sender received earlier, decoded.
+public struct TrustCredential {
+    public let id: String
+    public let token: [UInt8]
+    public init(id: String, token: [UInt8]) { self.id = id; self.token = token }
+    public init?(_ grant: TrustGrant) {
+        guard let d = Data(base64Encoded: grant.token) else { return nil }
+        id = grant.id; token = [UInt8](d)
+    }
+}
+
+/// Extra offer fields: what kind of offer this is and, when held, a trust credential.
+public struct SendOptions {
+    public var kind: String?
+    public var text: String?
+    public var trust: TrustCredential?
+    public var batch: BatchInfo?
+    public init(kind: String? = nil, text: String? = nil, trust: TrustCredential? = nil, batch: BatchInfo? = nil) {
+        self.kind = kind; self.text = text; self.trust = trust; self.batch = batch
+    }
+}
+
+/// An OFFER that arrived on an authenticated channel, handed to the receiver's decision.
+public struct InboundRequest {
+    public let peerName: String
+    public let peerInstanceId: String
+    public let sas: String
+    public let offer: Offer
+    let binding: [UInt8]
+
+    /// True when the offer's proof was made with `token` on this very connection.
+    public func provesTrust(token: [UInt8]) -> Bool {
+        guard let p = offer.trustProof, let proof = Data(base64Encoded: p) else { return false }
+        let expected = SessionCrypto.trustProof(token: token, binding: binding, transferId: offer.transferId)
+        guard proof.count == expected.count else { return false }
+        var diff: UInt8 = 0
+        for (a, b) in zip(proof, expected) { diff |= a ^ b }
+        return diff == 0
+    }
 }
 
 /// Thread-safe cancel handle for one session.
@@ -184,8 +227,8 @@ public final class TransferEngine {
 
     // MARK: sender
 
-    public func send(host: String, port: Int, files: [OutgoingFile], cancel: CancelToken = CancelToken(),
-                     emit: @escaping (TransferEvent) -> Void) {
+    public func send(host: String, port: Int, files: [OutgoingFile], options: SendOptions = SendOptions(),
+                     cancel: CancelToken = CancelToken(), emit: @escaping (TransferEvent) -> Void) {
         let started = Date()
         var socket: TCPSocket?
         defer { cancel.detach(); socket?.close() }
@@ -198,7 +241,7 @@ public final class TransferEngine {
             let fio = FrameIO(socket: s)
             cancel.attach { [weak fio] in fio?.cancelAndShutdown(reason: "sender cancelled") }
             s.setTimeout(TransferEngine.controlTimeout)
-            let offer = Offer(transferId: UUID().uuidString.lowercased(), files: files.map { $0.meta })
+            let transferId = UUID().uuidString.lowercased()
 
             try fio.write(.hello, Hello(version: version, deviceName: deviceName(),
                                         publicKeyB64: b64(identity.publicKey), instanceId: instanceId).encodeBytes())
@@ -212,6 +255,13 @@ public final class TransferEngine {
             // keepalive), but never block forever writing to a peer that stopped reading.
             s.setTimeouts(receive: 0, send: TransferEngine.dataTimeout)
             emit(.secured(peerName: TransferEngine.displayName(ack.deviceName), sas: keys.sas))
+
+            let offer = Offer(
+                transferId: transferId, files: files.map { $0.meta }, kind: options.kind,
+                text: options.text.flatMap { $0.utf16.count <= maxInlineText ? $0 : nil },
+                trustId: options.trust?.id,
+                trustProof: options.trust.map { b64(SessionCrypto.trustProof(token: $0.token, binding: keys.binding, transferId: transferId)) },
+                batch: options.batch)
 
             let offerBytes = try offer.encodeBytes()
             guard offerBytes.count < FrameIO.maxFrame - 64 else {
@@ -228,6 +278,7 @@ public final class TransferEngine {
             }
 
             let accept = try ansPayload.decodeJSON(Accept.self)
+            if let grant = accept.trust { emit(.trustGranted(grant)) }
             let tail: (TransferEvent) -> Void = emit
             if ack.version >= 3 && accept.delta && accept.push {
                 try sendPush(fio, offer, files, started, cancel, tail)
@@ -386,6 +437,13 @@ public final class TransferEngine {
     public func receive(socket s: TCPSocket, cancel: CancelToken = CancelToken(),
                         decide: @escaping (_ peerName: String, _ offer: Offer) -> ReceiveDecision,
                         emit: @escaping (TransferEvent) -> Void) {
+        receive(socket: s, cancel: cancel, decideRequest: { decide($0.peerName, $0.offer) }, emit: emit)
+    }
+
+    /// `receive` with the whole `InboundRequest` — sender identity, code and trust check.
+    public func receive(socket s: TCPSocket, cancel: CancelToken = CancelToken(),
+                        decideRequest decide: @escaping (InboundRequest) -> ReceiveDecision,
+                        emit: @escaping (TransferEvent) -> Void) {
         let started = Date()
         // Any host on the LAN can open connections: bound how many sessions we run at once.
         guard gate.enter() else {
@@ -425,18 +483,19 @@ public final class TransferEngine {
 
             // The human may take a while to tap Accept — don't let the idle timeout fire meanwhile.
             s.setTimeout(0)
-            let decision = decide(peerName, offer)
+            let decision = decide(InboundRequest(peerName: peerName, peerInstanceId: hello.instanceId,
+                                                 sas: keys.sas, offer: offer, binding: keys.binding))
             s.setTimeout(TransferEngine.dataTimeout)
 
             switch decision {
             case .reject(let reason):
                 try fio.write(.decline, Decline(transferId: offer.transferId, reason: reason).encodeBytes())
                 emit(.declinedByPeer)
-            case .accept(let sinkFor, let delta):
+            case .accept(let sinkFor, let delta, let grant):
                 let useDelta = negotiated >= 2 && delta != nil
                 let metas = delta.map { TransferEngine.uniqueMetas(offer.files, $0) } ?? offer.files
                 let push = negotiated >= 3 && (delta?.canPush(metas) ?? false)
-                try fio.write(.accept, Accept(transferId: offer.transferId, delta: useDelta, push: push).encodeBytes())
+                try fio.write(.accept, Accept(transferId: offer.transferId, delta: useDelta, push: push, trust: grant).encodeBytes())
                 if useDelta, let delta {
                     delta.prunePool()
                     if push { try receivePush(fio, offer, metas, delta, started, cancel, emit) }
