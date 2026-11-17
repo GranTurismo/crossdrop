@@ -226,7 +226,8 @@ private fun CameraBody(
             val file = newFile("mp4")
             val pending = vc.output.prepareRecording(context, FileOutputOptions.Builder(file).build())
             recordStart = System.currentTimeMillis()
-            recording = (if (hasMic) pending.withAudioEnabled() else pending).start(ContextCompat.getMainExecutor(context)) { ev ->
+            val micPresent = context.packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_MICROPHONE)
+            recording = (if (hasMic && micPresent) pending.withAudioEnabled() else pending).start(ContextCompat.getMainExecutor(context)) { ev ->
                 if (ev is VideoRecordEvent.Finalize) {
                     if (!ev.hasError() || ev.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE) onShot(file, true)
                     else error = "Recording failed"
