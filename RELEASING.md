@@ -81,7 +81,11 @@ be filled in once on the website. After that, routine updates don't.
 
 The Store API needs a Microsoft Entra tenant linked to the Partner Center account, and the account has none
 yet (Partner Center → Account settings → Tenants is empty). To connect it:
-1. Link a tenant there, either **Create Microsoft Entra ID** (free) or **Associate** an existing one.
+1. Link a tenant there, either **Create Microsoft Entra ID** or **Associate** an existing one. *Create* opens
+   Microsoft's sign-up wizard (signup.microsoft.com): an email verification code, then a billing-account form
+   (name, business name, address, phone, and acceptance of the Microsoft Customer Agreement), then the admin
+   user name and password, then a payment-setup step that may or may not ask for a card. All of that is
+   yours to fill in; nothing is created until you finish it.
 2. In Account settings → User management → Microsoft Entra applications, add an application with the
    **Manager** role, and create a client secret for it.
 3. Set the four `AZURE_AD_*` / `SELLER_ID` secrets. The workflow's Store job starts working by itself; until
