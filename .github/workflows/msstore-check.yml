@@ -62,6 +62,13 @@ jobs:
           msstore publish $msix.FullName -id $env:STORE_PRODUCT_ID --noCommit
           $uploaded = $LASTEXITCODE
           msstore submission status $env:STORE_PRODUCT_ID
+          # The same read-modify-write the release uses to set "What's new" (but never committed).
+          if ($uploaded -eq 0) {
+            $submission = msstore submission get $env:STORE_PRODUCT_ID | ConvertFrom-Json
+            $submission.Listings.'en-us'.BaseListing.ReleaseNotes = "write test (this draft is deleted, never submitted)"
+            msstore submission update $env:STORE_PRODUCT_ID ($submission | ConvertTo-Json -Depth 100 -Compress)
+            $uploaded = $LASTEXITCODE
+          }
           # Always clean up the draft, whether or not the upload worked.
           msstore submission delete $env:STORE_PRODUCT_ID --no-confirm
           if ($uploaded -ne 0) { throw "the draft upload failed (exit $uploaded): the app's role probably can't write; widen it to Manager in Partner Center" }
