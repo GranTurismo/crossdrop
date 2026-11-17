@@ -1,0 +1,7 @@
+• Send to several devices at once
+• CrossDrop is now in your phone's share menu
+• Send text and links: they arrive with Copy and Open
+• Live camera: photos you take appear on the other device instantly
+• Switch phones: move photos, videos and contacts between Android and iPhone
+• Send contacts on their own; they go straight into the other phone's contacts
+• See incoming transfers while CrossDrop is in the background

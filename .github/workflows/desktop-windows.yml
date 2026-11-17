@@ -11,6 +11,7 @@ name: Desktop (Windows)
 
 on:
   workflow_dispatch:
+  workflow_call:        # release.yml builds the installers through this
   push:
     tags: ["desktop-v*"]
   pull_request:

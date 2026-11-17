@@ -1,0 +1,315 @@
+name: Release
+
+# One tag, every store.
+#
+#   git tag v0.6.0 && git push origin v0.6.0
+#
+# builds the Android bundle + APK, the Windows MSI/EXE/MSIX and both macOS DMGs, then
+#   - creates the GitHub release with every download and SHA256SUMS.txt,
+#   - uploads the bundle to Google Play, rolls it out to production and sends it for review,
+#   - submits the MSIX to the Microsoft Store (only once its secrets exist — see RELEASING.md).
+#
+# Running it by hand (Actions -> Release -> Run workflow) is a DRY RUN: everything is built and
+# the signing key / store credentials are checked, but nothing is published or uploaded.
+#
+# Before tagging, bump the versions (app/build.gradle.kts versionCode + versionName, APP_VERSION in
+# desktop/.../Main.kt) and add release/<version>/{whats-new.md,play.txt,msstore.txt}. The first job
+# stops the release if any of that is missing or inconsistent. RELEASING.md has the details.
+
+on:
+  push:
+    tags: ["v[0-9]*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  # SHA-256 of the Play upload key's certificate (public, not a secret): the build refuses to
+  # continue if the secrets decode to a different key, which Play would reject anyway.
+  UPLOAD_CERT_SHA256: "88:E2:41:6F:4C:41:CE:04:5F:3E:93:C8:A3:96:B0:0E:AF:E9:F4:81:2F:1C:68:FA:23:6D:4A:FF:45:2D:46:00"
+
+jobs:
+  # ------------------------------------------------------------------ checks --
+  prepare:
+    name: Check versions and notes
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      code: ${{ steps.v.outputs.code }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)"
+          code="$(sed -n 's/.*versionCode = \([0-9]*\).*/\1/p' app/build.gradle.kts)"
+          desktop="$(sed -n 's/.*APP_VERSION = "\(.*\)".*/\1/p' desktop/src/main/kotlin/com/crossdrop/Main.kt)"
+          [ -n "$version" ] && [ -n "$code" ] || { echo "::error::couldn't read the Android version"; exit 1; }
+          [ "$version" = "$desktop" ] || { echo "::error::Android is $version but the desktop app is $desktop"; exit 1; }
+
+          publish=false
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "::error::tag $GITHUB_REF_NAME doesn't match the app version v$version"; exit 1; }
+            publish=true
+          fi
+
+          for f in whats-new.md play.txt msstore.txt; do
+            [ -s "release/$version/$f" ] || { echo "::error::missing release/$version/$f"; exit 1; }
+          done
+          [ -s release/footer.md ] || { echo "::error::missing release/footer.md"; exit 1; }
+          [ "$(wc -m < "release/$version/play.txt")" -le 500 ] || { echo "::error::release/$version/play.txt is over Google Play's 500 characters"; exit 1; }
+          [ "$(wc -m < "release/$version/msstore.txt")" -le 1500 ] || { echo "::error::release/$version/msstore.txt is over the Store's 1500 characters"; exit 1; }
+
+          {
+            echo "version=$version"
+            echo "code=$code"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "### CrossDrop $version (build $code) — $([ $publish = true ] && echo 'PUBLISHING' || echo 'dry run, nothing is published')" >> "$GITHUB_STEP_SUMMARY"
+
+  # ----------------------------------------------------------------- builds --
+  android:
+    name: Android bundle + APK
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The keystore only ever exists on the runner; key.properties is git-ignored.
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -n "$KEYSTORE_B64" ] || { echo "::error::the ANDROID_KEYSTORE_B64 secret is not set"; exit 1; }
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/upload-keystore.jks"
+          {
+            echo "storeFile=$RUNNER_TEMP/upload-keystore.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > key.properties
+
+      - name: Test (core)
+        run: ./gradlew :core:test --stacktrace
+
+      - name: Build release bundle and APK
+        run: ./gradlew :app:bundleRelease :app:assembleRelease --stacktrace
+
+      - name: Check the signing key
+        run: |
+          set -euo pipefail
+          aab=app/build/outputs/bundle/release/app-release.aab
+          apk=app/build/outputs/apk/release/app-release.apk
+          got="$(keytool -printcert -jarfile "$aab" | sed -n 's/^[[:space:]]*SHA256:[[:space:]]*//p' | head -1)"
+          [ "$got" = "$UPLOAD_CERT_SHA256" ] || { echo "::error::the bundle is signed with $got, not the Play upload key"; exit 1; }
+          bt="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$bt/apksigner" verify --print-certs "$apk" | grep -m1 'SHA-256' || true
+          ls -l "$aab" "$apk"
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f key.properties "$RUNNER_TEMP/upload-keystore.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          if-no-files-found: error
+          path: |
+            app/build/outputs/bundle/release/app-release.aab
+            app/build/outputs/apk/release/app-release.apk
+
+  windows:
+    name: Windows
+    needs: prepare
+    uses: ./.github/workflows/desktop-windows.yml
+
+  macos:
+    name: macOS
+    needs: prepare
+    uses: ./.github/workflows/desktop-macos.yml
+    secrets: inherit
+
+  # --------------------------------------------------------------- packaging --
+  package:
+    name: Collect the downloads
+    needs: [prepare, android, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Name the files and write the checksums
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          find artifacts -type f | sort
+          mkdir -p out
+          pick() {  # pick <glob under artifacts/> <destination name>
+            local f; f="$(find artifacts -type f -path "$1" | head -1)"
+            [ -n "$f" ] || { echo "::error::no file matches $1"; exit 1; }
+            cp "$f" "out/$2"
+          }
+          pick '*/app-release.apk'              "CrossDrop-$VERSION-android.apk"
+          pick '*CrossDrop-windows*/*.msi'      "CrossDrop-$VERSION-windows-x64.msi"
+          pick '*CrossDrop-windows*/*.exe'      "CrossDrop-$VERSION-windows-x64.exe"
+          pick '*CrossDrop-macos-arm64*/*.dmg'  "CrossDrop-$VERSION-macos-apple-silicon.dmg"
+          pick '*CrossDrop-macos-x64*/*.dmg'    "CrossDrop-$VERSION-macos-intel.dmg"
+          (cd out && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+          # GitHub release text = what's new + the shared download/install notes.
+          { cat "release/$VERSION/whats-new.md"; echo; sed "s/{{VERSION}}/$VERSION/g" release/footer.md; } > release-body.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          if-no-files-found: error
+          path: |
+            out/*
+            release-body.md
+
+  # --------------------------------------------------------------- publishing --
+  publish-github:
+    name: GitHub release
+    needs: [prepare, package]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+          path: release-files
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          title="CrossDrop $VERSION"
+          [ -s "release/$VERSION/title.txt" ] && title="CrossDrop $VERSION — $(head -1 "release/$VERSION/title.txt")"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release exists (a re-run): replacing its files"
+            gh release upload "$GITHUB_REF_NAME" release-files/out/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-files/out/* \
+              --verify-tag --latest --title "$title" --notes-file release-files/release-body.md
+          fi
+
+  # Dry run (no tag): only proves the service account can reach Play. Tag: uploads and sends for review.
+  publish-play:
+    name: Google Play
+    needs: [prepare, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: android
+
+      - name: Upload to Google Play
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CODE: ${{ needs.prepare.outputs.code }}
+          PUBLISH: ${{ needs.prepare.outputs.publish }}
+        run: |
+          set -euo pipefail
+          [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ] || { echo "::error::the PLAY_SERVICE_ACCOUNT_JSON secret is not set"; exit 1; }
+          if [ "$PUBLISH" = true ]; then
+            PLAY_RELEASE_NAME="$CODE ($VERSION)" tools/release/play_upload.sh --upload com.crossdrop \
+              "$(find android -name '*.aab' | head -1)" "release/$VERSION/play.txt"
+          else
+            tools/release/play_upload.sh --check com.crossdrop
+          fi
+
+  # Skipped (with a notice) until the Partner Center secrets exist; see RELEASING.md.
+  publish-msstore:
+    name: Microsoft Store
+    needs: [prepare, windows]
+    runs-on: windows-latest
+    env:
+      STORE_PRODUCT_ID: 9PBRFPV9GD7P
+      AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+      AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+      AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+      SELLER_ID: ${{ secrets.SELLER_ID }}
+    steps:
+      - name: Are the Store credentials set?
+        id: have
+        shell: pwsh
+        run: |
+          $ok = $env:AZURE_AD_TENANT_ID -and $env:AZURE_AD_APPLICATION_CLIENT_ID -and $env:AZURE_AD_APPLICATION_SECRET -and $env:SELLER_ID
+          "set=$($ok.ToString().ToLower())" | Out-File $env:GITHUB_OUTPUT -Append
+          if (-not $ok) { Write-Host "::notice::Microsoft Store credentials are not configured yet, so the Store upload is skipped (see RELEASING.md)." }
+
+      - uses: actions/checkout@v4
+        if: steps.have.outputs.set == 'true'
+
+      - uses: actions/download-artifact@v4
+        if: steps.have.outputs.set == 'true'
+        with:
+          pattern: "*CrossDrop-windows*"
+          path: windows
+
+      - uses: microsoft/microsoft-store-apppublisher@v1.1
+        if: steps.have.outputs.set == 'true'
+
+      - name: Connect to Partner Center
+        if: steps.have.outputs.set == 'true'
+        shell: pwsh
+        run: msstore reconfigure --tenantId $env:AZURE_AD_TENANT_ID --sellerId $env:SELLER_ID --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID --clientSecret $env:AZURE_AD_APPLICATION_SECRET
+
+      - name: Dry run — check the product is reachable
+        if: steps.have.outputs.set == 'true' && needs.prepare.outputs.publish != 'true'
+        shell: pwsh
+        run: msstore apps get $env:STORE_PRODUCT_ID
+
+      # `publish` first (it recreates the draft), then the notes, then commit — in that order, see
+      # https://learn.microsoft.com/windows/apps/publish/msstore-dev-cli/commands
+      - name: Submit to the Microsoft Store
+        if: steps.have.outputs.set == 'true' && needs.prepare.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $msix = Get-ChildItem windows -Recurse -Filter *.msix | Select-Object -First 1
+          if (-not $msix) { throw "no .msix in the Windows build" }
+          msstore publish $msix.FullName -id $env:STORE_PRODUCT_ID --noCommit
+          if ($LASTEXITCODE -ne 0) { throw "msstore publish failed" }
+
+          $submission = msstore submission get $env:STORE_PRODUCT_ID | ConvertFrom-Json
+          $submission.Listings.'en-us'.BaseListing.ReleaseNotes = (Get-Content "release/$env:VERSION/msstore.txt" -Raw).Trim()
+          msstore submission update $env:STORE_PRODUCT_ID ($submission | ConvertTo-Json -Depth 100 -Compress)
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission update failed" }
+
+          msstore submission publish $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "msstore submission publish failed" }
+          Write-Host "Submitted $($msix.Name) for certification; the Store publishes it when it passes."

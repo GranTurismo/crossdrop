@@ -1,0 +1,7 @@
+• Send to several devices at once: tick extra devices and everyone gets the same files
+• Drop files onto the CrossDrop window to send them
+• Send text and links: they arrive with Copy and Open buttons
+• Watch a phone's camera live: photos taken in CrossDrop on Android or iPhone appear here instantly
+• Back up a phone: "Switch phones" saves its photos, videos and contacts into a dated folder in Pictures
+• Contact cards sent from a phone are saved to your Inbox
+• Fixed: history and settings now keep every change
