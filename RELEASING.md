@@ -3,16 +3,17 @@
 One tag releases everywhere the pipeline is connected. No browser needed.
 
 ```sh
-git tag v0.6.0 && git push origin v0.6.0
+tools/release/release.sh v0.6.0      # checks, tags, pushes, then waits for the result
+# or just: git tag v0.6.0 && git push origin v0.6.0
 ```
 
-`.github/workflows/release.yml` then builds and publishes:
+`.github/workflows/release.yml` builds and publishes:
 
 | What | Where | Status |
 | --- | --- | --- |
 | Android bundle + APK | GitHub release; the bundle goes to **Google Play** (production, 100%, sent for review) | live |
 | Windows MSI, EXE | GitHub release | live |
-| Windows MSIX | **Microsoft Store** | upload by hand, see below (API needs a tenant) |
+| Windows MSIX | **Microsoft Store** (submitted for certification, publishes when it passes) | live |
 | macOS DMGs (Apple Silicon, Intel) | GitHub release (unsigned until Apple credentials exist) | live, unsigned |
 | iPhone / iPad / Mac App Store builds | App Store Connect | not connected yet |
 
@@ -50,7 +51,7 @@ The GitHub step is safe to repeat: it replaces files on an existing release.
 | --- | --- |
 | `ANDROID_KEYSTORE_B64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | The Play **upload** key (`upload-keystore.jks`). The build refuses any other key (checked against its public fingerprint in `release.yml`). |
 | `PLAY_SERVICE_ACCOUNT_JSON` | Key of the service account `crossdrop-release@api-4914878283957576311-185590.iam.gserviceaccount.com` (Google Cloud project "Google Play Android Developer"). |
-| `AZURE_AD_TENANT_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_APPLICATION_SECRET`, `SELLER_ID` | Microsoft Store (Partner Center) API access. **Not set yet.** |
+| `AZURE_AD_TENANT_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_APPLICATION_SECRET`, `SELLER_ID` | Microsoft Store (Partner Center) API access, see below. **The client secret expires 2028-10-17.** |
 | `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGN_IDENTITY`, `MACOS_NOTARY_*`, `MACOS_TEAM_ID` | macOS signing and notarization, see `desktop/RELEASE.md`. **Not set yet**, so the DMGs are unsigned. |
 
 Secrets can't be read back from GitHub, and the Google key was deliberately not kept anywhere else. If one is
@@ -77,25 +78,35 @@ third-party action. To revoke access: remove the user in Play Console, or delete
 New Play policy forms (for example the photo-permission declaration) and the Data safety form still have to
 be filled in once on the website. After that, routine updates don't.
 
-### Microsoft Store (manual for now)
+### Microsoft Store
 
-The Store's API needs a Microsoft Entra tenant linked to the Partner Center account, and this account has none
-(Account settings → Tenants is empty). Creating one through Partner Center's "Create Microsoft Entra ID" opens
-a sign-up wizard that asks for a billing account (name, address, phone, Microsoft Customer Agreement) and
-**a payment method**, so it was abandoned on purpose (2026-11-17). Personal Microsoft accounts can't use the
-Entra portal without a tenant either.
+The Store's API needs a Microsoft Entra tenant linked to the Partner Center account. Set up on 2026-11-17:
 
-So the Store upload stays manual: the Windows build produces `CrossDrop_<version>.0_x64.msix` in the
-`CrossDrop-windows` workflow artifact (kept 90 days). Download it, then Partner Center → CrossDrop →
-Start update → Packages (upload) → Store listings ("What's new" is in `release/<version>/msstore.txt`) → Submit
-for certification. It takes a few minutes.
+- Tenant **GT** (`kupatadze.onmicrosoft.com`), created through Partner Center's "Create Microsoft Entra ID" (that
+  wizard asks for a billing account and a payment method; the card is only for identity verification). Its admin
+  is `GogitaKupatadze@kupatadze.onmicrosoft.com`, protected by Microsoft Authenticator. This is a separate account
+  from the Outlook login: Partner Center's *User management* page needs the admin (Account settings → User
+  management → "Sign in with Microsoft Entra ID"), and the Outlook account can't sign in to the tenant.
+- The tenant is associated with the Partner Center account (Account settings → Tenants).
+- App registration **`crossdrop-release`** (client ID `c71e80b6-fc00-4a92-b7d7-b805fadad446`) with a client secret, added in
+  Partner Center → User management → Microsoft Entra applications with the **Developer** role (upload packages
+  and submit; no financial info, no account settings). Microsoft's docs say "Manager", but Developer was proven
+  enough (below), so it's the smaller key. If the API ever answers 401/403, widen the role to Manager there.
+- Secrets `AZURE_AD_TENANT_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_APPLICATION_SECRET`, `SELLER_ID`
+  (32006500) are set in GitHub.
 
-If you ever get a tenant (an existing work/school/Azure one, or you decide to pay for the wizard): associate it
-under Account settings → Tenants, add a Microsoft Entra application with the **Manager** role plus a client
-secret, and set `AZURE_AD_TENANT_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_APPLICATION_SECRET` and
-`SELLER_ID`. The workflow's Store job then starts submitting by itself; until then it skips with a notice. It
-follows Microsoft's documented flow (`msstore publish --noCommit`, set the release notes,
-`msstore submission publish`) but has never been run against the real Store.
+The release's Store job runs `msstore publish --noCommit` (upload as a draft), sets "What's new" from
+`release/<version>/msstore.txt`, then `msstore submission publish`. The package must have a higher version than
+the live one (the version bump before tagging takes care of that).
+
+**Check it any time:** Actions → *Microsoft Store check* → Run workflow. It logs in and reads the product (read-only).
+Give it `msix_run_id` (a build run whose `CrossDrop-windows` artifact has an `.msix` with a higher version) to also
+upload that package as a draft, set the notes and delete the draft; that passed on 2026-11-17.
+
+**Renewing the client secret** (before 2028-10-17; the check workflow starts failing when it expires): sign in to
+https://entra.microsoft.com as the tenant admin → App registrations → crossdrop-release → Certificates & secrets
+→ New client secret, then `gh secret set AZURE_AD_APPLICATION_SECRET` with the new value (pipe it from the
+clipboard: `pbpaste | gh secret set AZURE_AD_APPLICATION_SECRET`, so it is never printed).
 
 ### Apple (to do)
 
