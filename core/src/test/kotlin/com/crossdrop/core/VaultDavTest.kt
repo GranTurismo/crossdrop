@@ -248,6 +248,15 @@ class VaultDavTest {
         assertEquals(200, dav("GET", "/pic.png").code)
     }
 
+    @Test fun `a refused upload still gets its answer when the body is big`() {
+        // The server answers 403 before reading the body. Closing with unread bytes used to reset the
+        // connection, so the client saw "connection reset" instead of the 403.
+        serve(writable = false)
+        repeat(5) {
+            assertEquals(403, dav("PUT", "/big.bin", body = ByteArray(200_000) { 7 }).code)
+        }
+    }
+
     @Test fun `digest auth gates dav when pin set`() {
         serve(pin = "4821")
         // no creds → 401 with Digest challenge

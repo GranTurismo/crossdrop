@@ -12,7 +12,6 @@ camera, Switch phones, contact cards), how each was fixed, and what is still ope
 | Finished text and contact receives stay in the session list | All | Quiet sessions of kind `text` and `contact` are never pruned (camera and switch ones are). Small, grows by one entry per receive until the app restarts. |
 | Share extension shows "iPhone" as the sender name | iOS | The extension can't read the name set in the app. |
 | No "Send to" entry in the Microsoft Store build | Windows | The per-user shortcut is only added by the MSI/EXE installer. |
-| A refused drive upload can look like a dropped connection | All (seen on macOS) | Writing to a read-only Wireless Drive gets a 403, but the server closes without reading the request body; macOS then resets the connection and the client may see the reset instead of the 403. Made `VaultDavTest` fail once on the Intel macOS CI for 0.5.0 (passed on rerun). Fix: drain the body (bounded) or close with a lingering shutdown. |
 | Contact notes don't move from iPhone | iOS | Reading notes needs an entitlement Apple grants case by case. |
 | "Already in your contacts" has no View button | Android, iOS | Only newly added contacts can be opened from the result card. |
 
@@ -27,6 +26,13 @@ camera, Switch phones, contact cards), how each was fixed, and what is still ope
 ## Fixed in 0.5.0
 
 ### Found while releasing
+
+- **Wireless Drive: a refused upload could look like a dropped connection.** The server answered 403 to a write on a
+  read-only drive and closed the socket while the client was still sending the body; the OS then resets the
+  connection and the client (macOS especially) can report "connection reset" instead of the 403. It failed
+  `VaultDavTest` once on the Intel macOS CI during the 0.5.0 release. After an error answer the server now
+  closes its side first and swallows the rest of the request (bounded: 256 KB, 1 s) before closing. A test with
+  a 200 KB refused upload reproduces it on the old code.
 
 - **Windows: history and settings kept only their first save.** Both files are written to a temp
   file and renamed over the old one, and `File.renameTo` refuses to replace an existing file on

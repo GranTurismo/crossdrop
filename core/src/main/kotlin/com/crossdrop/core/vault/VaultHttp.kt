@@ -50,6 +50,8 @@ internal class VaultHttp(
 
     fun handle(socket: Socket, input: InputStream) {
         val out = socket.getOutputStream()
+        // True once an error answer went out: the client may still be sending the request body.
+        var refused = false
         try {
             val head = readHead(input) ?: return
             peerIp = (socket.remoteSocketAddress as? java.net.InetSocketAddress)
@@ -140,16 +142,42 @@ internal class VaultHttp(
                 else -> throw VaultError(404, "not found")
             }
         } catch (e: VaultError) {
+            refused = true
             runCatching { respondJson(out, e.code, errorJson(e.code, e.message ?: "error")) }
         } catch (_: AuthRequired) {
+            refused = true
             runCatching { authChallenge(out) }
         } catch (e: BadRequest) {
+            refused = true
             runCatching { respondJson(out, 400, errorJson(400, e.message ?: "bad request")) }
         } catch (_: Exception) {
+            refused = true
             runCatching { respondJson(out, 500, errorJson(500, "internal error")) }
         } finally {
-            runCatching { socket.close() }
+            closeConnection(socket, linger = refused)
         }
+    }
+
+    /**
+     * Closing a socket that still has unread request bytes makes the OS send a reset, and the client
+     * (macOS especially) can then report "connection reset" instead of the answer we just wrote — a
+     * refused upload looked like a dropped connection. So after an error answer: send our FIN first,
+     * then swallow what the client is still sending, bounded in bytes and time, then close.
+     */
+    private fun closeConnection(socket: Socket, linger: Boolean) {
+        if (linger) runCatching {
+            socket.shutdownOutput()
+            socket.soTimeout = LINGER_MS
+            val sink = ByteArray(8192)
+            var left = LINGER_MAX_BYTES
+            val ins = socket.getInputStream()
+            while (left > 0) {
+                val n = ins.read(sink)
+                if (n < 0) break
+                left -= n
+            }
+        }
+        runCatching { socket.close() }
     }
 
     // ------------------------------------------------------------ routing --
@@ -789,6 +817,9 @@ internal class VaultHttp(
     }
 
     companion object {
+        /** After an error answer: how long and how much of the client's unread request is swallowed before closing. */
+        private const val LINGER_MS = 1_000
+        private const val LINGER_MAX_BYTES = 256 * 1024
         private const val MAX_PIN_STRIKES = 5
         private const val PIN_LOCKOUT_MS = 60_000L
         private const val MAX_HEAD = 16 * 1024
