@@ -12,7 +12,7 @@ git tag v0.6.0 && git push origin v0.6.0
 | --- | --- | --- |
 | Android bundle + APK | GitHub release; the bundle goes to **Google Play** (production, 100%, sent for review) | live |
 | Windows MSI, EXE | GitHub release | live |
-| Windows MSIX | **Microsoft Store** (submitted for certification, publishes when it passes) | waiting for credentials, see below |
+| Windows MSIX | **Microsoft Store** | upload by hand, see below (API needs a tenant) |
 | macOS DMGs (Apple Silicon, Intel) | GitHub release (unsigned until Apple credentials exist) | live, unsigned |
 | iPhone / iPad / Mac App Store builds | App Store Connect | not connected yet |
 
@@ -77,20 +77,25 @@ third-party action. To revoke access: remove the user in Play Console, or delete
 New Play policy forms (for example the photo-permission declaration) and the Data safety form still have to
 be filled in once on the website. After that, routine updates don't.
 
-### Microsoft Store (to do)
+### Microsoft Store (manual for now)
 
-The Store API needs a Microsoft Entra tenant linked to the Partner Center account, and the account has none
-yet (Partner Center → Account settings → Tenants is empty). To connect it:
-1. Link a tenant there, either **Create Microsoft Entra ID** or **Associate** an existing one. *Create* opens
-   Microsoft's sign-up wizard (signup.microsoft.com): an email verification code, then a billing-account form
-   (name, business name, address, phone, and acceptance of the Microsoft Customer Agreement), then the admin
-   user name and password, then a payment-setup step that may or may not ask for a card. All of that is
-   yours to fill in; nothing is created until you finish it.
-2. In Account settings → User management → Microsoft Entra applications, add an application with the
-   **Manager** role, and create a client secret for it.
-3. Set the four `AZURE_AD_*` / `SELLER_ID` secrets. The workflow's Store job starts working by itself; until
-   then it skips with a notice. It follows Microsoft's documented flow (`msstore publish --noCommit`, set the
-   release notes, `msstore submission publish`) but has not been run against the real Store yet.
+The Store's API needs a Microsoft Entra tenant linked to the Partner Center account, and this account has none
+(Account settings → Tenants is empty). Creating one through Partner Center's "Create Microsoft Entra ID" opens
+a sign-up wizard that asks for a billing account (name, address, phone, Microsoft Customer Agreement) and
+**a payment method**, so it was abandoned on purpose (2026-11-17). Personal Microsoft accounts can't use the
+Entra portal without a tenant either.
+
+So the Store upload stays manual: the Windows build produces `CrossDrop_<version>.0_x64.msix` in the
+`CrossDrop-windows` workflow artifact (kept 90 days). Download it, then Partner Center → CrossDrop →
+Start update → Packages (upload) → Store listings ("What's new" is in `release/<version>/msstore.txt`) → Submit
+for certification. It takes a few minutes.
+
+If you ever get a tenant (an existing work/school/Azure one, or you decide to pay for the wizard): associate it
+under Account settings → Tenants, add a Microsoft Entra application with the **Manager** role plus a client
+secret, and set `AZURE_AD_TENANT_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_APPLICATION_SECRET` and
+`SELLER_ID`. The workflow's Store job then starts submitting by itself; until then it skips with a notice. It
+follows Microsoft's documented flow (`msstore publish --noCommit`, set the release notes,
+`msstore submission publish`) but has never been run against the real Store.
 
 ### Apple (to do)
 
