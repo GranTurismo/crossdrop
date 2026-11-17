@@ -1,0 +1,42 @@
+name: Microsoft Store check
+
+# Read-only: logs into the Microsoft Store API with the repository's Partner Center credentials and reads the
+# CrossDrop product. Run it by hand (Actions -> Microsoft Store check) to prove the credentials still work, e.g.
+# before a release or after the client secret was renewed. It changes nothing in Partner Center.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    env:
+      STORE_PRODUCT_ID: 9PBRFPV9GD7P
+      AZURE_AD_TENANT_ID: ${{ secrets.AZURE_AD_TENANT_ID }}
+      AZURE_AD_APPLICATION_CLIENT_ID: ${{ secrets.AZURE_AD_APPLICATION_CLIENT_ID }}
+      AZURE_AD_APPLICATION_SECRET: ${{ secrets.AZURE_AD_APPLICATION_SECRET }}
+      SELLER_ID: ${{ secrets.SELLER_ID }}
+    steps:
+      - uses: microsoft/microsoft-store-apppublisher@v1.1
+
+      - name: Connect to Partner Center
+        shell: pwsh
+        run: |
+          msstore reconfigure --tenantId $env:AZURE_AD_TENANT_ID --sellerId $env:SELLER_ID --clientId $env:AZURE_AD_APPLICATION_CLIENT_ID --clientSecret $env:AZURE_AD_APPLICATION_SECRET
+          if ($LASTEXITCODE -ne 0) { throw "msstore reconfigure failed" }
+
+      - name: Read the product
+        shell: pwsh
+        run: |
+          msstore apps get $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "couldn't read the product (check the app's role in Partner Center)" }
+
+      - name: Read the current submission
+        shell: pwsh
+        run: |
+          msstore submission status $env:STORE_PRODUCT_ID
+          if ($LASTEXITCODE -ne 0) { throw "couldn't read the submission status" }
