@@ -80,6 +80,10 @@ class AppContainer(private val app: Context) {
     val switchImporter = com.crossdrop.switchphones.SwitchImporter(app, coordinator.hub, inbox, history)
         .also { coordinator.hub.switchReceiver = it }
 
+    /** Contact cards sent on their own: straight into the address book. */
+    val contactInbox = com.crossdrop.contacts.ContactInbox(app, coordinator.hub, inbox)
+        .also { coordinator.hub.contactReceiver = it }
+
     /** "Send to anyone" — zero-install receiver path via QR + embedded HTTP. */
     val qrShare = QrShareManager(scope, app, deviceName::value, history)
 

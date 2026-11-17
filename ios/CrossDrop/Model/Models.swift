@@ -122,7 +122,13 @@ final class IncomingOffer: Identifiable, @unchecked Sendable {   // all mutable 
     /// Runs on the main thread when (and only when) the human accepts — opens the transfer session.
     var onAccept: (() -> Void)?
 
-    init(peerName: String, offer: Offer) { self.peerName = peerName; self.offer = offer }
+    /// A contact offer's cards, from its photo-less inline copy (empty when it had none).
+    let contacts: [ContactPreview]
+
+    init(peerName: String, offer: Offer) {
+        self.peerName = peerName; self.offer = offer
+        contacts = offer.kind == OfferKind.contact ? ContactPreview.parse(offer.text) : []
+    }
 
     var kind: String? { offer.kind }
     /// Inline text of a text/link offer (nil for files, or text too long to inline).

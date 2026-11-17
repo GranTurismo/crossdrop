@@ -21,6 +21,7 @@ simply see ordinary files.
 | Text and links | Send + receive (Copy / Open) | Send + receive | Send + receive |
 | Live camera | In-app camera (CameraX) + viewer | Viewer only (no camera) | In-app camera (AVFoundation) + viewer |
 | Switch phones | Send + receive (gallery, contacts) | Receive into `Pictures/CrossDrop/<phone> <date>/` | Send + receive (Photos, Contacts) |
+| Send a contact (on its own) | Pick contacts in-app, or Share from Contacts; receive → "Add to contacts" | Drop/open a `.vcf` to send; receive → saved to the inbox | System contact picker, or Share Contact; receive → "Add to contacts" |
 
 How it fits together:
 
@@ -183,6 +184,27 @@ Limits to design around:
   should not count as "collected" data. Confirm the wording when filling the form.
 - Apple review will ask why the app wants full photo and contact access; the purpose strings
   must say "to move them to your other device".
+
+### Sending a contact on its own (added 2026-11-17)
+
+Besides the whole address book in a move, one or a few contacts can be sent like anything else:
+the send sheet has a **Contact** tile (Android: CrossDrop's own searchable, multi-select list,
+needs contacts access; iPhone/iPad/Mac: the system contact picker, no permission). A contact
+shared from the Contacts app (Android "Share", iOS "Share Contact") or any `.vcf` picked as a
+file goes the same way.
+
+- Wire: offer kind `contact`, one `.vcf` (vCard 3.0 with photo), plus a photo-less copy in
+  `Offer.text` (≤ 64 KB) so the prompt can show names and numbers before accepting. Older
+  receivers just get the `.vcf`. A `.vcf` over 8 MB is treated as a plain file (a backup).
+- Receiver: "Add to contacts" asks for contacts access right then if needed; cards are added with
+  the same duplicate check as Switch phones, and a small card says "Added Jane Doe" with **View**
+  (opens the contact) or "already in your contacts". Without access the `.vcf` is kept in the
+  Inbox and the card offers **Allow** (Settings once the OS stops asking). Desktops save the
+  `.vcf` to the inbox ("Save").
+- Verified on the emulator and simulator in all directions (Mac CLI ↔ Android, Android ↔ iPhone),
+  including the photo, the duplicate skip, View, the no-access path on iPhone, and Android's
+  share menu with a Contacts-provider vCard. Not verified: iOS "Share Contact" into the share
+  extension (no tap tool), the Mac Catalyst picker.
 
 ---
 

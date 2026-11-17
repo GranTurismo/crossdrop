@@ -83,12 +83,14 @@ import com.crossdrop.ui.transfer.formatBytes
 /**
  * Full-screen inbound OFFER. The ring around the sender counts down the
  * coordinator's auto-decline window; the human answers only with the
- * buttons (the shell maps system Back to Decline). Text/link, live-camera and
- * switch-phones offers get their own wording and actions.
+ * buttons (the shell maps system Back to Decline). Text/link, contact, live-camera
+ * and switch-phones offers get their own wording and actions. [addsToContacts] = this
+ * device has an address book (desktops save contact cards to the inbox instead).
  */
 @Composable
 fun IncomingOfferSheet(
     offer: IncomingOffer,
+    addsToContacts: Boolean = true,
     onRespond: (accept: Boolean) -> Unit,
 ) {
     android.util.Log.i("IncomingOfferSheet", "composed for ${offer.offer.transferId}")
@@ -100,6 +102,9 @@ fun IncomingOfferSheet(
     val isLink = text != null && isLinkText(text)
     val switch = kind == OfferKind.SWITCH
     val camera = kind == OfferKind.CAMERA
+    val cards = offer.contacts
+    val contact = kind == OfferKind.CONTACT
+    val contactCount = cards.size.coerceAtLeast(1)
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
     val startedAt = remember(offer) { System.currentTimeMillis() }
@@ -137,6 +142,7 @@ fun IncomingOfferSheet(
                         Text(
                             when {
                                 text != null -> if (isLink) "INCOMING LINK" else "INCOMING TEXT"
+                                contact -> if (contactCount == 1) "INCOMING CONTACT" else "INCOMING CONTACTS"
                                 camera -> "LIVE CAMERA"
                                 switch -> "SWITCH PHONES"
                                 else -> "INCOMING FILES"
@@ -158,6 +164,8 @@ fun IncomingOfferSheet(
                         Text(
                             when {
                                 text != null -> "${offer.peerName} sent you " + if (isLink) "a link" else "some text"
+                                contact -> "${offer.peerName} sent you " +
+                                    if (contactCount == 1) "a contact" else "$contactCount contacts"
                                 camera -> "${offer.peerName} wants to share their camera"
                                 switch -> "${offer.peerName} wants to move to this device"
                                 else -> "${offer.peerName} wants to send you " +
@@ -168,7 +176,7 @@ fun IncomingOfferSheet(
                         )
                         Text(
                             buildAnnotatedString {
-                                if (text == null && !camera) append(formatBytes(offer.offer.batch?.totalBytes?.takeIf { switch && it > 0 } ?: total) + " · ")
+                                if (text == null && !camera && !contact) append(formatBytes(offer.offer.batch?.totalBytes?.takeIf { switch && it > 0 } ?: total) + " · ")
                                 append("auto-declines in ")
                                 withStyle(SpanStyle(fontFamily = MonoFont, color = Accent)) { append("$secondsLeft") }
                                 withStyle(SpanStyle(color = Accent)) { append(" s") }
@@ -185,6 +193,8 @@ fun IncomingOfferSheet(
                                 maxLines = 12, overflow = TextOverflow.Ellipsis,
                             )
                         }
+                    } else if (contact && cards.isNotEmpty()) {
+                        ContactCards(cards, addsToContacts)
                     } else if (camera) {
                         GlassCard(Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline) {
                             Text(
@@ -253,10 +263,12 @@ fun IncomingOfferSheet(
                             when {
                                 camera -> "Watch"
                                 switch -> "Start moving"
+                                contact && addsToContacts -> "Add to contacts"
+                                contact -> "Save"
                                 else -> "Accept"
                             }, { onRespond(true) }, Modifier.weight(1.5f),
                             style = PillStyle.Accent, height = 62.dp, fontSize = 16,
-                            icon = CdIcons.Check, glow = true,
+                            icon = if (contact && addsToContacts) CdIcons.Contacts else CdIcons.Check, glow = true,
                         )
                     }
                 }
@@ -308,6 +320,63 @@ fun isLinkText(text: String): Boolean {
     val t = text.trim()
     return !t.contains(' ') && !t.contains('\n') &&
         (t.startsWith("http://", true) || t.startsWith("https://", true))
+}
+
+/** Who the cards are: initials, name and the first number or address, up to four of them. */
+@Composable
+private fun ContactCards(cards: List<com.crossdrop.core.contacts.VContact>, addsToContacts: Boolean) {
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
+    ) {
+        cards.take(4).forEachIndexed { i, c ->
+            if (i > 0) RowSeparator()
+            Row(
+                Modifier.fillMaxWidth().padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ContactInitials(c.displayName)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        c.displayName, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    val detail = listOfNotNull(
+                        c.phones.firstOrNull()?.value, c.emails.firstOrNull()?.value,
+                        c.org.takeIf { it.isNotBlank() && it != c.displayName },
+                    ).firstOrNull()
+                    if (detail != null) Text(detail, style = monoStyle(12, TextDim), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        if (cards.size > 4) {
+            RowSeparator(color = HairlineSoft)
+            Text(
+                "+ ${cards.size - 4} more",
+                color = TextDim, fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+            )
+        }
+        Text(
+            if (addsToContacts) "Goes straight into your contacts. Anyone who's already there is skipped."
+            else "Saved to your Inbox as a contact card (.vcf) you can open in your contacts app.",
+            color = TextDim, fontSize = 12.sp, lineHeight = 17.sp,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+        )
+    }
+}
+
+/** Round initials badge for a contact without a photo. */
+@Composable
+fun ContactInitials(name: String, size: androidx.compose.ui.unit.Dp = 42.dp) {
+    val initials = name.split(' ', '-').filter { it.isNotBlank() }.take(2)
+        .joinToString("") { String(Character.toChars(it.codePointAt(0))).uppercase() }.ifEmpty { "?" }
+    Box(
+        Modifier.size(size).clip(CircleShape).background(Accent.copy(alpha = 0.14f))
+            .border(1.dp, Accent.copy(alpha = 0.3f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) { Text(initials, color = Accent, fontSize = (size.value * 0.36f).sp, fontWeight = FontWeight.SemiBold) }
 }
 
 /** What a phone move brings: counts per kind from the batch totals. */

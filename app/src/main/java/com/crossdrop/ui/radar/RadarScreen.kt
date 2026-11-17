@@ -122,6 +122,7 @@ fun RadarScreen(
     onSendTo: (List<Peer>, List<android.net.Uri>) -> Unit,
     onCamera: (List<Peer>) -> Unit = {},
     onSendText: (List<Peer>, String) -> Unit = { _, _ -> },
+    onContacts: (List<Peer>) -> Unit = {},
     onSwitchPhones: (Peer) -> Unit = {},
     onShareToAnyone: (List<android.net.Uri>) -> Unit = {},
     onMountVault: (Peer) -> Unit = {},
@@ -321,6 +322,11 @@ fun RadarScreen(
                     }
                     SmallTile("Text", "Note or link", CdIcons.Note, Modifier.weight(1f)) {
                         textFor = targets(); pickingForPeer = null; pendingPeers = emptyList()
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SmallTile("Contact", "Share a card", CdIcons.Contacts, Modifier.weight(1f)) {
+                        val t = targets(); pickingForPeer = null; pendingPeers = emptyList(); onContacts(t)
                     }
                     SmallTile("Switch", "Move phone", CdIcons.Swap, Modifier.weight(1f)) {
                         pickingForPeer = null; pendingPeers = emptyList(); onSwitchPhones(peer)
@@ -606,16 +612,17 @@ private fun VaultMountSheet(peer: Peer, onDismiss: () -> Unit, onMount: () -> Un
     }
 }
 
-/** Compact action tile under the two big ones. */
+/** Compact action tile under the two big ones, two to a row. */
 @Composable
 private fun SmallTile(title: String, subtitle: String, icon: ImageVector, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(22.dp)
-    Column(
-        modifier.heightIn(min = 96.dp).clip(shape).background(GlassMid)
+    val shape = RoundedCornerShape(20.dp)
+    Row(
+        modifier.heightIn(min = 64.dp).clip(shape).background(GlassMid)
             .border(1.dp, Color.White.copy(alpha = 0.1f), shape)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         CdIcon(icon, Accent, size = 22.dp)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

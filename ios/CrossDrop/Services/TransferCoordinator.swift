@@ -33,6 +33,7 @@ final class TransferCoordinator: ObservableObject {
 
     let trust = TrustStore()
     weak var switchReceiver: SwitchReceiving?
+    weak var contactReceiver: ContactReceiving?
 
     private let engine: TransferEngine
     private let inbox: InboxStore
@@ -105,6 +106,17 @@ final class TransferCoordinator: ObservableObject {
             let mtime = v?.contentModificationDate.map { Int64($0.timeIntervalSince1970 * 1000) }
             files.append(OutgoingFile(meta: FileMeta(name: url.lastPathComponent, size: Int64(v?.fileSize ?? 0), mime: mime, mtime: mtime), url: url))
         }
+        // Contact cards (a .vcf from Contacts' Share or the Files app) go as a contact offer, so the
+        // receiver can add them with one tap.
+        if !files.isEmpty, files.allSatisfy({ ContactCards.isVCard(name: $0.meta.name, mime: $0.meta.mime) && $0.meta.size <= ContactCards.maxCardFile }) {
+            let text = files.compactMap { try? String(contentsOf: $0.url, encoding: .utf8) }.joined()
+            let cards = files.map { f in
+                var m = f.meta; m.mime = "text/vcard"; m.cat = ItemCategory.contacts
+                return OutgoingFile(meta: m, url: f.url)
+            }
+            return send(peers, files: cards, options: SendOptions(kind: OfferKind.contact, text: ContactCards.preview(text)),
+                        quiet: false, scoped: scoped, temporary: temporary)
+        }
         if files.isEmpty {
             scoped.forEach { $0.stopAccessingSecurityScopedResource() }
             temporary.forEach { try? FileManager.default.removeItem(at: $0) }
@@ -133,6 +145,21 @@ final class TransferCoordinator: ObservableObject {
         guard (try? Data(text.utf8).write(to: url)) != nil else { return nil }
         let file = OutgoingFile(meta: FileMeta(name: url.lastPathComponent, size: Int64(text.utf8.count), mime: "text/plain"), url: url)
         return send(peers, files: [file], options: SendOptions(kind: OfferKind.text, text: text), quiet: false, scoped: [], temporary: [dir])
+    }
+
+    /// Contact cards picked in CrossDrop (`vcf` = one vCard document): the receiver sees who they are and
+    /// adds them with one tap; older versions receive the `.vcf` file.
+    @discardableResult
+    func sendContacts(_ peers: [Peer], vcf: String, names: [String]) -> UUID? {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("picked-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(ContactCards.fileName(names: names))
+        let data = Data(vcf.utf8)
+        guard (try? data.write(to: url)) != nil else { return nil }
+        let file = OutgoingFile(meta: FileMeta(name: url.lastPathComponent, size: Int64(data.count), mime: "text/vcard",
+                                               cat: ItemCategory.contacts), url: url)
+        return send(peers, files: [file], options: SendOptions(kind: OfferKind.contact, text: ContactCards.preview(vcf)),
+                    quiet: false, scoped: [], temporary: [dir])
     }
 
     /// One camera shot, live to `peers` (they accept the first, then the rest arrive without asking).
@@ -246,6 +273,8 @@ final class TransferCoordinator: ObservableObject {
         var v1Files: [URL] = []
         let lock = NSLock()
         var store: FileDeltaStore?
+        /// Staged for the contact receiver (not the inbox).
+        var contactStaged = false
     }
 
     private final class DiscardSink: OutputSink {
@@ -254,7 +283,7 @@ final class TransferCoordinator: ObservableObject {
     }
 
     /// What `decide` resolves to, built on the engine thread from thread-safe parts.
-    private enum Route { case files, text, camera(String, TrustGrant?), switchBatch(TrustGrant?) }
+    private enum Route { case files, text, contact, camera(String, TrustGrant?), switchBatch(TrustGrant?) }
 
     func handleInbound(_ socket: TCPSocket) {
         guard inboundCount < maxInbound else { socket.close(); return }
@@ -263,6 +292,7 @@ final class TransferCoordinator: ObservableObject {
         let token = CancelToken()
         let engine = self.engine, inbox = self.inbox, trust = self.trust
         let switchRx = self.switchReceiver
+        let contactRx = self.contactReceiver
         Thread.detachNewThread { [weak self] in
             engine.receive(socket: socket, cancel: token, decideRequest: { req in
                 let offer = req.offer
@@ -283,6 +313,7 @@ final class TransferCoordinator: ObservableObject {
                     }
                     guard answer.accepted else { return .reject(answer.reason ?? "declined") }
                     if offer.kind == OfferKind.text, offer.text != nil { route = .text }
+                    else if offer.kind == OfferKind.contact, contactRx != nil { route = .contact }
                     else if offer.kind == OfferKind.camera {
                         let g = trust.grant(kind: OfferKind.camera, peerName: req.peerName, ttl: Self.liveTTL)
                         route = .camera(g.id, g)
@@ -299,6 +330,17 @@ final class TransferCoordinator: ObservableObject {
                     conn.kind = OfferKind.text
                     DispatchQueue.main.async { self?.register(sid, conn: conn, peer: req.peerName, sas: sas, offer: offer, kind: OfferKind.text, quiet: true) }
                     return .accept(sinkFor: { _ in DiscardSink() }, delta: nil)
+                case .contact:
+                    guard let rx = contactRx else { return .reject("unsupported") }
+                    conn.kind = OfferKind.contact
+                    conn.contactStaged = true
+                    DispatchQueue.main.async { self?.register(sid, conn: conn, peer: req.peerName, sas: sas, offer: offer, kind: OfferKind.contact, quiet: true) }
+                    // A few kilobytes: the plain stream path, staged outside the inbox until it's been added.
+                    return .accept(sinkFor: { meta in
+                        let (url, sink) = try rx.stagingFile(meta)
+                        conn.lock.lock(); conn.v1Files.append(url); conn.lock.unlock()
+                        return sink
+                    }, delta: nil)
                 case .files:
                     conn.kind = offer.kind
                     conn.store = inbox.delta
@@ -401,6 +443,9 @@ final class TransferCoordinator: ObservableObject {
             switchReceiver?.importBatch(peerName: conn.peerName, offer: offer, files: files(of: offer, conn: conn))
         case OfferKind.text:
             break
+        case OfferKind.contact where conn.contactStaged:
+            contactReceiver?.received(peerName: conn.peerName, offer: offer, files: files(of: offer, conn: conn))
+            pruneQuiet(kind: OfferKind.contact)
         default:
             inbox.refresh()
         }
@@ -480,6 +525,10 @@ final class TransferCoordinator: ObservableObject {
         let files = s.offer?.files ?? []
         let summary: String
         if s.kind == OfferKind.text { summary = isLinkText(s.offer?.text ?? "") ? "Link" : "Text" }
+        else if s.kind == OfferKind.contact {
+            let n = files.first?.name ?? "Contact"
+            summary = n.lowercased().hasSuffix(".vcf") ? String(n.dropLast(4)) : n
+        }
         else if files.count == 1 { summary = files[0].name }
         else if files.count > 1 { summary = "\(files.count) files" }
         else { summary = s.currentFileName ?? "—" }

@@ -5,6 +5,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.provider.ContactsContract
 import android.provider.ContactsContract.CommonDataKinds.Email
 import android.provider.ContactsContract.CommonDataKinds.Event
@@ -28,15 +29,57 @@ object AndroidContacts {
         )?.use { it.count } ?: 0
     }.getOrDefault(0)
 
-    /** Every contact, merged across accounts the way the Contacts app shows them. */
-    fun readAll(context: Context, withPhotos: Boolean): List<VContact> {
+    /** One row of the contact picker. */
+    data class Entry(val id: Long, val name: String, val detail: String)
+
+    /** Every contact as name + first phone (or email), sorted the way the Contacts app sorts them. */
+    fun list(context: Context): List<Entry> {
+        val cr = context.contentResolver
+        val detail = HashMap<Long, String>()
+        val emails = HashMap<Long, String>()
+        cr.query(
+            ContactsContract.Data.CONTENT_URI,
+            arrayOf(ContactsContract.Data.CONTACT_ID, ContactsContract.Data.MIMETYPE, "data1"),
+            "${ContactsContract.Data.MIMETYPE} IN (?, ?)",
+            arrayOf(Phone.CONTENT_ITEM_TYPE, Email.CONTENT_ITEM_TYPE),
+            "${ContactsContract.Data.IS_SUPER_PRIMARY} DESC, ${ContactsContract.Data.IS_PRIMARY} DESC",
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val v = c.getString(2)?.trim().orEmpty()
+                if (v.isEmpty()) continue
+                val target = if (c.getString(1) == Phone.CONTENT_ITEM_TYPE) detail else emails
+                target.putIfAbsent(c.getLong(0), v)
+            }
+        }
+        val out = ArrayList<Entry>()
+        cr.query(
+            ContactsContract.Contacts.CONTENT_URI,
+            arrayOf(ContactsContract.Contacts._ID, ContactsContract.Contacts.DISPLAY_NAME_PRIMARY),
+            null, null, "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} COLLATE LOCALIZED ASC",
+        )?.use { c ->
+            while (c.moveToNext()) {
+                val id = c.getLong(0)
+                val name = c.getString(1)?.trim().orEmpty()
+                val d = detail[id] ?: emails[id] ?: ""
+                if (name.isEmpty() && d.isEmpty()) continue
+                out += Entry(id, name.ifEmpty { d }, if (name.isEmpty()) "" else d)
+            }
+        }
+        return out
+    }
+
+    /** Every contact (or just [ids]), merged across accounts the way the Contacts app shows them. */
+    fun readAll(context: Context, withPhotos: Boolean, ids: Collection<Long>? = null): List<VContact> {
         val cr = context.contentResolver
         val byId = LinkedHashMap<Long, VContact>()
         val proj = arrayOf(
             ContactsContract.Data.CONTACT_ID, ContactsContract.Data.MIMETYPE,
             "data1", "data2", "data3", "data4", "data5", "data6", "data7", "data8", "data9", "data10",
         )
-        cr.query(ContactsContract.Data.CONTENT_URI, proj, null, null, ContactsContract.Data.CONTACT_ID)?.use { c ->
+        // Ids come from our own query, so they are plain longs — safe to inline.
+        val selection = ids?.let { "${ContactsContract.Data.CONTACT_ID} IN (${it.joinToString(",")})" }
+        if (ids != null && ids.isEmpty()) return emptyList()
+        cr.query(ContactsContract.Data.CONTENT_URI, proj, selection, null, ContactsContract.Data.CONTACT_ID)?.use { c ->
             fun col(i: Int) = c.getString(i).orEmpty()
             while (c.moveToNext()) {
                 val id = c.getLong(0)
@@ -81,7 +124,8 @@ object AndroidContacts {
         }.filter { it.displayName.isNotBlank() }
     }
 
-    class ImportResult(val added: Int, val skipped: Int)
+    /** [firstAdded] = a `content://com.android.contacts/contacts/lookup/…` link to show the first new one. */
+    class ImportResult(val added: Int, val skipped: Int, val firstAdded: Uri? = null)
 
     /** Insert [contacts] that aren't already in the address book. */
     fun import(context: Context, contacts: List<VContact>, onProgress: (Int) -> Unit = {}): ImportResult {
@@ -89,15 +133,22 @@ object AndroidContacts {
         val byName = existing.groupBy { VContact.normName(it.displayName) }
         var added = 0
         var skipped = 0
+        var first: Uri? = null
         contacts.forEachIndexed { i, c ->
             val dup = byName[VContact.normName(c.displayName)]?.any { it.sameAs(c) } == true
-            if (dup) skipped++ else if (insert(context, c)) added++
+            if (dup) skipped++ else insert(context, c)?.let { raw ->
+                added++
+                if (first == null) first = runCatching {
+                    ContactsContract.RawContacts.getContactLookupUri(context.contentResolver, raw)
+                }.getOrNull()
+            }
             onProgress(i + 1)
         }
-        return ImportResult(added, skipped)
+        return ImportResult(added, skipped, first)
     }
 
-    private fun insert(context: Context, c: VContact): Boolean = runCatching {
+    /** The new raw contact's uri, or null when the provider refused it. */
+    private fun insert(context: Context, c: VContact): Uri? = runCatching {
         val ops = ArrayList<ContentProviderOperation>()
         ops += ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
             .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
@@ -140,9 +191,8 @@ object AndroidContacts {
         c.birthday?.let { data(Event.CONTENT_ITEM_TYPE, Event.START_DATE to it, Event.TYPE to Event.TYPE_BIRTHDAY) }
         if (c.note.isNotBlank()) data(Note.CONTENT_ITEM_TYPE, Note.NOTE to c.note)
         c.photo?.let { shrinkPhoto(it) }?.let { data(Photo.CONTENT_ITEM_TYPE, Photo.PHOTO to it) }
-        context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
-        true
-    }.getOrDefault(false)
+        context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops).firstOrNull()?.uri
+    }.getOrNull()
 
     /** Keeps a contact photo well under the binder transaction limit. */
     private fun shrinkPhoto(bytes: ByteArray): ByteArray? = runCatching {

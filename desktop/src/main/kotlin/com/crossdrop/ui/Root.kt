@@ -284,7 +284,8 @@ fun Root(container: AppContainer) {
 
         // ---- inbound offer — always on top; answered only by its buttons
         Overlay(incomingOffer, fade = true) { offer ->
-            IncomingOfferSheet(offer) { accept -> container.coordinator.respondToOffer(offer, accept) }
+            // No address book here: contact cards are saved to the inbox as .vcf.
+            IncomingOfferSheet(offer, addsToContacts = false) { accept -> container.coordinator.respondToOffer(offer, accept) }
         }
     }
 

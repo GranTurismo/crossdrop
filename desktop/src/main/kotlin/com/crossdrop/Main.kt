@@ -153,6 +153,9 @@ fun main(args: Array<String>) {
                     when (offer.kind) {
                         com.crossdrop.core.protocol.OfferKind.TEXT -> if (offer.text != null) "A link or note — open CrossDrop to see it"
                             else "${offer.offer.files.size} file(s) — open CrossDrop to accept"
+                        com.crossdrop.core.protocol.OfferKind.CONTACT -> offer.contacts.takeIf { it.isNotEmpty() }
+                            ?.let { "Contact card: ${com.crossdrop.core.contacts.ContactShare.title(it)} — open CrossDrop to save it" }
+                            ?: "A contact card — open CrossDrop to save it"
                         com.crossdrop.core.protocol.OfferKind.CAMERA -> "Their camera, live on this screen — open CrossDrop to watch"
                         com.crossdrop.core.protocol.OfferKind.SWITCH -> "Their photos, videos and contacts — open CrossDrop to accept"
                         else -> "${offer.offer.files.size} file${if (offer.offer.files.size == 1) "" else "s"} — open CrossDrop to accept"

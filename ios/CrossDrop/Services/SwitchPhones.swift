@@ -11,6 +11,16 @@ import UIKit
 enum ContactsBridge {
     static func authorized() -> Bool { CNContactStore.authorizationStatus(for: .contacts) == .authorized }
 
+    /// May add contacts: full access, or (iOS 18) limited access — new contacts join the shared set.
+    static func canAdd() -> Bool {
+        let s = CNContactStore.authorizationStatus(for: .contacts)
+        if s == .authorized { return true }
+        if #available(iOS 18.0, macCatalyst 18.0, *), s == .limited { return true }
+        return false
+    }
+
+    static func undetermined() -> Bool { CNContactStore.authorizationStatus(for: .contacts) == .notDetermined }
+
     static func requestAccess() async -> Bool {
         (try? await CNContactStore().requestAccess(for: .contacts)) ?? false
     }
@@ -71,28 +81,44 @@ enum ContactsBridge {
         return out + "\r\n"
     }
 
-    static func vcard(_ c: CNContact) -> String {
+    /// One contact as vCard 3.0. Only properties the contact was fetched with are read (the system
+    /// contact picker hands out contacts whose key set we don't choose).
+    static func vcard(_ c: CNContact, photo: Bool = true) -> String {
         var v = "BEGIN:VCARD\r\nVERSION:3.0\r\n"
         func add(_ s: String) { v += fold(s) }
-        add("N:" + [c.familyName, c.givenName, c.middleName, c.namePrefix, c.nameSuffix].map(esc).joined(separator: ";"))
-        let fn = CNContactFormatter.string(from: c, style: .fullName) ?? c.organizationName
-        add("FN:" + esc(fn))
-        if !c.nickname.isEmpty { add("NICKNAME:" + esc(c.nickname)) }
-        if !c.organizationName.isEmpty || !c.departmentName.isEmpty {
-            add("ORG:" + esc(c.organizationName) + (c.departmentName.isEmpty ? "" : ";" + esc(c.departmentName)))
+        func has(_ key: String) -> Bool { c.isKeyAvailable(key) }
+        func str(_ key: String, _ get: () -> String) -> String { has(key) ? get() : "" }
+        let family = str(CNContactFamilyNameKey) { c.familyName }, given = str(CNContactGivenNameKey) { c.givenName }
+        let middle = str(CNContactMiddleNameKey) { c.middleName }, prefix = str(CNContactNamePrefixKey) { c.namePrefix }
+        let suffix = str(CNContactNameSuffixKey) { c.nameSuffix }, org = str(CNContactOrganizationNameKey) { c.organizationName }
+        let dept = str(CNContactDepartmentNameKey) { c.departmentName }
+        add("N:" + [family, given, middle, prefix, suffix].map(esc).joined(separator: ";"))
+        let fn = (c.areKeysAvailable([CNContactFormatter.descriptorForRequiredKeys(for: .fullName)])
+                  ? CNContactFormatter.string(from: c, style: .fullName) : nil)
+            ?? [prefix, given, middle, family, suffix].filter { !$0.isEmpty }.joined(separator: " ")
+        add("FN:" + esc(fn.isEmpty ? org : fn))
+        let nick = str(CNContactNicknameKey) { c.nickname }
+        if !nick.isEmpty { add("NICKNAME:" + esc(nick)) }
+        if !org.isEmpty || !dept.isEmpty {
+            add("ORG:" + esc(org) + (dept.isEmpty ? "" : ";" + esc(dept)))
         }
-        if !c.jobTitle.isEmpty { add("TITLE:" + esc(c.jobTitle)) }
-        for p in c.phoneNumbers { add("TEL" + type(p.label) + ":" + esc(p.value.stringValue)) }
-        for e in c.emailAddresses { add("EMAIL;TYPE=INTERNET" + type(e.label).replacingOccurrences(of: ";TYPE=", with: ",") + ":" + esc(e.value as String)) }
-        for a in c.postalAddresses {
-            let p = a.value
-            add("ADR" + type(a.label) + ":;;" + [p.street, p.city, p.state, p.postalCode, p.country].map(esc).joined(separator: ";"))
+        let job = str(CNContactJobTitleKey) { c.jobTitle }
+        if !job.isEmpty { add("TITLE:" + esc(job)) }
+        if has(CNContactPhoneNumbersKey) { for p in c.phoneNumbers { add("TEL" + type(p.label) + ":" + esc(p.value.stringValue)) } }
+        if has(CNContactEmailAddressesKey) {
+            for e in c.emailAddresses { add("EMAIL;TYPE=INTERNET" + type(e.label).replacingOccurrences(of: ";TYPE=", with: ",") + ":" + esc(e.value as String)) }
         }
-        for u in c.urlAddresses { add("URL:" + esc(u.value as String)) }
-        if let b = c.birthday, let m = b.month, let d = b.day {
+        if has(CNContactPostalAddressesKey) {
+            for a in c.postalAddresses {
+                let p = a.value
+                add("ADR" + type(a.label) + ":;;" + [p.street, p.city, p.state, p.postalCode, p.country].map(esc).joined(separator: ";"))
+            }
+        }
+        if has(CNContactUrlAddressesKey) { for u in c.urlAddresses { add("URL:" + esc(u.value as String)) } }
+        if has(CNContactBirthdayKey), let b = c.birthday, let m = b.month, let d = b.day {
             add(b.year.map { String(format: "BDAY:%04d-%02d-%02d", $0, m, d) } ?? String(format: "BDAY:--%02d-%02d", m, d))
         }
-        if let img = c.imageData, !img.isEmpty {
+        if photo, has(CNContactImageDataKey), let img = c.imageData, !img.isEmpty {
             let jpeg = UIImage(data: img).flatMap { $0.jpegData(compressionQuality: 0.85) } ?? img
             add("PHOTO;ENCODING=b;TYPE=JPEG:" + jpeg.base64EncodedString())
         }
@@ -101,7 +127,13 @@ enum ContactsBridge {
 
     /// Adds the contacts in `vcf` that aren't already in the address book. Returns (added, skipped).
     static func importVCard(_ data: Data) -> (added: Int, skipped: Int) {
-        guard let parsed = try? CNContactVCardSerialization.contacts(with: data) else { return (0, 0) }
+        let r = importCards(data)
+        return (r.added, r.skipped)
+    }
+
+    /// `importVCard`, plus the identifier of the first contact added (to show it afterwards).
+    static func importCards(_ data: Data) -> (added: Int, skipped: Int, firstAdded: String?) {
+        guard let parsed = try? CNContactVCardSerialization.contacts(with: data) else { return (0, 0, nil) }
         let store = CNContactStore()
         var existing: [String: [CNContact]] = [:]
         let keys: [CNKeyDescriptor] = [CNContactGivenNameKey as CNKeyDescriptor, CNContactFamilyNameKey as CNKeyDescriptor,
@@ -110,13 +142,17 @@ enum ContactsBridge {
         let req = CNContactFetchRequest(keysToFetch: keys)
         try? store.enumerateContacts(with: req) { c, _ in existing[normName(display(c)), default: []].append(c) }
         var added = 0, skipped = 0
+        var first: CNMutableContact?
         let save = CNSaveRequest()
         for c in parsed {
             if existing[normName(display(c))]?.contains(where: { same(c, $0) }) == true { skipped += 1; continue }
-            if let m = c.mutableCopy() as? CNMutableContact { save.add(m, toContainerWithIdentifier: nil); added += 1 }
+            if let m = c.mutableCopy() as? CNMutableContact {
+                save.add(m, toContainerWithIdentifier: nil); added += 1
+                if first == nil { first = m }
+            }
         }
-        if added > 0, (try? store.execute(save)) == nil { return (0, skipped) }
-        return (added, skipped)
+        if added > 0, (try? store.execute(save)) == nil { return (0, skipped, nil) }
+        return (added, skipped, first?.identifier)
     }
 
     private static func display(_ c: CNContact) -> String {

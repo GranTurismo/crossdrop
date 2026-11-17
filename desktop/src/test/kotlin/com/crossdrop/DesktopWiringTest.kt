@@ -149,6 +149,58 @@ class DesktopWiringTest {
         } finally { a.close(); b.close() }
     }
 
+    private fun janeCard(): File {
+        val jane = com.crossdrop.core.contacts.VContact(
+            given = "Jane", family = "Doe", phones = listOf(com.crossdrop.core.contacts.VContact.Labeled("+1 555 0100", "CELL")),
+            photo = ByteArray(90_000) { (it * 13).toByte() },
+        )
+        return File(home, "Jane Doe.vcf").apply { writeText(com.crossdrop.core.contacts.VCard.write(jane)) }
+    }
+
+    @Test fun contactCardsArriveAsAContactOfferAndLandInTheInboxHere() = runBlocking {
+        val a = Node("alice5", File(home, "a5")); val b = Node("bob5", File(home, "b5"))
+        try {
+            awaitNotNull("listener") { b.server.port.takeIf { it != 0 } }
+            val card = janeCard()
+            a.coordinator.sendTo(Peer("bob5", "bob5", Endpoint("127.0.0.1", b.server.port)), listOf(card))
+            val offer = awaitNotNull("contact offer") { b.coordinator.incomingOffer.value }
+            assertEquals(com.crossdrop.core.protocol.OfferKind.CONTACT, offer.kind)
+            assertEquals(listOf("Jane Doe"), offer.contacts.map { it.displayName })
+            assertFalse(offer.offer.text!!.contains("PHOTO"))                      // preview is photo-less
+            b.coordinator.respondToOffer(true)
+            awaitNotNull("received") { b.coordinator.sessions.value.lastOrNull()?.takeIf { it.status == SessionStatus.COMPLETED } }
+            // No address book on a desktop: the full card (photo included) is saved as a file.
+            assertArrayEquals(card.readBytes(), b.inbox.list().single().file.readBytes())
+            awaitNotNull("history") { b.history.list().singleOrNull() }
+            assertEquals("Jane Doe", b.history.list().single().summary)
+        } finally { a.close(); b.close() }
+    }
+
+    @Test fun aContactReceiverGetsTheWholeCardInsteadOfTheInbox() = runBlocking {
+        val a = Node("alice6", File(home, "a6")); val b = Node("bob6", File(home, "b6"))
+        val got = kotlinx.coroutines.CompletableDeferred<Pair<String, String>>()
+        b.coordinator.hub.contactReceiver = object : com.crossdrop.net.ContactReceiver {
+            override fun stagingFile(meta: com.crossdrop.core.protocol.FileMeta) = File(home, "staged-${meta.name}")
+            override suspend fun received(peerName: String, offer: com.crossdrop.core.protocol.Offer, files: List<File>) {
+                got.complete(peerName to files.single().readText())
+                files.forEach { it.delete() }
+            }
+        }
+        try {
+            awaitNotNull("listener") { b.server.port.takeIf { it != 0 } }
+            val card = janeCard()
+            a.coordinator.sendTo(Peer("bob6", "bob6", Endpoint("127.0.0.1", b.server.port)), listOf(card))
+            awaitNotNull("contact offer") { b.coordinator.incomingOffer.value }
+            b.coordinator.respondToOffer(true)
+            val (from, text) = withTimeoutOrNull(20_000) { got.await() } ?: error("receiver never called")
+            assertEquals("alice6", from)
+            assertEquals(card.readText(), text)
+            assertTrue(b.inbox.list().isEmpty())
+            // Quiet on the receiving side: no transfer view pops up for a contact card.
+            assertTrue(b.coordinator.groups.value.isEmpty())
+        } finally { a.close(); b.close() }
+    }
+
     @Test fun hostsAFolderAsAReadOnlyDriveWithoutTouchingIt() = runBlocking {
         val shared = File(shareRoot, "shared").apply { mkdirs() }
         File(shared, "hello.txt").writeText("hi from the mac")

@@ -107,7 +107,8 @@ final class ShareModel: NSObject, ObservableObject, NetServiceBrowserDelegate, N
     }
 
     private static func loadFile(_ p: NSItemProvider, into dir: URL) async -> URL? {
-        let fileTypes = [UTType.fileURL, .movie, .image, .pdf, .data, .item].map(\.identifier)
+        // vCard first: Contacts' "Share Contact" offers it as text too, and it must stay a .vcf.
+        let fileTypes = [UTType.vCard, .fileURL, .movie, .image, .pdf, .data, .item].map(\.identifier)
         let plainOnly = !p.hasItemConformingToTypeIdentifier(UTType.data.identifier) && !p.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
         if plainOnly { return nil }                      // a bare link or text — sent as text instead
         guard let type = fileTypes.first(where: { p.hasItemConformingToTypeIdentifier($0) }) else { return nil }
@@ -116,7 +117,9 @@ final class ShareModel: NSObject, ObservableObject, NetServiceBrowserDelegate, N
                 guard let url else { cont.resume(returning: nil); return }
                 let d = dir.appendingPathComponent(UUID().uuidString, isDirectory: true)
                 try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-                let dest = d.appendingPathComponent(url.lastPathComponent)
+                var name = url.lastPathComponent
+                if type == UTType.vCard.identifier, !ContactCards.isVCard(name: name, mime: nil) { name += ".vcf" }
+                let dest = d.appendingPathComponent(name)
                 cont.resume(returning: (try? FileManager.default.copyItem(at: url, to: dest)) != nil ? dest : nil)
             }
         }) { return url }
@@ -232,6 +235,15 @@ final class ShareModel: NSObject, ObservableObject, NetServiceBrowserDelegate, N
                 let size = Int64((try? u.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
                 files.append(OutgoingFile(meta: FileMeta(name: u.lastPathComponent, size: size,
                                                          mime: UTType(filenameExtension: u.pathExtension)?.preferredMIMEType), url: u))
+            }
+            // Contact cards go as a contact offer: the receiver sees who it is and adds it with one tap.
+            if files.allSatisfy({ ContactCards.isVCard(name: $0.meta.name, mime: $0.meta.mime) && $0.meta.size <= ContactCards.maxCardFile }) {
+                let text = files.compactMap { try? String(contentsOf: $0.url, encoding: .utf8) }.joined()
+                files = files.map { f in
+                    var m = f.meta; m.mime = "text/vcard"; m.cat = ItemCategory.contacts
+                    return OutgoingFile(meta: m, url: f.url)
+                }
+                options = SendOptions(kind: OfferKind.contact, text: ContactCards.preview(text))
             }
         case .text(let t):
             let url = tmp.appendingPathComponent(isLink ? "Link.txt" : "Text.txt")

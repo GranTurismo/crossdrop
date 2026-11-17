@@ -68,6 +68,8 @@ public enum OfferKind {
     public static let text = "text"
     public static let camera = "camera"
     public static let switchPhones = "switch"
+    /// One or more contact cards: a single `.vcf`; `Offer.text` carries a photo-less copy for the prompt.
+    public static let contact = "contact"
 }
 
 /// Longest `Offer.text` a sender inlines (the file copy carries anything longer).

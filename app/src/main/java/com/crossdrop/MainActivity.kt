@@ -58,6 +58,22 @@ class MainActivity : ComponentActivity() {
             android.os.Handler(mainLooper).postDelayed(
                 { container.coordinator.selfTransfer(host, port) }, 1500)
         }
+        // -e dev_send_contact host:port — a made-up contact card (never the address book).
+        intent?.getStringExtra("dev_send_contact")?.takeIf { it.isNotBlank() }?.let { peer ->
+            val host = peer.substringBefore(':')
+            val port = peer.substringAfter(':', "0").toIntOrNull() ?: 0
+            android.os.Handler(mainLooper).postDelayed({
+                val card = com.crossdrop.core.contacts.VContact(
+                    given = "Test", family = "Card", org = "CrossDrop QA",
+                    phones = listOf(com.crossdrop.core.contacts.VContact.Labeled("+1 555 0199", "CELL")),
+                    emails = listOf(com.crossdrop.core.contacts.VContact.Labeled("test.card@example.com")),
+                )
+                container.coordinator.sendContacts(
+                    listOf(com.crossdrop.core.Peer("dev-$host:$port", "dev $host", com.crossdrop.core.Endpoint(host, port))),
+                    listOf(card),
+                )
+            }, 1500)
+        }
         if (intent?.getStringExtra("dev_share") != null) {
             android.os.Handler(mainLooper).postDelayed(
                 { container.qrShare.startDebug() }, 1500)

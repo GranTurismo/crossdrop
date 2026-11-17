@@ -16,6 +16,9 @@ struct IncomingOfferSheet: View {
         let link = text.map(isLinkText) ?? false
         let camera = offer.kind == OfferKind.camera
         let switching = offer.kind == OfferKind.switchPhones
+        let contact = offer.kind == OfferKind.contact
+        let cards = offer.contacts
+        let cardCount = max(cards.count, 1)
         ZStack {
             CD.ink.ignoresSafeArea()
             ScreenGlow(centerY: 215, radius: 275)
@@ -25,7 +28,8 @@ struct IncomingOfferSheet: View {
                         HStack(spacing: 8) {
                             Dot(color: CD.accent)
                             Text(text != nil ? (link ? "INCOMING LINK" : "INCOMING TEXT") : camera ? "LIVE CAMERA"
-                                 : switching ? "SWITCH PHONES" : "INCOMING FILES").font(.cd(12, weight: .semibold)).tracking(CDFont.scaled(12) * 0.06)
+                                 : switching ? "SWITCH PHONES" : contact ? (cardCount == 1 ? "INCOMING CONTACT" : "INCOMING CONTACTS")
+                                 : "INCOMING FILES").font(.cd(12, weight: .semibold)).tracking(CDFont.scaled(12) * 0.06)
                                 .foregroundColor(CD.textSecondary)
                         }
                         .padding(.horizontal, 14).frame(height: 32)
@@ -42,12 +46,13 @@ struct IncomingOfferSheet: View {
                             Text(text != nil ? "\(offer.peerName) sent you " + (link ? "a link" : "some text")
                                  : camera ? "\(offer.peerName) wants to share their camera"
                                  : switching ? "\(offer.peerName) wants to move to this \(Platform.deviceNoun)"
+                                 : contact ? "\(offer.peerName) sent you " + (cardCount == 1 ? "a contact" : "\(cardCount) contacts")
                                  : "\(offer.peerName) wants to send you " + (files.count == 1 ? "a file" : "\(files.count) files"))
                                 .displayStyle(28, tracking: -0.035).multilineTextAlignment(.center).lineLimit(3)
                                 .accessibilityAddTraits(.isHeader)
                             TimelineView(.periodic(from: offer.receivedAt, by: 1)) { ctx in
                                 let left = max(0, Int(ceil(timeout - ctx.date.timeIntervalSince(offer.receivedAt))))
-                                (Text((text == nil && !camera ? "\(Fmt.bytes(total)) · " : "") + "auto-declines in ").foregroundColor(CD.textDim).font(.cd(14))
+                                (Text((text == nil && !camera && !contact ? "\(Fmt.bytes(total)) · " : "") + "auto-declines in ").foregroundColor(CD.textDim).font(.cd(14))
                                     + Text("\(left)").font(.mono(14)).foregroundColor(CD.accent)
                                     + Text(" s").font(.cd(14)).foregroundColor(CD.accent))
                                     .multilineTextAlignment(.center)
@@ -66,6 +71,8 @@ struct IncomingOfferSheet: View {
                             }
                         } else if switching {
                             SwitchSummary(offer: offer.offer)
+                        } else if contact && !cards.isEmpty {
+                            ContactCardsView(cards: cards)
                         } else {
                         GlassCard(radius: 28, fill: CD.glass, border: CD.hairline, padding: .all(6)) {
                             ForEach(Array(files.prefix(4).enumerated()), id: \.offset) { i, f in
@@ -110,8 +117,9 @@ struct IncomingOfferSheet: View {
                         } else {
                             PillButton("Decline", style: .outline, height: 62, fontSize: 16) { onRespond(false) }
                                 .frame(width: w * 0.4)
-                            PillButton(camera ? "Watch" : switching ? "Start moving" : "Accept", style: .accent, height: 62,
-                                       icon: CdIcons.check, fontSize: 16, glow: true) { onRespond(true) }
+                            PillButton(camera ? "Watch" : switching ? "Start moving" : contact ? "Add to contacts" : "Accept",
+                                       style: .accent, height: 62, icon: contact ? CdIcons.contacts : CdIcons.check,
+                                       fontSize: 16, glow: true) { onRespond(true) }
                                 .frame(width: w * 0.6)
                         }
                     }
@@ -158,6 +166,52 @@ private struct CountdownAvatar: View {
             guard !reduceMotion else { return }
             withAnimation(.linear(duration: 2.4).repeatForever(autoreverses: false)) { pulse = true }
         }
+    }
+}
+
+/// Who the cards are: initials, name and the first number or address, up to four of them.
+private struct ContactCardsView: View {
+    let cards: [ContactPreview]
+    var body: some View {
+        GlassCard(radius: 28, fill: CD.glass, border: CD.hairline, padding: .all(6)) {
+            ForEach(Array(cards.prefix(4).enumerated()), id: \.offset) { i, c in
+                if i > 0 { RowSeparator() }
+                HStack(spacing: 12) {
+                    ContactInitials(name: c.name)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(c.name).body(15, weight: .semibold).lineLimit(1)
+                        if let d = c.detail { Text(d).monoStyle(12, color: CD.textDim).lineLimit(1) }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(10)
+                .accessibilityElement(children: .combine)
+            }
+            if cards.count > 4 {
+                RowSeparator()
+                Text("+ \(cards.count - 4) more").body(13, CD.textDim)
+                    .padding(.horizontal, 10).padding(.vertical, 12)
+            }
+            Text("Goes straight into your contacts. Anyone who's already there is skipped.")
+                .body(12, CD.textDim).padding(.horizontal, 10).padding(.vertical, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+/// Round initials badge for a contact without a photo.
+struct ContactInitials: View {
+    let name: String
+    var size: CGFloat = 42
+    var body: some View {
+        let initials = name.split(whereSeparator: { $0 == " " || $0 == "-" }).prefix(2)
+            .compactMap { $0.first.map { String($0).uppercased() } }.joined()
+        Text(initials.isEmpty ? "?" : initials)
+            .font(.cd(size * 0.36, weight: .semibold)).foregroundColor(CD.accent)
+            .frame(width: size, height: size)
+            .background(Circle().fill(CD.accent.opacity(0.14)))
+            .overlay(Circle().strokeBorder(CD.accent.opacity(0.3), lineWidth: 1))
+            .accessibilityHidden(true)
     }
 }
 

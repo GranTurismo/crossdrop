@@ -94,6 +94,7 @@ fun Root(container: AppContainer) {
     val live by container.coordinator.live.collectAsState()
     val switchOut by container.switchSender.state.collectAsState()
     val switchIn by container.switchImporter.state.collectAsState()
+    val contactDrop by container.contactInbox.state.collectAsState()
     val shareState by container.qrShare.state.collectAsState()
     val vaultUi by container.vaultExplorer.state.collectAsState()
     val vaultHost by container.vaultHost.state.collectAsState()
@@ -114,6 +115,17 @@ fun Root(container: AppContainer) {
     var cameraTargets by remember { mutableStateOf<List<com.crossdrop.core.Peer>?>(null) }
     var cameraShots by remember { mutableStateOf(emptyList<com.crossdrop.ui.camera.CameraShot>()) }
     var switchTarget by remember { mutableStateOf<com.crossdrop.core.Peer?>(null) }
+    var contactTargets by remember { mutableStateOf<List<com.crossdrop.core.Peer>?>(null) }
+    // A contact offer accepted while CrossDrop can't write contacts yet: answered after the permission dialog.
+    var contactOfferWaiting by remember { mutableStateOf<com.crossdrop.net.IncomingOffer?>(null) }
+    val contactsPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        contactOfferWaiting?.let { container.coordinator.respondToOffer(it, true) }
+        contactOfferWaiting = null
+        if (container.contactInbox.canWrite()) container.scope.launch { container.contactInbox.addKept() }
+    }
+    val contactsPerms = arrayOf(android.Manifest.permission.READ_CONTACTS, android.Manifest.permission.WRITE_CONTACTS)
     var switchInHidden by remember { mutableStateOf(false) }
     val doneCount = allSessions.count { it.status.isTerminal }
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -150,6 +162,7 @@ fun Root(container: AppContainer) {
                         TransferService.start(container.contextForService())
                         container.coordinator.sendText(targets, text)
                     },
+                    onContacts = { targets -> contactTargets = targets },
                     onSwitchPhones = { peer -> container.switchSender.close(); switchTarget = peer },
                     onShareToAnyone = { uris ->
                         TransferService.start(container.contextForService())
@@ -276,6 +289,24 @@ fun Root(container: AppContainer) {
                 )
             }
 
+            // ---- contact cards: pick people, send them
+            Overlay(contactTargets) { targets ->
+                BackHandler { contactTargets = null }
+                com.crossdrop.ui.contacts.ContactPickerScreen(
+                    target = if (targets.size == 1) targets.first().name else "${targets.size} devices",
+                    onSend = { ids ->
+                        contactTargets = null
+                        container.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                            val cards = runCatching {
+                                com.crossdrop.switchphones.AndroidContacts.readAll(context, withPhotos = true, ids = ids)
+                            }.getOrDefault(emptyList())
+                            if (cards.isNotEmpty()) container.coordinator.sendContacts(targets, cards)
+                        }
+                    },
+                    onClose = { contactTargets = null },
+                )
+            }
+
             // ---- switch phones: this phone → another device
             Overlay(switchTarget) { peer ->
                 BackHandler { if (switchOut?.finished != false) { container.switchSender.close(); switchTarget = null } }
@@ -346,15 +377,70 @@ fun Root(container: AppContainer) {
                 )
             }
 
+            // ---- contact cards that just arrived
+            androidx.compose.animation.AnimatedVisibility(
+                visible = contactDrop != null,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, bottom = navInset - WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
+            ) {
+                var last by remember { mutableStateOf(contactDrop) }
+                contactDrop?.let { last = it }
+                last?.let { d ->
+                    com.crossdrop.ui.contacts.ContactDropCard(
+                        drop = d,
+                        onView = { uri ->
+                            runCatching {
+                                context.startActivity(
+                                    android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                                        .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                            container.contactInbox.dismiss(d.id)
+                        },
+                        onAllow = {
+                            val prefs = context.getSharedPreferences("contacts_permission", 0)
+                            val activity = context as? android.app.Activity
+                            val refusedForGood = prefs.getBoolean("asked", false) && activity != null &&
+                                !androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(activity, android.Manifest.permission.WRITE_CONTACTS)
+                            if (refusedForGood && !container.contactInbox.canWrite()) {
+                                // Android won't ask again: the switch is in the app's settings now.
+                                runCatching {
+                                    context.startActivity(
+                                        android.content.Intent(
+                                            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            android.net.Uri.fromParts("package", context.packageName, null),
+                                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                                    )
+                                }
+                            } else {
+                                prefs.edit().putBoolean("asked", true).apply()
+                                contactsPermission.launch(contactsPerms)
+                            }
+                        },
+                        onDone = { container.contactInbox.dismiss(d.id); inboxCount = container.inbox.list().size },
+                    )
+                }
+            }
+
             // ---- inbound offer — always on top; Back declines
             Overlay(incomingOffer, fade = true) { offer ->
                 BackHandler {
                     container.coordinator.respondToOffer(offer, false)
                 }
                 IncomingOfferSheet(offer) { accept ->
-                    // Text arrives inline and is done in a moment; everything else may take a while.
-                    if (accept && offer.text == null) TransferService.start(container.contextForService())
-                    container.coordinator.respondToOffer(offer, accept)
+                    val cards = offer.kind == com.crossdrop.core.protocol.OfferKind.CONTACT
+                    // Text and contact cards arrive in a moment; everything else may take a while.
+                    if (accept && offer.text == null && !cards) TransferService.start(container.contextForService())
+                    if (accept && cards && !container.contactInbox.canWrite()) {
+                        // Ask now, while they're looking at it; the answer goes out after the dialog.
+                        contactOfferWaiting = offer
+                        context.getSharedPreferences("contacts_permission", 0).edit().putBoolean("asked", true).apply()
+                        contactsPermission.launch(contactsPerms)
+                    } else {
+                        container.coordinator.respondToOffer(offer, accept)
+                    }
                 }
             }
         }

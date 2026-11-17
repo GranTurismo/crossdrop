@@ -1,4 +1,5 @@
 import Foundation
+import Contacts
 import UIKit
 import Network
 import Combine
@@ -42,6 +43,8 @@ final class AppContainer: ObservableObject {
     /// "Switch phones": this device's library out, or another device's library in.
     let switchSender: SwitchSender
     let switchImporter: SwitchImporter
+    /// Contact cards sent on their own: straight into the address book.
+    let contactInbox: ContactInbox
     /// Live camera open, sending to these devices.
     @Published var cameraTargets: [Peer]?
     /// "Switch phones" screen open for this device.
@@ -73,6 +76,8 @@ final class AppContainer: ObservableObject {
         switchSender = SwitchSender(coordinator: coordinator, history: history)
         coordinator.switchReceiver = switchImporter
         switchImporter.attach(coordinator)
+        contactInbox = ContactInbox(inbox: inbox)
+        coordinator.contactReceiver = contactInbox
         qrShare = QrShareManager(deviceName: { box.value }, history: history)
         vaultExplorer = VaultExplorerManager(identity: identity, deviceName: { box.value }, instanceId: id, inbox: inbox, history: history)
         vaultHost = VaultHostManager(identity: identity, deviceName: { box.value })
@@ -254,6 +259,16 @@ final class AppContainer: ObservableObject {
         if let v = args.string(forKey: "dev_text") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.coordinator.sendText(peers(v), text: "https://example.com/from-iphone") }
         }
+        // `-dev_send_contact h:p` sends a made-up contact card (never the address book).
+        if let v = args.string(forKey: "dev_send_contact") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                let c = CNMutableContact()
+                c.givenName = "Test"; c.familyName = "Card"; c.organizationName = "CrossDrop QA"
+                c.phoneNumbers = [CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: "+1 555 0199"))]
+                c.emailAddresses = [CNLabeledValue(label: nil, value: "test.card@example.com")]
+                self.coordinator.sendContacts(peers(v), vcf: ContactsBridge.vcard(c), names: ["Test Card"])
+            }
+        }
         if let v = args.string(forKey: "dev_switch"), let p = peers(v).first {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                 self.switchTarget = p
@@ -374,6 +389,9 @@ final class AppContainer: ObservableObject {
         case .some(OfferKind.text) where offer.text != nil:
             c.title = "\(offer.peerName) sent you " + (isLinkText(offer.text!) ? "a link" : "some text")
             c.body = String(offer.text!.prefix(120))
+        case .some(OfferKind.contact):
+            c.title = "\(offer.peerName) sent you " + (offer.contacts.count > 1 ? "\(offer.contacts.count) contacts" : "a contact")
+            c.body = offer.contacts.isEmpty ? "Open CrossDrop to add it" : ContactCards.title(names: offer.contacts.map(\.name))
         case .some(OfferKind.camera):
             c.title = "\(offer.peerName) wants to share their camera"
             c.body = "Open CrossDrop to watch their photos arrive live"

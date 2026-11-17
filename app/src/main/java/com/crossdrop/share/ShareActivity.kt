@@ -322,7 +322,8 @@ private fun Header(payload: ShareActivity.Payload) {
             CdIcon(
                 when (payload) {
                     is ShareActivity.Payload.Text -> if (isLinkText(payload.text)) CdIcons.Globe else CdIcons.Note
-                    is ShareActivity.Payload.Items -> CdIcons.ArrowUp
+                    is ShareActivity.Payload.Items ->
+                        if (com.crossdrop.core.contacts.ContactShare.isVCard(payload.label, null)) CdIcons.Contacts else CdIcons.ArrowUp
                 },
                 Accent, size = 22.dp,
             )

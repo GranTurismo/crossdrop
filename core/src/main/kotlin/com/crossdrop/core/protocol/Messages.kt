@@ -66,6 +66,8 @@ object OfferKind {
     const val CAMERA = "camera"
     /** One batch of a "Switch phones" move; see [Offer.batch]. */
     const val SWITCH = "switch"
+    /** One or more contact cards: a single `.vcf` file; [Offer.text] carries a photo-less copy for the prompt. */
+    const val CONTACT = "contact"
 }
 
 /** Longest [Offer.text] a sender inlines (the file copy carries anything longer). */
@@ -77,7 +79,8 @@ data class Offer(
     val files: List<FileMeta>,
     /** [OfferKind]; null = plain files (and every older sender). */
     val kind: String? = null,
-    /** [OfferKind.TEXT]: the shared text itself, so the receiver can show it before accepting. */
+    /** [OfferKind.TEXT]: the shared text itself, so the receiver can show it before accepting.
+     *  [OfferKind.CONTACT]: the cards as vCard without photos, for the receiver's preview. */
     val text: String? = null,
     /** Set when the sender holds a [TrustGrant] from this receiver: the grant's id… */
     val trustId: String? = null,

@@ -76,6 +76,7 @@ object CdIcons {
     val Note by lazy { icon("M5 6h14M5 11h14M5 16h9", stroke = 2f) }
     val Swap by lazy { icon("M7 4L3 8l4 4M3 8h13M17 12l4 4-4 4M21 16H8", stroke = 2f) }
     val Live by lazy { icon(circle(12f, 12f, 3f), "M6.5 6.5a8 8 0 0 0 0 11M17.5 6.5a8 8 0 0 1 0 11", stroke = 2f) }
+    val Search by lazy { icon(circle(11f, 11f, 6.5f), "M16 16l4.5 4.5", stroke = 2.2f) }
     val Wrench by lazy { icon("M14.5 6.5a4 4 0 0 0-5.3 5.3L4 17l3 3 5.2-5.2a4 4 0 0 0 5.3-5.3l-2.5 2.5-2.5-.5-.5-2.5z") }
 }
 

@@ -31,6 +31,11 @@ object OfferNotifier {
         val text = offer.text
         val (title, body) = when {
             text != null -> "${offer.peerName} sent you " + (if (isLinkText(text)) "a link" else "some text") to text.take(120)
+            offer.kind == OfferKind.CONTACT -> {
+                val cards = offer.contacts
+                "${offer.peerName} sent you " + (if (cards.size > 1) "${cards.size} contacts" else "a contact") to
+                    (cards.takeIf { it.isNotEmpty() }?.let { com.crossdrop.core.contacts.ContactShare.title(it) } ?: "Open CrossDrop to add it")
+            }
             offer.kind == OfferKind.CAMERA -> "${offer.peerName} wants to share their camera" to "Open CrossDrop to watch their photos arrive live"
             offer.kind == OfferKind.SWITCH -> "${offer.peerName} wants to move to this phone" to "Open CrossDrop to start"
             else -> "${offer.peerName} wants to send you " + (if (n == 1) "a file" else "$n files") to

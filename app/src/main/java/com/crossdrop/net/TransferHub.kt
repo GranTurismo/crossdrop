@@ -1,6 +1,8 @@
 package com.crossdrop.net
 
 import com.crossdrop.core.Peer
+import com.crossdrop.core.contacts.VCard
+import com.crossdrop.core.contacts.VContact
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.protocol.BatchInfo
 import com.crossdrop.core.protocol.FileMeta
@@ -99,6 +101,11 @@ class IncomingOffer(
     val kind: String? get() = offer.kind
     /** Inline text of a text/link offer (null for files, or text too long to inline). */
     val text: String? get() = offer.text?.takeIf { offer.kind == OfferKind.TEXT }
+    /** A contact offer's cards, from its photo-less inline copy (empty when it had none). */
+    val contacts: List<VContact> by lazy {
+        if (offer.kind != OfferKind.CONTACT) emptyList()
+        else offer.text?.let { runCatching { VCard.parse(it) }.getOrNull() }.orEmpty()
+    }
 }
 
 /** A photo or video that arrived during a live camera session. */
@@ -137,11 +144,22 @@ interface SwitchReceiver {
 }
 
 /**
+ * Receiving end of contact cards sent on their own: the `.vcf` is staged in [stagingFile] and handed
+ * to [received] once whole. Platforms without an address book leave the hub's receiver unset, and the
+ * card lands in the inbox like any file.
+ */
+interface ContactReceiver {
+    fun stagingFile(meta: FileMeta): File
+    /** Runs off the transfer thread; adds the cards in [files] and deletes (or keeps) them. */
+    suspend fun received(peerName: String, offer: Offer, files: List<File>)
+}
+
+/**
  * Every transfer in flight, both directions, on any platform. The UI observes [sessions],
  * [focusedGroup], [incomingOffer] and [live]; platforms supply files and storage.
  *
  * - A send to several devices runs one session per device, side by side, as one group.
- * - Offers of kind text, camera and switch are routed to their own screens instead of the
+ * - Offers of kind text, contact, camera and switch are routed to their own screens instead of the
  *   transfer view. Camera and switch receivers hand out a [TrustStore] grant on the first accept so
  *   the rest of the shots/batches arrive without asking again.
  */
@@ -154,6 +172,7 @@ class TransferHub(
 ) {
     val trust = TrustStore()
     var switchReceiver: SwitchReceiver? = null
+    var contactReceiver: ContactReceiver? = null
 
     private val _sessions = MutableStateFlow<List<SessionState>>(emptyList())
     val sessions: StateFlow<List<SessionState>> = _sessions
@@ -188,6 +207,7 @@ class TransferHub(
         val files: suspend () -> List<OutgoingFile>,
         val options: SendOptions,
         val quiet: Boolean,
+        val inline: (suspend (List<OutgoingFile>) -> String?)?,
     )
 
     /** Dev-only: auto-accept the next inbound offer (loopback self-tests). */
@@ -197,18 +217,20 @@ class TransferHub(
 
     /**
      * Send the same files to every peer in [peers] at once. [files] is resolved once per device, so
-     * each connection opens its own streams. Returns the group id.
+     * each connection opens its own streams. [inline], when set, computes `Offer.text` from the
+     * resolved files (a shared `.vcf` previews its cards). Returns the group id.
      */
     fun send(
         peers: List<Peer>,
         files: suspend () -> List<OutgoingFile>,
         options: SendOptions = SendOptions(),
         quiet: Boolean = false,
+        inline: (suspend (List<OutgoingFile>) -> String?)? = null,
     ): String {
         val groupId = newId()
         val targets = peers.filter { it.endpoint != null }.associateBy { newId() }
         if (targets.isEmpty()) return groupId
-        specs[groupId] = SendSpec(targets, files, options, quiet)
+        specs[groupId] = SendSpec(targets, files, options, quiet, inline)
         _sessions.update { list ->
             list + targets.map { (sid, peer) ->
                 SessionState(
@@ -218,7 +240,7 @@ class TransferHub(
             }
         }
         if (!quiet) focusedId.value = groupId
-        targets.forEach { (sid, peer) -> launchSend(sid, peer, files, options) }
+        targets.forEach { (sid, peer) -> launchSend(sid, peer, files, options, inline) }
         return groupId
     }
 
@@ -254,7 +276,10 @@ class TransferHub(
         }
     }
 
-    private fun launchSend(sid: String, peer: Peer, files: suspend () -> List<OutgoingFile>, options: SendOptions) {
+    private fun launchSend(
+        sid: String, peer: Peer, files: suspend () -> List<OutgoingFile>, options: SendOptions,
+        inline: (suspend (List<OutgoingFile>) -> String?)?,
+    ) {
         // A retry reuses the session id: the previous attempt must neither keep running nor, when it
         // finally ends, unregister the new one.
         jobs.remove(sid)?.cancel()
@@ -264,7 +289,9 @@ class TransferHub(
                 reduce(sid, TransferEvent.Failed("nothing readable selected"))
                 return@launch
             }
-            runSend(sid, peer, list, options)
+            val opts = if (inline == null) options
+                else options.copy(text = runCatching { inline(list) }.getOrNull())
+            runSend(sid, peer, list, opts)
         }
         jobs[sid] = job
         job.invokeOnCompletion { jobs.remove(sid, job) }
@@ -298,7 +325,7 @@ class TransferHub(
             }
         }
         if (!spec.quiet) focusedId.value = groupId
-        retry.forEach { s -> spec.peers[s.id]?.let { launchSend(s.id, it, spec.files, spec.options) } }
+        retry.forEach { s -> spec.peers[s.id]?.let { launchSend(s.id, it, spec.files, spec.options, spec.inline) } }
     }
 
     fun cancelSession(id: String) {
@@ -399,6 +426,7 @@ class TransferHub(
                 switchReceiver?.begin(req.peerName, offer.batch)
                 acceptSwitch(sid, req, route, g)
             }
+            offer.kind == OfferKind.CONTACT && contactReceiver != null -> acceptContact(sid, req, route)
             else -> acceptFiles(sid, req, route)
         }
     }
@@ -451,6 +479,20 @@ class TransferHub(
         return ReceiveDecision.Accept({ DiscardStream }, delta = null)
     }
 
+    private fun acceptContact(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
+        val rx = contactReceiver ?: return acceptFiles(sid, req, route)
+        route.kind = OfferKind.CONTACT
+        register(sid, req, OfferKind.CONTACT, quiet = true)
+        // A few kilobytes: the plain stream path, staged outside the inbox until it's been added.
+        val sink: (FileMeta) -> OutputStream = { meta ->
+            val f = rx.stagingFile(meta)
+            synchronized(route.v1Files) { route.v1Files += f }
+            f.parentFile?.mkdirs()
+            f.outputStream()
+        }
+        return ReceiveDecision.Accept(sink, delta = null)
+    }
+
     private fun acceptCamera(
         sid: String, req: InboundRequest, route: Route, grantId: String,
         grant: com.crossdrop.core.protocol.TrustGrant?,
@@ -501,6 +543,18 @@ class TransferHub(
                     LiveShot(f, offer.files[i].name, offer.files[i].mime, now)
                 }
                 _live.update { it?.copy(shots = (it.shots + shots).takeLast(MAX_LIVE_SHOTS), incoming = null) }
+            }
+            OfferKind.CONTACT -> contactReceiver?.let { rx ->
+                val files = receivedFiles(route, offer)
+                scope.launch {
+                    try {
+                        rx.received(route.peerName, offer, files)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // The receiver reports its own failures; nothing more to do here.
+                    }
+                }
             }
             OfferKind.SWITCH -> if (route.switchStore) {
                 val files = receivedFiles(route, offer)

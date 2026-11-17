@@ -296,6 +296,10 @@ root guards (the same MOVE/COPY-onto-root data-loss bug was fixed in Kotlin `Fil
 - `Offer.kind` (`OfferKind`): `text` (the text rides inline in `Offer.text`, the `.txt` file is only for
   older receivers; new receivers show Copy/Open and discard the file), `camera` (live camera shots →
   `TransferHub.live`), `switch` (one batch of "Switch phones" → the platform `SwitchReceiver`).
+  `contact` (one `.vcf`; `Offer.text` = the cards without photos, for the prompt — `core/contacts/
+  ContactShare.kt`, Swift `ContactCards`; the hub's `ContactReceiver` stages the file and adds it to the
+  address book: Android `contacts/ContactInbox`, iOS `Services/ContactShare.swift`; desktop has no receiver,
+  so the card lands in the inbox). Any send whose items are all `.vcf` becomes a contact offer.
   `FileMeta.cat` / `mtime` and `Offer.batch` carry what each item is and the move's totals. All optional
   JSON: older peers ignore them.
 - Trust grants (`core/transfer/TrustStore.kt`, Swift `TrustStore`): a receiver accepting a camera/switch
@@ -317,9 +321,12 @@ root guards (the same MOVE/COPY-onto-root data-loss bug was fixed in Kotlin `Fil
   `UIApplication.shared`). Desktop: `Main.kt` takes launch args, macOS `setOpenFileHandler`, window
   drops; `SingleInstance` forwards `file <path>` lines after `show`; `platform/WindowsIntegration` adds
   the per-user "Send to" shortcut once (not for MSIX).
-- Testing without UI taps: `crossdrop-cli send --kind text|camera|switch [--text T] [--cat C] [--each]`
-  and `recv --grant --count N` speak the new kinds; Android `-e dev_peer a:p,b:p` takes several peers;
-  iOS `-dev_send_multi`, `-dev_text`, `-dev_switch host:port`, `-dev_autoaccept YES`.
+- Testing without UI taps: `crossdrop-cli send --kind text|camera|switch|contact [--text T] [--cat C] [--each]`
+  and `recv --grant --count N` speak the new kinds (a contact offer's `--text` is the photo-less vCard);
+  Android `-e dev_peer a:p,b:p` takes several peers, `-e dev_send_contact h:p` sends a made-up card; iOS
+  `-dev_send_multi`, `-dev_text`, `-dev_switch host:port`, `-dev_send_contact h:p`, `-dev_autoaccept YES`.
+  The emulator's address book is real: test with made-up cards, filter the picker by search before
+  screenshotting it, and delete test contacts afterwards.
 
 ## Radar liveness & merging
 

@@ -65,6 +65,14 @@ struct RootView: View {
 
                 overlays
 
+                // Contact cards that just arrived: a floating card above the nav.
+                ContactDropHost(inbox: container.contactInbox)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, navBottom + 66 + 12)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .ignoresSafeArea(.container, edges: .bottom)
+                    .zIndex(4)
+
                 FloatingSheetLayer(host: sheets).zIndex(5)
 
                 // Inbound offer — always on top. Only its two buttons answer it: no swipe, no Esc, and a
@@ -72,7 +80,15 @@ struct RootView: View {
                 if let offer = coordinator.incomingOffer {
                     IncomingOfferSheet(offer: offer) { accept in
                         if accept { transferHidden = false }
-                        coordinator.respondToOffer(offer, accept: accept)
+                        if accept, offer.kind == OfferKind.contact, ContactsBridge.undetermined() {
+                            // Ask now, while they're looking at it; the answer goes out after the alert.
+                            Task {
+                                _ = await ContactsBridge.requestAccess()
+                                coordinator.respondToOffer(offer, accept: true)
+                            }
+                        } else {
+                            coordinator.respondToOffer(offer, accept: accept)
+                        }
                     }
                     .transition(.opacity)
                     .zIndex(6)
@@ -307,6 +323,86 @@ private struct SwitchSendHost: View {
     @ObservedObject var sender: SwitchSender
     let onClose: () -> Void
     var body: some View { SwitchSendScreen(peer: peer, sender: sender, onClose: onClose) }
+}
+
+/// The last contact cards that arrived: who was added (tap View to see them), who was already there, or
+/// — without contacts access — a one-tap way to add what was kept in the inbox.
+private struct ContactDropHost: View {
+    @ObservedObject var inbox: ContactInbox
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Group {
+            if let d = inbox.drop {
+                card(d)
+                    .id(d.id)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .task(id: d.id) {
+                        // A finished add goes away by itself; a card waiting for access stays until answered.
+                        guard d.kept == nil else { return }
+                        try? await Task.sleep(nanoseconds: 12_000_000_000)
+                        inbox.dismiss(d.id)
+                    }
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: inbox.drop?.id)
+    }
+
+    private func card(_ d: ContactInbox.Drop) -> some View {
+        let first = d.names.first ?? "Contact"
+        let n = d.names.count
+        let waiting = d.kept != nil
+        let title: String = {
+            if d.unreadable { return "Couldn't read that contact card" }
+            if waiting { return n == 1 ? "Add \(first) to your contacts?" : "Add \(n) contacts?" }
+            if d.added > 0 && d.skipped == 0 { return d.added == 1 ? "Added \(first)" : "Added \(d.added) contacts" }
+            if d.added == 0 && d.skipped > 0 { return d.skipped == 1 && n == 1 ? "\(first) is already in your contacts" : "Already in your contacts" }
+            if d.added > 0 { return "Added \(d.added) · \(d.skipped) already there" }
+            return "Couldn't add the contact"
+        }()
+        let subtitle = d.unreadable ? "From \(d.peerName) · saved to your Inbox"
+            : waiting ? "From \(d.peerName) · CrossDrop needs contacts access. Until then it's in your Inbox."
+            : "From \(d.peerName)"
+        return GlassCard(radius: 24, fill: CD.glassRaised, border: CD.hairlineStrong, glow: CD.accent.opacity(0.16), glowRadius: 30,
+                         padding: .all(14), spacing: 12) {
+            HStack(spacing: 12) {
+                ContactInitials(name: n == 1 ? first : "\(n)", size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).body(15, weight: .semibold).lineLimit(2)
+                    Text(subtitle).body(12, CD.textDim).lineLimit(2)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Spacer()
+                if waiting && !d.unreadable {
+                    ChipButton(text: "Later") { inbox.dismiss(d.id) }
+                    ChipButton(text: "Allow", icon: CdIcons.contacts, fg: CD.onAccent, bg: CD.accent) { allow() }
+                } else if let id = d.firstAdded {
+                    ChipButton(text: "Done") { inbox.dismiss(d.id) }
+                    ChipButton(text: "View", icon: CdIcons.contacts, fg: CD.onAccent, bg: CD.accent) {
+                        ContactPickerPresenter.show(contactId: id)
+                        inbox.dismiss(d.id)
+                    }
+                } else {
+                    ChipButton(text: "Done") { inbox.dismiss(d.id) }
+                }
+            }
+        }
+        .frame(maxWidth: 520)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func allow() {
+        if ContactsBridge.undetermined() {
+            Task { if await ContactsBridge.requestAccess() { await inbox.addKept() } }
+        } else if ContactsBridge.canAdd() {
+            Task { await inbox.addKept() }
+        } else if let url = URL(string: UIApplication.openSettingsURLString) {
+            // Refused once: iOS won't ask again, the switch is in Settings now.
+            openURL(url)
+        }
+    }
 }
 
 private struct SwitchReceiveHost: View {

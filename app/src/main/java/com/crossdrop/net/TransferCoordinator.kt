@@ -4,8 +4,12 @@ import android.content.Context
 import android.net.Uri
 import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
+import com.crossdrop.core.contacts.ContactShare
+import com.crossdrop.core.contacts.VCard
+import com.crossdrop.core.contacts.VContact
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.protocol.FileMeta
+import com.crossdrop.core.protocol.ItemCategory
 import com.crossdrop.core.protocol.OfferKind
 import com.crossdrop.core.transfer.OutgoingFile
 import com.crossdrop.core.transfer.SendOptions
@@ -50,9 +54,22 @@ class TransferCoordinator(
 
     // ------------------------------------------------------------ sending --
 
-    /** Send the picked items to every device in [peers] at once. */
-    fun sendTo(peers: List<Peer>, uris: List<Uri>): String =
-        hub.send(peers, { uris.mapNotNull { context.outgoingFileFor(it) } })
+    /**
+     * Send the picked items to every device in [peers] at once. Contact cards (a `.vcf` from the
+     * Contacts app's Share, or picked as a file) go as a contact offer, so the receiver can add them.
+     */
+    fun sendTo(peers: List<Peer>, uris: List<Uri>): String {
+        val cards = uris.isNotEmpty() && uris.all { u ->
+            ContactShare.isVCard(u.lastPathSegment, runCatching { context.contentResolver.getType(u) }.getOrNull())
+        }
+        if (!cards) return hub.send(peers, { uris.mapNotNull { context.outgoingFileFor(it) } })
+        return hub.send(
+            peers,
+            { uris.mapNotNull { context.outgoingFileFor(it)?.let(::asCards) } },
+            SendOptions(kind = OfferKind.CONTACT),
+            inline = { previewOf(it) },
+        )
+    }
 
     fun sendTo(peer: Peer, uris: List<Uri>): String = sendTo(listOf(peer), uris)
 
@@ -60,6 +77,16 @@ class TransferCoordinator(
     fun sendText(peers: List<Peer>, text: String): String {
         val file = textFile(text)
         return hub.send(peers, { listOf(file) }, SendOptions(kind = OfferKind.TEXT, text = text))
+    }
+
+    /** Contact cards picked in CrossDrop: the receiver sees who they are and adds them with one tap. */
+    fun sendContacts(peers: List<Peer>, contacts: List<VContact>): String {
+        val vcf = VCard.write(contacts)
+        val bytes = vcf.toByteArray(Charsets.UTF_8)
+        val file = OutgoingFile(
+            FileMeta(ContactShare.fileName(contacts), bytes.size.toLong(), "text/vcard", cat = ItemCategory.CONTACTS),
+        ) { java.io.ByteArrayInputStream(bytes) }
+        return hub.send(peers, { listOf(file) }, SendOptions(kind = OfferKind.CONTACT, text = ContactShare.preview(vcf)))
     }
 
     /** One or more local files (camera shots). [live] = part of a live camera session. */
@@ -106,6 +133,7 @@ class TransferCoordinator(
             com.crossdrop.share.DirectShare.remember(context, s.peerName)
         val files = s.offer?.files.orEmpty()
         val text = s.kind == OfferKind.TEXT
+        val cards = s.kind == OfferKind.CONTACT
         runCatching {
             history.add(
                 HistoryStore.Entry(
@@ -114,6 +142,7 @@ class TransferCoordinator(
                     peerName = s.peerName,
                     summary = when {
                         text -> if (isLink(s.offer?.text)) "Link" else "Text"
+                        cards -> files.firstOrNull()?.name?.removeSuffix(".vcf") ?: "Contact"
                         files.size == 1 -> files.first().name
                         files.size > 1 -> "${files.size} files"
                         s.currentFileName != null -> s.currentFileName
@@ -140,6 +169,40 @@ class TransferCoordinator(
             val bytes = text.toByteArray(Charsets.UTF_8)
             val name = if (isLink(text)) "Link.txt" else "Text.txt"
             return OutgoingFile(FileMeta(name, bytes.size.toLong(), "text/plain")) { java.io.ByteArrayInputStream(bytes) }
+        }
+
+        /** A shared `.vcf`, marked as contact cards (read into memory: cards are small). */
+        private fun asCards(f: OutgoingFile): OutgoingFile? {
+            if (f.meta.size > ContactShare.MAX_CARD_FILE) return f
+            val bytes = runCatching {
+                f.open().use { readAtMost(it, (ContactShare.MAX_CARD_FILE + 1).toInt()) }
+            }.getOrNull() ?: return null
+            if (bytes.size > ContactShare.MAX_CARD_FILE) return f          // a backup, not a few cards
+            // The Contacts app's share has no file name of its own: name it after the person.
+            val name = f.meta.name.takeIf { ContactShare.isVCard(it, null) }
+                ?: ContactShare.fileName(runCatching { VCard.parse(bytes.toString(Charsets.UTF_8)) }.getOrDefault(emptyList()))
+            return OutgoingFile(f.meta.copy(name = name, size = bytes.size.toLong(), mime = "text/vcard", cat = ItemCategory.CONTACTS)) {
+                java.io.ByteArrayInputStream(bytes)
+            }
+        }
+
+        /** InputStream.readNBytes is API 33+. */
+        private fun readAtMost(input: java.io.InputStream, limit: Int): ByteArray {
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(16 * 1024)
+            while (out.size() < limit) {
+                val n = input.read(buf, 0, minOf(buf.size, limit - out.size()))
+                if (n < 0) break
+                out.write(buf, 0, n)
+            }
+            return out.toByteArray()
+        }
+
+        /** Offer.text of a contact send: the photo-less cards, when they fit. */
+        fun previewOf(files: List<OutgoingFile>): String? {
+            val all = files.filter { it.meta.size <= ContactShare.MAX_CARD_FILE }
+                .joinToString("") { f -> runCatching { f.open().use { it.readBytes().toString(Charsets.UTF_8) } }.getOrDefault("") }
+            return ContactShare.preview(all)
         }
 
         fun localFile(f: File, mime: String? = null): OutgoingFile =

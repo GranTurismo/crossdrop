@@ -32,6 +32,13 @@ Everything the app does happens entirely on your local network or on-device.
   its gallery and address book. Nothing is copied anywhere else, and the
   temporary copies made during the move are deleted as soon as each item is in
   place.
+- **Sending a contact** — on Android, CrossDrop lists your contacts on its own
+  screen so you can pick who to send; on iPhone and iPad the system's contact
+  picker is used and CrossDrop only sees the people you pick. Only the contact
+  cards you pick are sent, directly to the device you chose. A device that
+  receives a card adds it to its address book when you tap "Add to contacts"
+  (people already there are skipped); a computer saves it as a `.vcf` file in
+  CrossDrop's inbox.
 - **Accept once** — when you accept a live camera feed or a phone move, the two
   devices share a one-time secret so the following photos or batches don't ask
   again. It lives only in memory, ends when you close the viewer, finish the
@@ -55,7 +62,7 @@ Everything the app does happens entirely on your local network or on-device.
 | Camera, microphone | Only while CrossDrop's camera screen is open: to take the photos and videos you send (the microphone records video sound). |
 | Photo library (full access) | Only for "Switch phones", to move your whole gallery to your other device. |
 | Add to photo library | To save photos and videos you receive in a phone move, and the shots you take in CrossDrop's camera. |
-| Contacts (read and write) | Only for "Switch phones": to copy your address book to your other device, and to add contacts moved to this one (duplicates are skipped). |
+| Contacts (read and write) | For "Switch phones" (copy your address book to your other device, add contacts moved to this one) and for sending contacts: to list them so you can pick who to send (Android; iPhone uses the system picker instead), and to add contacts someone sent you when you tap "Add to contacts". Duplicates are skipped. |
 
 ## Contact
 

@@ -1,8 +1,10 @@
 package com.crossdrop.net
 
 import com.crossdrop.core.Peer
+import com.crossdrop.core.contacts.ContactShare
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.protocol.FileMeta
+import com.crossdrop.core.protocol.ItemCategory
 import com.crossdrop.core.protocol.OfferKind
 import com.crossdrop.core.transfer.OutgoingFile
 import com.crossdrop.core.transfer.SendOptions
@@ -43,9 +45,28 @@ class TransferCoordinator(
         server.onSocket = hub::onInboundSocket
     }
 
-    /** Send the same files to every device in [peers] at once. */
-    fun sendTo(peers: List<Peer>, picked: List<File>): String =
-        hub.send(peers, { picked.mapNotNull { it.toOutgoingFile() } })
+    /**
+     * Send the same files to every device in [peers] at once. Contact cards (`.vcf`) go as a contact
+     * offer, so a phone on the other end can add them to its address book with one tap.
+     */
+    fun sendTo(peers: List<Peer>, picked: List<File>): String {
+        val cards = picked.isNotEmpty() && picked.all {
+            it.isFile && ContactShare.isVCard(it.name, null) && it.length() <= ContactShare.MAX_CARD_FILE
+        }
+        if (!cards) return hub.send(peers, { picked.mapNotNull { it.toOutgoingFile() } })
+        return hub.send(
+            peers,
+            {
+                picked.mapNotNull { f ->
+                    f.toOutgoingFile()?.let { o -> OutgoingFile(o.meta.copy(mime = "text/vcard", cat = ItemCategory.CONTACTS), o.open) }
+                }
+            },
+            SendOptions(kind = OfferKind.CONTACT),
+            inline = { files ->
+                ContactShare.preview(files.joinToString("") { f -> runCatching { f.open().use { it.readBytes().toString(Charsets.UTF_8) } }.getOrDefault("") })
+            },
+        )
+    }
 
     fun sendTo(peer: Peer, picked: List<File>): String = sendTo(listOf(peer), picked)
 
@@ -64,6 +85,7 @@ class TransferCoordinator(
     private fun record(direction: Direction, s: SessionState) {
         val files = s.offer?.files.orEmpty()
         val text = s.kind == OfferKind.TEXT
+        val cards = s.kind == OfferKind.CONTACT
         runCatching {
             history.add(
                 HistoryStore.Entry(
@@ -72,6 +94,7 @@ class TransferCoordinator(
                     peerName = s.peerName,
                     summary = when {
                         text -> if (isLink(s.offer?.text)) "Link" else "Text"
+                        cards -> files.firstOrNull()?.name?.removeSuffix(".vcf") ?: "Contact"
                         files.size == 1 -> files.first().name
                         files.size > 1 -> "${files.size} files"
                         s.currentFileName != null -> s.currentFileName

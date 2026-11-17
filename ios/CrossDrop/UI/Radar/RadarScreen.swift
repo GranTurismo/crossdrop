@@ -186,6 +186,18 @@ struct RadarScreen: View {
                               }
                           }
                       },
+                      onContacts: { t in
+                          sheets.dismiss(notify: false)
+                          // Let the sheet go first; the system picker presents over the window.
+                          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                              ContactPickerPresenter.present { picked in
+                                  guard !picked.isEmpty else { return }
+                                  let vcf = picked.map { ContactsBridge.vcard($0) }.joined()
+                                  let names = ContactPreview.parse(ContactCards.preview(vcf)).map(\.name)
+                                  coordinator.sendContacts(t, vcf: vcf, names: names.isEmpty ? ["Contact"] : names)
+                              }
+                          }
+                      },
                       onSwitch: { sheets.dismiss(notify: false); container.switchSender.close(); container.switchTarget = peer },
                       onCancel: { sheets.dismiss() })
         }
@@ -467,6 +479,7 @@ private struct SendSheet: View {
     let onPickFiles: ([Peer]) -> Void
     var onCamera: (([Peer]) -> Void)?
     var onText: (([Peer]) -> Void)?
+    var onContacts: (([Peer]) -> Void)?
     var onSwitch: (() -> Void)?
     let onCancel: () -> Void
     @State private var also: Set<String> = []
@@ -482,10 +495,15 @@ private struct SendSheet: View {
             }
             if primary != nil {
                 if !others.isEmpty { alsoSendTo }
-                HStack(spacing: 10) {
-                    if let onCamera { SmallTile(title: "Camera", subtitle: "Live to them", icon: CdIcons.camera) { onCamera(targets) } }
-                    if let onText { SmallTile(title: "Text", subtitle: "Note or link", icon: CdIcons.note) { onText(targets) } }
-                    if let onSwitch { SmallTile(title: "Switch", subtitle: "Move phone", icon: CdIcons.swap, action: onSwitch) }
+                VStack(spacing: 10) {
+                    HStack(spacing: 10) {
+                        if let onCamera { SmallTile(title: "Camera", subtitle: "Live to them", icon: CdIcons.camera) { onCamera(targets) } }
+                        if let onText { SmallTile(title: "Text", subtitle: "Note or link", icon: CdIcons.note) { onText(targets) } }
+                    }
+                    HStack(spacing: 10) {
+                        if let onContacts { SmallTile(title: "Contact", subtitle: "Share a card", icon: CdIcons.contacts) { onContacts(targets) } }
+                        if let onSwitch { SmallTile(title: "Switch", subtitle: "Move phone", icon: CdIcons.swap, action: onSwitch) }
+                    }
                 }
             }
             NoteCard(text: note)
@@ -505,24 +523,24 @@ private struct SendSheet: View {
     }
 }
 
-/// Compact action tile under the two big ones.
+/// Compact action tile under the two big ones, two to a row.
 private struct SmallTile: View {
     let title: String
     let subtitle: String
     let icon: CdIcon
     let action: () -> Void
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
         Button(action: action) {
-            VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
                 CdIconView(icon, color: CD.accent, size: 22)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).body(14, weight: .semibold).lineLimit(1)
                     Text(subtitle).body(11, CD.textDim).lineLimit(1)
                 }
             }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
+            .padding(.horizontal, 14).padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
             .background(shape.fill(CD.glassMid))
             .overlay(shape.strokeBorder(Color.white.opacity(0.1), lineWidth: 1))
             .contentShape(shape)
