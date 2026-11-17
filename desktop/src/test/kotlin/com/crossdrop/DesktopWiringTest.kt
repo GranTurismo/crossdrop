@@ -92,6 +92,7 @@ class DesktopWiringTest {
             awaitNotNull("receiver done") { b.coordinator.sessions.value.lastOrNull()?.takeIf { it.status.name == "COMPLETED" } }
 
             assertArrayEquals(payload, b.inbox.list().single().file.readBytes())
+            awaitNotNull("histories") { if (a.history.list().size == 1 && b.history.list().size == 1) Unit else null }
             assertEquals("SENDING", a.history.list().single().direction)
             assertEquals("RECEIVING", b.history.list().single().direction)
         } finally { a.close(); b.close() }
@@ -131,7 +132,8 @@ class DesktopWiringTest {
             assertEquals(2, group.sessions.size)
             assertArrayEquals(payload, b.inbox.list().single().file.readBytes())
             assertArrayEquals(payload, c.inbox.list().single().file.readBytes())
-            assertEquals(2, a.history.list().size)
+            // History is written right after each session's terminal state is published: wait for it.
+            awaitNotNull("both recorded") { a.history.list().takeIf { it.size == 2 } }
         } finally { a.close(); b.close(); c.close() }
     }
 
@@ -145,6 +147,7 @@ class DesktopWiringTest {
             b.coordinator.respondToOffer(true)
             awaitNotNull("sent") { a.coordinator.sessions.value.lastOrNull()?.takeIf { it.status == SessionStatus.COMPLETED } }
             assertTrue(b.inbox.list().isEmpty())
+            awaitNotNull("history") { b.history.list().singleOrNull() }
             assertEquals("Link", b.history.list().single().summary)
         } finally { a.close(); b.close() }
     }
