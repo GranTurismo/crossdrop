@@ -35,7 +35,10 @@ desktop versions differ, or if a notes file is missing.
 
 ## Dry run
 
-Actions → Release → Run workflow (any branch). It builds everything, checks the signing key and the Play
+A full dry run on 2026-11-17 passed every job (Android, Windows, both macOS builds, Play credentials check) and
+produced the five downloads plus `SHA256SUMS.txt`.
+
+Actions → Release → Run workflow. It builds everything, checks the signing key and the Play
 credentials (it creates and discards a Play edit), and publishes nothing.
 
 If one job fails (a flaky test, a runner that never started), fix the cause or use **Re-run failed jobs**.
@@ -50,7 +53,9 @@ The GitHub step is safe to repeat: it replaces files on an existing release.
 | `AZURE_AD_TENANT_ID`, `AZURE_AD_APPLICATION_CLIENT_ID`, `AZURE_AD_APPLICATION_SECRET`, `SELLER_ID` | Microsoft Store (Partner Center) API access. **Not set yet.** |
 | `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`, `MACOS_SIGN_IDENTITY`, `MACOS_NOTARY_*`, `MACOS_TEAM_ID` | macOS signing and notarization, see `desktop/RELEASE.md`. **Not set yet**, so the DMGs are unsigned. |
 
-Secrets can't be read back from GitHub. If one is lost, create a new one and replace it.
+Secrets can't be read back from GitHub, and the Google key was deliberately not kept anywhere else. If one is
+lost, create a new one and replace it. Another repository gets its own new key for the same service account
+(Google Cloud → IAM & Admin → Service accounts → crossdrop-release → Keys → Add key), not a copy of this one.
 
 ### Google Play
 
