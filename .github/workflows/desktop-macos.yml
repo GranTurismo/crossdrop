@@ -36,7 +36,7 @@ jobs:
         include:
           # Runner labels change as GitHub retires images; if a job never starts, check
           # https://docs.github.com/actions/using-github-hosted-runners for the current names.
-          - { os: macos-14, arch: arm64 }
+          - { os: macos-15, arch: arm64 }
           - { os: macos-15-intel, arch: x64 }
     env:
       # Mapped to job-level env so steps can test "is this secret configured?" (the secrets
