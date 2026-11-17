@@ -63,7 +63,8 @@ notarizes when these repository secrets exist, and builds unsigned when they don
 | `MACOS_CERTIFICATE` | the Developer ID Application cert **with its private key**, exported from Keychain Access as `.p12`, then `base64 -i cert.p12 \| pbcopy` |
 | `MACOS_CERTIFICATE_PASSWORD` | the password you chose when exporting the `.p12` |
 | `MACOS_SIGN_IDENTITY` | `<Name> (<TEAMID>)` |
-| `MACOS_NOTARY_APPLE_ID` / `MACOS_NOTARY_PASSWORD` / `MACOS_TEAM_ID` | Apple ID, app-specific password, Team ID |
+| `MACOS_TEAM_ID` | the Team ID |
+| `APPSTORE_KEY_ID` / `APPSTORE_ISSUER_ID` / `APPSTORE_KEY_P8` | App Store Connect API key (the `.p8` contents): CI notarizes with `notarytool --key` instead of an Apple ID password |
 
 Never commit the `.p12`. macOS runner minutes bill at 10x on a private repository, which is why the
 workflow does not run on pull requests.

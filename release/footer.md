@@ -13,6 +13,6 @@ The store versions update automatically; the {{VERSION}} store updates are in re
 
 - **Android APK:** if CrossDrop is already installed from Google Play, update it there — the APK is signed with a different key, so Android won't install it over the Play version.
 - **Windows MSI/EXE:** per-user install, no admin prompt. The installers aren't code-signed yet, so SmartScreen may warn: choose **More info → Run anyway**. The Microsoft Store version has no warning. Allow CrossDrop on *private* networks when Windows Firewall asks.
-- **macOS:** open the DMG and drag CrossDrop to Applications. The Apple Silicon build is signed with a Developer ID but not yet notarized, and the Intel build is unsigned, so macOS blocks the first launch: open **System Settings → Privacy & Security** and click **Open Anyway** (on macOS 14 and earlier, right-click the app → Open). Then allow it on the Local Network prompt.
+- **macOS:** open the DMG and drag CrossDrop to Applications. Both builds are signed with a Developer ID and notarized by Apple, so it opens like any other app. Allow it on the Local Network prompt.
 
 Checksums are in `SHA256SUMS.txt`.
