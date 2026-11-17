@@ -134,6 +134,7 @@ class DesktopWiringTest {
             assertArrayEquals(payload, c.inbox.list().single().file.readBytes())
             // History is written right after each session's terminal state is published: wait for it.
             awaitNotNull("both recorded") { a.history.list().takeIf { it.size == 2 } }
+            assertEquals(2, a.history.list().size)
         } finally { a.close(); b.close(); c.close() }
     }
 
