@@ -6,9 +6,15 @@ name: Microsoft Store check
 
 on:
   workflow_dispatch:
+    inputs:
+      msix_run_id:
+        description: "Optional write test: the id of a workflow run whose CrossDrop-windows artifact holds an .msix with a version HIGHER than the live one. It is uploaded as a draft through the API and the draft is deleted again; nothing is submitted."
+        required: false
+        default: ""
 
 permissions:
   contents: read
+  actions: read     # to download that artifact
 
 jobs:
   check:
@@ -40,3 +46,23 @@ jobs:
         run: |
           msstore submission status $env:STORE_PRODUCT_ID
           if ($LASTEXITCODE -ne 0) { throw "couldn't read the submission status" }
+
+      # Proves the app's role in Partner Center is enough to WRITE, not just read. The draft is always removed.
+      - name: Write test (draft upload, then delete)
+        if: ${{ inputs.msix_run_id != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ inputs.msix_run_id }}
+        run: |
+          gh run download $env:RUN_ID --repo $env:GITHUB_REPOSITORY -n CrossDrop-windows -D msix-test
+          $msix = Get-ChildItem msix-test -Recurse -Filter *.msix | Select-Object -First 1
+          if (-not $msix) { throw "no .msix in run $env:RUN_ID" }
+          Write-Host "uploading $($msix.Name) as a draft (not submitted)"
+          msstore publish $msix.FullName -id $env:STORE_PRODUCT_ID --noCommit
+          $uploaded = $LASTEXITCODE
+          msstore submission status $env:STORE_PRODUCT_ID
+          # Always clean up the draft, whether or not the upload worked.
+          msstore submission delete $env:STORE_PRODUCT_ID --no-confirm
+          if ($uploaded -ne 0) { throw "the draft upload failed (exit $uploaded): the app's role probably can't write; widen it to Manager in Partner Center" }
+          Write-Host "write access confirmed; the draft was deleted."
