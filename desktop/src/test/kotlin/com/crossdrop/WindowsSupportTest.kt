@@ -348,4 +348,25 @@ class WindowsSupportTest {
         first.release()
         dir.deleteRecursively()
     }
+
+    @Test fun `history and settings keep every save, not only the first`() {
+        // File.renameTo can't replace an existing file on Windows; saves must still land there.
+        val dir = Files.createTempDirectory("crossdrop-saves").toFile()
+        try {
+            val historyFile = File(dir, "history.json")
+            val h = com.crossdrop.storage.HistoryStore(historyFile)
+            repeat(3) { n -> h.add(com.crossdrop.storage.HistoryStore.Entry(n.toLong(), "SENDING", "peer$n", "f$n", 1, 1, "COMPLETED")) }
+            assertEquals(listOf("peer2", "peer1", "peer0"), com.crossdrop.storage.HistoryStore(historyFile).list().map { it.peerName })
+
+            val prefsFile = File(dir, "settings.properties")
+            val p = com.crossdrop.platform.Prefs(prefsFile)
+            p.putString("device_name", "first")
+            p.putString("device_name", "second")
+            p.putBoolean("nsd_enabled", false)
+            val again = com.crossdrop.platform.Prefs(prefsFile)
+            assertEquals("second", again.getString("device_name"))
+            assertFalse(again.getBoolean("nsd_enabled", true))
+            assertFalse(File(dir, "settings.properties.tmp").exists())
+        } finally { dir.deleteRecursively() }
+    }
 }

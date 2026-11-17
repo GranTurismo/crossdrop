@@ -44,12 +44,14 @@ class HistoryStore(context: Context) {
         }
     }.getOrDefault(emptyList())
 
-    fun add(entry: Entry) {
+    // Sessions of one send end on their own threads: without the lock, two adds can read the same
+    // list and the second save drops the first entry.
+    @Synchronized fun add(entry: Entry) {
         val next = (listOf(entry) + list()).take(MAX_ENTRIES)
         save(next)
     }
 
-    fun clear() = prefs.edit { remove(KEY) }
+    @Synchronized fun clear() = prefs.edit { remove(KEY) }
 
     private fun save(entries: List<Entry>) {
         val arr = JSONArray()

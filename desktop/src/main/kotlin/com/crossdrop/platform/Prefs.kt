@@ -20,7 +20,7 @@ class Prefs(private val file: File = File(AppDirs.support, "settings.properties"
         runCatching {
             val tmp = File(file.parentFile, file.name + ".tmp")
             tmp.outputStream().use { props.store(it, "CrossDrop settings") }
-            tmp.renameTo(file)
+            replaceFile(tmp, file)
         }
     }
 }

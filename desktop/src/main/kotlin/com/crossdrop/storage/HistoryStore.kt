@@ -42,7 +42,7 @@ class HistoryStore(private val file: File = File(AppDirs.support, "history.json"
     private fun save(entries: List<Entry>) {
         val tmp = File(file.parentFile, file.name + ".tmp")
         tmp.writeText(json.encodeToString(serializer, entries))
-        tmp.renameTo(file)
+        runCatching { com.crossdrop.platform.replaceFile(tmp, file) }
     }
 
     companion object { const val MAX_ENTRIES = 100 }
