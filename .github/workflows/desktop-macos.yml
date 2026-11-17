@@ -4,10 +4,10 @@ name: Desktop (macOS)
 # because a JVM app bundles an arch-specific Java runtime and Skia (an Apple Silicon DMG does not
 # run on Intel, and vice versa).
 #
-# With the MACOS_* secrets below configured, the app is signed with a "Developer ID Application"
-# certificate, notarized by Apple and the ticket stapled to the DMG. Without them (forks, first runs)
-# the DMG is built UNSIGNED, exactly like a local `./gradlew :desktop:packageDmg`. See desktop/RELEASE.md
-# for how to create each secret.
+# With the MACOS_* secrets (a "Developer ID Application" certificate) the app is signed, and with the APPSTORE_*
+# secrets (an App Store Connect API key) the DMG is also notarized by Apple and the ticket stapled to it. Without
+# them (forks, first runs) the DMG is built UNSIGNED, exactly like a local `./gradlew :desktop:packageDmg`.
+# See RELEASING.md for how the secrets were made.
 #
 # Run it by hand (Actions -> "Desktop (macOS)" -> Run workflow) or push a tag named desktop-v*.
 # Either way the DMGs are only attached to the run as a downloadable artifact (kept 90 days) —
@@ -44,9 +44,11 @@ jobs:
       MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
       MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
       MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
-      MACOS_NOTARY_APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
-      MACOS_NOTARY_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
       MACOS_TEAM_ID: ${{ secrets.MACOS_TEAM_ID }}
+      # App Store Connect API key: how Apple's notary service is reached (no Apple ID password involved).
+      APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+      APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+      APPSTORE_KEY_P8: ${{ secrets.APPSTORE_KEY_P8 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -86,13 +88,20 @@ jobs:
       - name: Package DMG
         run: ./gradlew --configure-on-demand :desktop:packageDmg --stacktrace
 
-      # Submits to Apple's notary service, waits for the verdict, then staples the ticket.
+      # Submits to Apple's notary service with the API key, waits for the verdict, then staples the ticket.
       - name: Notarize DMG
-        if: env.MACOS_CERTIFICATE != '' && env.MACOS_NOTARY_APPLE_ID != ''
-        run: ./gradlew --configure-on-demand :desktop:notarizeDmg --stacktrace
+        if: env.MACOS_CERTIFICATE != '' && env.APPSTORE_KEY_ID != ''
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/AuthKey_$APPSTORE_KEY_ID.p8"
+          printf '%s' "$APPSTORE_KEY_P8" > "$KEY"
+          trap 'rm -f "$KEY"' EXIT
+          DMG="$(ls desktop/build/compose/binaries/main/dmg/*.dmg)"
+          xcrun notarytool submit "$DMG" --key "$KEY" --key-id "$APPSTORE_KEY_ID" --issuer "$APPSTORE_ISSUER_ID" --wait --timeout 40m
+          xcrun stapler staple "$DMG"
 
       - name: Verify
-        if: env.MACOS_CERTIFICATE != '' && env.MACOS_NOTARY_APPLE_ID != ''
+        if: env.MACOS_CERTIFICATE != '' && env.APPSTORE_KEY_ID != ''
         run: |
           set -euo pipefail
           DMG="$(ls desktop/build/compose/binaries/main/dmg/*.dmg)"

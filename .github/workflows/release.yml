@@ -7,10 +7,13 @@ name: Release
 # builds the Android bundle + APK, the Windows MSI/EXE/MSIX and both macOS DMGs, then
 #   - creates the GitHub release with every download and SHA256SUMS.txt,
 #   - uploads the bundle to Google Play, rolls it out to production and sends it for review,
-#   - submits the MSIX to the Microsoft Store (only once its secrets exist — see RELEASING.md).
+#   - submits the MSIX to the Microsoft Store,
+#   - uploads the iPhone/iPad and Mac App Store builds to App Store Connect (NOT submitted for review; you do that
+#     there), and signs + notarizes the Mac downloads.
 #
 # Running it by hand (Actions -> Release -> Run workflow) is a DRY RUN: everything is built and
-# the signing key / store credentials are checked, but nothing is published or uploaded.
+# the signing key / store credentials are checked (the Apple builds are signed and exported, not uploaded),
+# but nothing is published or uploaded.
 #
 # Before tagging, bump the versions (app/build.gradle.kts versionCode + versionName, APP_VERSION in
 # desktop/.../Main.kt) and add release/<version>/{whats-new.md,play.txt,msstore.txt}. The first job
@@ -146,6 +149,118 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/desktop-macos.yml
     secrets: inherit
+
+  # iPhone/iPad and Mac (Catalyst) for the App Store. Signed through Apple's cloud signing with the API key, so
+  # no certificate or provisioning profile lives in the repository. A tag uploads to App Store Connect (the
+  # build then shows up under TestFlight / the version's Build section); a dry run only signs and exports.
+  apple:
+    name: App Store builds (iPhone, iPad, Mac)
+    needs: prepare
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+      APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+      APPSTORE_KEY_P8: ${{ secrets.APPSTORE_KEY_P8 }}
+      TEAM_ID: C58ABB3474
+      PUBLISH: ${{ needs.prepare.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0     # the previous tag's iOS build number is compared below
+
+      - name: Is this build wanted?
+        id: gate
+        run: |
+          set -euo pipefail
+          if [ -z "$APPSTORE_KEY_ID" ] || [ -z "$APPSTORE_KEY_P8" ]; then
+            echo "::notice::the App Store Connect key isn't configured, so the Apple builds are skipped."
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # App Store Connect refuses a build number it has seen. If ios/project.yml wasn't bumped since the
+          # previous release, there's nothing new to upload: skip instead of failing the whole release.
+          prev="$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -vxF "$GITHUB_REF_NAME" | head -1 || true)"
+          now="$(sed -n 's/.*CURRENT_PROJECT_VERSION: "\(.*\)".*/\1/p' ios/project.yml)"
+          old=""; [ -n "$prev" ] && old="$(git show "$prev:ios/project.yml" 2>/dev/null | sed -n 's/.*CURRENT_PROJECT_VERSION: "\(.*\)".*/\1/p')"
+          if [ -n "$old" ] && [ "$old" = "$now" ]; then
+            echo "::notice::ios/project.yml still has build $now, the same as $prev: skipping the Apple builds (bump MARKETING_VERSION / CURRENT_PROJECT_VERSION to ship them)."
+            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "iOS build $now (previous release had ${old:-none})"
+
+      - name: Select the newest stable Xcode (26 or later)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          find /Applications -maxdepth 1 -name 'Xcode*.app'
+          sel="$(find /Applications -maxdepth 1 -name 'Xcode_*.app' | grep -viE 'beta|preview|_rc' | sort -V | tail -1)"
+          [ -n "$sel" ] || { echo "::error::no stable Xcode found"; exit 1; }
+          sudo xcode-select -s "$sel/Contents/Developer"
+          xcodebuild -version
+          major="$(xcodebuild -version | sed -n '1s/Xcode \([0-9]*\).*/\1/p')"
+          [ "$major" -ge 26 ] || { echo "::error::Xcode $major is too old for the App Store (26 or later is required)"; exit 1; }
+
+      - name: Install xcodegen and generate the project
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          brew install xcodegen
+          (cd ios && xcodegen generate)
+
+      - name: API key and export options
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/AuthKey_$APPSTORE_KEY_ID.p8"
+          printf '%s' "$APPSTORE_KEY_P8" > "$KEY"; chmod 600 "$KEY"
+          echo "ASC_KEY=$KEY" >> "$GITHUB_ENV"
+          DEST='export'; [ "$PUBLISH" = true ] && DEST='upload'
+          echo "destination: $DEST"
+          cat > "$RUNNER_TEMP/export.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>$DEST</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict></plist>
+          EOF
+
+      - name: iPhone and iPad
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY" -authenticationKeyID "$APPSTORE_KEY_ID" -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID")
+          xcodebuild -project ios/CrossDrop.xcodeproj -scheme CrossDrop -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/CrossDrop-iOS.xcarchive" "${AUTH[@]}" archive
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/CrossDrop-iOS.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export-ios" "${AUTH[@]}"
+
+      - name: Mac (Catalyst)
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          AUTH=(-allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY" -authenticationKeyID "$APPSTORE_KEY_ID" -authenticationKeyIssuerID "$APPSTORE_ISSUER_ID")
+          xcodebuild -project ios/CrossDrop.xcodeproj -scheme CrossDrop -configuration Release \
+            -destination 'generic/platform=macOS,variant=Mac Catalyst' -archivePath "$RUNNER_TEMP/CrossDrop-Mac.xcarchive" "${AUTH[@]}" archive
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/CrossDrop-Mac.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/export.plist" -exportPath "$RUNNER_TEMP/export-mac" "${AUTH[@]}"
+
+      - name: Summary
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          {
+            echo "### App Store builds: $([ "$PUBLISH" = true ] && echo 'uploaded to App Store Connect (not submitted for review)' || echo 'signed and exported (dry run, nothing uploaded)')"
+            find "$RUNNER_TEMP/export-ios" "$RUNNER_TEMP/export-mac" -maxdepth 1 -type f -exec ls -lh {} + 2>/dev/null | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove the API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP"/AuthKey_*.p8
 
   # --------------------------------------------------------------- packaging --
   package:
