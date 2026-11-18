@@ -17,7 +17,10 @@ BUNDLE_ID = "com.granturismo.crossdrop"
 EDITABLE = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED", "METADATA_REJECTED", "INVALID_BINARY", "WAITING_FOR_EXPORT_COMPLIANCE"}
 DRAFT = {"READY_FOR_REVIEW"}
 SENT = {"WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_DEVELOPER_RELEASE", "PENDING_APPLE_RELEASE", "PROCESSING_FOR_APP_STORE",
-        "ACCEPTED", "READY_FOR_SALE", "REPLACED_WITH_NEW_VERSION"}
+        "PROCESSING_FOR_DISTRIBUTION", "ACCEPTED", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION", "REPLACED_WITH_NEW_VERSION"}
+PENDING = "PENDING_DEVELOPER_RELEASE"      # approved by Apple, waiting for the developer to press Release
+RELEASING = {PENDING, "PROCESSING_FOR_DISTRIBUTION", "PROCESSING_FOR_APP_STORE"}
+POLL = int(os.environ.get("ASC_POLL_SECONDS", "30"))
 
 
 class ApiError(Exception):
@@ -105,7 +108,24 @@ def wait_for_build(asc, app_id, platform, version, build, minutes, log):
         if time.time() >= deadline:
             raise RuntimeError(f"build {version} ({build}) is {state} after waiting {minutes} min")
         log(f"  build {version} ({build}) is {state}; waiting…")
-        time.sleep(30)
+        time.sleep(POLL)
+
+
+def release_pending(asc, app_id, platform, pending, minutes, log):
+    """Release an approved version that is waiting for the developer, then wait until Apple allows a new version."""
+    asc.call("POST", "/v1/appStoreVersionReleaseRequests", {"data": {"type": "appStoreVersionReleaseRequests", "relationships": {
+        "appStoreVersion": {"data": {"type": "appStoreVersions", "id": pending["id"]}}}}})
+    log(f"  released {pending['attributes']['versionString']} (it was approved and waiting for release)")
+    deadline = time.time() + minutes * 60
+    while True:
+        versions = asc.get(f"/v1/apps/{app_id}/appStoreVersions", **{"filter[platform]": platform, "limit": "20"}).get("data", [])
+        now = next((v for v in versions if v["id"] == pending["id"]), None)
+        if now is None or state_of(now) not in RELEASING:
+            return versions
+        if time.time() >= deadline:
+            raise RuntimeError(f"{pending['attributes']['versionString']} is still {state_of(now)} after {minutes} min")
+        log(f"  {pending['attributes']['versionString']} is {state_of(now)}; waiting…")
+        time.sleep(POLL)
 
 
 def whats_new_text(path):
@@ -123,6 +143,13 @@ def process(asc, app_id, platform, a, text, log):
     target = next((v for v in versions if v["attributes"]["versionString"] == a.version), None)
     if target and state_of(target) in SENT:
         return f"{platform}: {a.version} is already {state_of(target)}: nothing to do"
+    pending = next((v for v in versions if state_of(v) == PENDING and v is not target), None)
+    if pending and not a.release_pending:
+        what = f"{pending['attributes']['versionString']} is approved but still waiting for you to release it (Pending Developer Release)"
+        if not a.submit:
+            return f"{platform}: BLOCKED: {what}. Apple allows no new version until it is released."
+        raise RuntimeError(what + ". Apple allows no new version until it is released: press Release in App Store Connect, "
+                                  "or run again with release_pending on to let this script release it, then submit")
 
     build = (find_build(asc, app_id, platform, a.version, a.build) if not a.submit else
              wait_for_build(asc, app_id, platform, a.version, a.build, a.wait_minutes, log))
@@ -135,6 +162,8 @@ def process(asc, app_id, platform, a, text, log):
     if build is None:
         raise RuntimeError("the build isn't in App Store Connect")
 
+    if pending and a.release_pending:
+        versions = release_pending(asc, app_id, platform, pending, a.wait_minutes, log)
     if not target:
         editable = [v for v in versions if state_of(v) in EDITABLE | DRAFT]
         if editable:
@@ -187,6 +216,7 @@ def main():
     p.add_argument("--platforms", default="IOS,MAC_OS")
     p.add_argument("--wait-minutes", type=int, default=40, help="how long to wait for Apple to process the build")
     p.add_argument("--submit", action="store_true", help="really submit (the default only reads and prints)")
+    p.add_argument("--release-pending", action="store_true", help="first release an older version that Apple approved but that still waits for the developer (a public release!)")
     a = p.parse_args()
     asc = Asc(os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"], os.environ["ASC_KEY_PATH"])
     log = lambda s: print(s, flush=True)

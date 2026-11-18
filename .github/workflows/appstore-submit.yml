@@ -21,6 +21,10 @@ on:
         description: "Really submit for review (off = read-only)"
         type: boolean
         default: false
+      release_pending:
+        description: "First RELEASE an older version Apple approved that still waits for you (Pending Developer Release). Public!"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -45,5 +49,6 @@ jobs:
           trap 'rm -f "$KEY"' EXIT
           args=(--version "${{ inputs.version }}" --build "${{ inputs.build }}" --notes "release/${{ inputs.notes }}/appstore.txt")
           [ "${{ inputs.submit }}" = true ] && args+=(--submit)
+          [ "${{ inputs.release_pending }}" = true ] && args+=(--release-pending)
           ASC_KEY_ID="$APPSTORE_KEY_ID" ASC_ISSUER_ID="$APPSTORE_ISSUER_ID" ASC_KEY_PATH="$KEY" \
             python3 tools/release/appstore_submit.py "${args[@]}"
