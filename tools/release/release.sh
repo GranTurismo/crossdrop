@@ -29,11 +29,11 @@ desktop_v="$(sed -n 's/.*APP_VERSION = "\(.*\)".*/\1/p' desktop/src/main/kotlin/
 [ "$desktop_v" = "$version" ] || die "Main.kt says $desktop_v, not $version"
 for f in whats-new.md play.txt msstore.txt; do [ -s "release/$version/$f" ] || die "missing release/$version/$f"; done
 
-echo "tagging $tag…"
+echo "tagging ${tag}…"
 git tag -a "$tag" -m "CrossDrop $version"
 git push -q origin "$tag"
 
-echo "waiting for the release workflow of $tag…"
+echo "waiting for the release workflow of ${tag}…"
 run=""
 for _ in $(seq 1 30); do
   run="$(gh run list --workflow release.yml --branch "$tag" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
