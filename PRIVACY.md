@@ -1,6 +1,6 @@
 # CrossDrop Privacy Policy
 
-**Last updated:** November 2026
+**Last updated:** November 2026 (language list and "Connect directly")
 
 ## The short version
 
@@ -56,7 +56,8 @@ Everything the app does happens entirely on your local network or on-device.
 | Permission | Why |
 | --- | --- |
 | Nearby Wi-Fi devices / Bluetooth (advertise, scan, connect) | Discover and reach peers on your network — declared `neverForLocation`. |
-| Location (Android 11 and older only) | Required by the OS for legacy BLE discovery; the app does not read or store your location. |
+| Location (Android 12 and older only) | Required by the OS for legacy BLE discovery (Android 11 and older) and, on Android 12 and older, before an app may create the temporary private Wi-Fi link behind "Connect directly" (asked only when you use that feature, after an explanation). The app does not read or store your location. |
+| Change Wi-Fi state (Android) | "Connect directly": creates a temporary private Wi-Fi link (no internet is shared) so a device with no shared Wi-Fi can join it by scanning a QR code. It stops when you stop it or after 30 minutes. |
 | Notifications | Show transfer progress and completion, and offers that arrive while the app isn't open. |
 | Photos / files (system pickers) | You choose exactly which files to send, each time. |
 | Camera, microphone | Only while CrossDrop's camera screen is open: to take the photos and videos you send (the microphone records video sound). |

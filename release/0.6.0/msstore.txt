@@ -1,0 +1,4 @@
+• CrossDrop speaks your language: Georgian, Hindi, Indonesian, Arabic, Persian, Spanish, Portuguese, Russian and Turkish. It follows Windows' language, and the globe button in the app lets you switch any time
+• A short welcome tour on first launch, with a Skip button
+• Can't see the other device? CrossDrop now tells you what to check (same Wi-Fi? guest or hotel network?) and offers a step-by-step guide
+• Dates and file sizes follow the chosen language

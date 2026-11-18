@@ -1,0 +1,4 @@
+• Now in your language: Georgian, Hindi, Indonesian, Arabic, Persian, Spanish, Portuguese, Russian, Turkish. It follows your phone's language, and a globe button lets you change it any time
+• A short welcome tour on first launch (skip it any time)
+• Can't see the other device? CrossDrop now says why and what to do
+• No Wi-Fi? Connect directly: your phone makes a private link and shows a QR code to scan
