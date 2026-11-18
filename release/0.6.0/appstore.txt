@@ -1,0 +1,3 @@
+• CrossDrop now speaks Georgian, Hindi, Indonesian, Arabic, Persian, Spanish, Portuguese, Russian and Turkish. It follows your iPhone's language, and a globe button lets you switch any time.
+• A short welcome tour on first launch. Skip it whenever you like.
+• Can't see the other device? CrossDrop now tells you what to check and offers a step-by-step guide.

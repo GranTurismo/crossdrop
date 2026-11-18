@@ -15,7 +15,7 @@ tools/release/release.sh v0.6.0      # checks, tags, pushes, then waits for the 
 | Windows MSI, EXE | GitHub release | live |
 | Windows MSIX | **Microsoft Store** (submitted for certification, publishes when it passes) | live |
 | macOS DMGs (Apple Silicon, Intel) | GitHub release, signed with your Developer ID and **notarized** by Apple | live |
-| iPhone / iPad / Mac App Store builds | **App Store Connect** (uploaded, not submitted for review; you submit it there) | live |
+| iPhone / iPad / Mac App Store builds | **App Store Connect**: uploaded and sent to **App Review**; each releases by itself after Apple approves it | live |
 
 Each store still runs its own review, so they don't go live at the same moment.
 
@@ -28,6 +28,7 @@ Each store still runs its own review, so they don't go live at the same moment.
    - `whats-new.md`: the GitHub release text (the shared download/install notes come from `release/footer.md`),
    - `play.txt`: Google Play "What's new", at most 500 characters,
    - `msstore.txt`: Microsoft Store "What's new", at most 1500 characters,
+   - `appstore.txt`: App Store "What's New" (English, at most 4000 characters; every existing App Store language gets this text),
    - `title.txt` (optional): a subtitle for the GitHub release title.
 3. Commit and push to `main`, then tag.
 
@@ -119,9 +120,15 @@ Set up 2026-11-17, nothing in the repository holds a certificate or a provisioni
   Integrations → Team Keys.
 - **The `apple` job** (macOS runner, newest stable Xcode, at least 26) archives the iPhone/iPad app and the Mac
   (Catalyst) app and signs them through Apple's cloud signing with that key. On a tag it uploads both to App Store
-  Connect (they appear under the app's TestFlight / the version's Build section) and **does not submit anything for
-  review**: in App Store Connect add the build to a version, fill in "What's New" (`release/<version>/` has no Apple
-  text; the App Store wording is yours) and submit. A dry run signs and exports only.
+  Connect. A dry run signs and exports only.
+- **The `appstore_review` job** (`tools/release/appstore_submit.py`, Apple's API with the same key) then waits for Apple to
+  process the builds, attaches each to the App Store version (renaming an editable older version or creating one),
+  sets "What's New" from `release/<version>/appstore.txt` and submits iPhone/iPad and the Mac app to **App Review**, set to
+  release automatically after approval. A version already in review or live is left alone, so re-running is safe.
+  If Apple wants something only you can give (a screenshot size, the review contact details, a form), that job fails
+  *without* failing the release: the builds stay uploaded, `release.sh` says "NOT submitted", you fix it in App Store
+  Connect and run **Actions -> App Store submit** (version, build, notes folder, "submit" on; with it off the workflow only
+  reads and prints the state). Apple's own review then takes about a day.
 - **It skips itself** (with a notice) when `ios/project.yml` still has the same `CURRENT_PROJECT_VERSION` as the previous
   release, because App Store Connect refuses a build number it has seen. To ship an Apple update, bump
   `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` there before tagging (last uploaded: 1.3.0, build 4).

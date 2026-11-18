@@ -27,7 +27,7 @@ gradle_v="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)"
 desktop_v="$(sed -n 's/.*APP_VERSION = "\(.*\)".*/\1/p' desktop/src/main/kotlin/com/crossdrop/Main.kt)"
 [ "$gradle_v" = "$version" ] || die "app/build.gradle.kts says $gradle_v, not $version"
 [ "$desktop_v" = "$version" ] || die "Main.kt says $desktop_v, not $version"
-for f in whats-new.md play.txt msstore.txt; do [ -s "release/$version/$f" ] || die "missing release/$version/$f"; done
+for f in whats-new.md play.txt msstore.txt appstore.txt; do [ -s "release/$version/$f" ] || die "missing release/$version/$f"; done
 
 echo "tagging ${tag}…"
 git tag -a "$tag" -m "CrossDrop $version"
@@ -45,6 +45,12 @@ echo "run $run: $(gh run view "$run" --json url --jq .url)"
 
 if gh run watch "$run" --interval 20 --exit-status >/dev/null; then
   echo "released: GitHub, Google Play (in Google's review) and the Microsoft Store (in certification)."
+  appstore="$(gh run view "$run" --json jobs --jq '.jobs[] | select(.name=="App Store review") | .conclusion')"
+  case "$appstore" in
+    success) echo "App Store: both builds sent to App Review (they release by themselves after approval)." ;;
+    failure) echo "App Store: builds uploaded but NOT submitted. See the 'App Store review' job log, fix it in App Store Connect, then run the 'App Store submit' workflow." ;;
+    *) echo "App Store: no new build in this release (or the review step was skipped)." ;;
+  esac
 else
   gh run view "$run" --json jobs --jq '.jobs[] | select(.conclusion=="failure") | "failed job: \(.name)"'
   die "the release workflow failed. Fix the cause, then use 'Re-run failed jobs' on the run above; jobs that already published are safe to repeat."
