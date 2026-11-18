@@ -44,10 +44,10 @@ struct VaultExplorerScreen: View {
             CD.ink.ignoresSafeArea()
             ScreenGlow(color: CD.amber, alpha: 0.14, centerX: 0.9, centerY: 70, radius: 210)
             VStack(alignment: .leading, spacing: 0) {
-                BackHeader(title: state.peerName, backLabel: atRoot ? "Close drive" : "Up one folder", titleSize: 20, onBack: back) {
+                BackHeader(title: state.peerName, backLabel: atRoot ? tr("Close drive") : tr("Up one folder"), titleSize: 20, onBack: back) {
                     HStack(spacing: 5) {
                         CdIconView(CdIcons.lock, color: CD.accent, size: 12)
-                        Text("Encrypted · " + (state.pinRequired ? "PIN needed" : state.writable ? "you can add & edit" : "view & download"))
+                        Text(state.pinRequired ? tr("Encrypted · PIN needed") : state.writable ? tr("Encrypted · you can add & edit") : tr("Encrypted · view & download"))
                             .body(12, CD.accent)
                     }
                     .accessibilityElement(children: .combine)
@@ -59,9 +59,9 @@ struct VaultExplorerScreen: View {
                     Crumbs(root: state.peerName, path: state.path) { explorer.browse($0) }.padding(.top, 14)
                     HStack(spacing: 8) {
                         if state.writable {
-                            PillButton("Upload", height: 44, icon: CdIcons.arrowUp, fontSize: 14, fullWidth: false) { uploadMenu = true }
+                            PillButton(tr("Upload"), height: 44, icon: CdIcons.arrowUp, fontSize: 14, fullWidth: false) { uploadMenu = true }
                         }
-                        PillButton(selecting ? "Done" : "Select", style: .outline, height: 44, fontSize: 14, fullWidth: false) {
+                        PillButton(selecting ? tr("Done") : tr("Select"), style: .outline, height: 44, fontSize: 14, fullWidth: false) {
                             if selecting { explorer.clearSelection() }
                             selecting.toggle()
                         }
@@ -91,9 +91,9 @@ struct VaultExplorerScreen: View {
                 if !urls.isEmpty { explorer.upload(urls, temporary: urls.map { $0.deletingLastPathComponent() }) }
             }
         }
-        .confirmationDialog("Upload to this folder", isPresented: $uploadMenu, titleVisibility: .visible) {
-            Button("Photos & videos") { showPhotos = true }
-            Button("Files") { showFiles = true }
+        .confirmationDialog(tr("Upload to this folder"), isPresented: $uploadMenu, titleVisibility: .visible) {
+            Button(tr("Photos & videos")) { showPhotos = true }
+            Button(tr("Files")) { showFiles = true }
         }
         .onChange(of: state.selected.isEmpty) { empty in if !empty { selecting = true } }
         .accessibilityAction(.escape) { back() }
@@ -121,20 +121,20 @@ struct VaultExplorerScreen: View {
         if state.loading {
             VStack(spacing: 12) {
                 ProgressView().tint(CD.accent).scaleEffect(1.2)
-                Text("Reading the drive…").body(13, CD.textDim)
+                Text(tr("Reading the drive…")).body(13, CD.textDim)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = state.error {
             VStack(spacing: 12) {
                 Text(err).body(13, CD.dangerText).multilineTextAlignment(.center)
-                PillButton("Try again", style: .glass, height: 44, fullWidth: false) { explorer.browse(state.path) }
+                PillButton(tr("Try again"), style: .glass, height: 44, fullWidth: false) { explorer.browse(state.path) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if state.entries.isEmpty {
             VStack(spacing: 4) {
                 IconTile(icon: CdIcons.folderIcon, tint: CD.amber, size: 56, radius: 28, iconSize: 26)
-                Text("This folder is empty").displayStyle(16).padding(.top, 8)
-                if state.writable { Text("Upload something to fill it.").body(13, CD.textDim) }
+                Text(tr("This folder is empty")).displayStyle(16).padding(.top, 8)
+                if state.writable { Text(tr("Upload something to fill it.")).body(13, CD.textDim) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -174,13 +174,13 @@ struct VaultExplorerScreen: View {
                       glow: Color.black.opacity(0.5), glowRadius: 50, glowOffsetY: -10, padding: .all(14), spacing: 12) {
                 ForEach(jobs.prefix(3)) { j in JobRow(job: j) }
                 if !jobs.filter({ $0.failed != nil }).isEmpty && state.selected.isEmpty {
-                    ChipButton(text: "Clear finished", height: 32, fontSize: 12) { explorer.clearFinishedJobs() }
+                    ChipButton(text: tr("Clear finished"), height: 32, fontSize: 12) { explorer.clearFinishedJobs() }
                 }
                 if !state.selected.isEmpty {
                     HStack {
-                        Text("\(state.selected.count) selected").body(14, CD.textSecondary, weight: .semibold).padding(.leading, 4)
+                        Text(tr("{0} selected", state.selected.count)).body(14, CD.textSecondary, weight: .semibold).padding(.leading, 4)
                         Spacer()
-                        PillButton("Download", height: 48, icon: CdIcons.download, glow: true, fullWidth: false) {
+                        PillButton(tr("Download"), height: 48, icon: CdIcons.download, glow: true, fullWidth: false) {
                             explorer.download(Array(state.selected))
                             explorer.clearSelection()
                             selecting = false
@@ -206,11 +206,11 @@ struct VaultExplorerScreen: View {
                         Circle().fill(CD.amber.opacity(0.14))
                     }
                 )
-            Text("This drive needs a passcode").displayStyle(22).multilineTextAlignment(.center).padding(.top, 18)
+            Text(tr("This drive needs a passcode")).displayStyle(22).multilineTextAlignment(.center).padding(.top, 18)
                 .accessibilityAddTraits(.isHeader)
-            Text("It's the 4 digits shown on the device sharing it.").body(13, CD.textDim).multilineTextAlignment(.center).padding(.top, 6)
+            Text(tr("It's the 4 digits shown on the device sharing it.")).body(13, CD.textDim).multilineTextAlignment(.center).padding(.top, 6)
             if state.pinFailed {
-                Text("That passcode didn't work — try again").body(13, CD.dangerText).padding(.top, 8)
+                Text(tr("That passcode didn't work — try again")).body(13, CD.dangerText).padding(.top, 8)
             }
             TextField("", text: Binding(get: { pin }, set: { pin = String($0.filter(\.isNumber).prefix(4)) }))
                 .keyboardType(.numberPad)
@@ -224,10 +224,10 @@ struct VaultExplorerScreen: View {
                 .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(CD.glassLow))
                 .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .strokeBorder(pinFocused ? CD.accent : CD.hairlineStrong, lineWidth: pinFocused ? 1.5 : 1))
-                .accessibilityLabel("Passcode")
+                .accessibilityLabel(tr("Passcode"))
                 .onSubmit(unlock)
                 .padding(.top, 22)
-            PillButton("Unlock", glow: true, fullWidth: false, action: unlock)
+            PillButton(tr("Unlock"), glow: true, fullWidth: false, action: unlock)
                 .frame(width: 200)
                 .disabled(pin.count != 4)
                 .padding(.top, 18)
@@ -286,11 +286,11 @@ private struct FolderTile: View {
     let entry: VaultDirEntry
     let action: () -> Void
     var body: some View {
-        GlassCard(radius: 22, fill: CD.glass, padding: .all(14), spacing: 12, action: action, actionLabel: "Opens the folder") {
+        GlassCard(radius: 22, fill: CD.glass, padding: .all(14), spacing: 12, action: action, actionLabel: tr("Opens the folder")) {
             CdIconView(CdIcons.folderIcon, color: CD.amber, size: 26)
             VStack(alignment: .leading, spacing: 2) {
                 Text(entry.name).body(14, weight: .semibold).lineLimit(1)
-                Text("Folder").body(12, CD.textDim)
+                Text(tr("Folder")).body(12, CD.textDim)
             }
         }
         .accessibilityElement(children: .combine)
@@ -317,8 +317,8 @@ private struct FileRow: View {
                     }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(entry.name).body(14, weight: .semibold).lineLimit(1).truncationMode(.middle)
-                        Text(Fmt.bytes(entry.size) + " · " + (preview ? "tap to preview"
-                             : Date(timeIntervalSince1970: TimeInterval(entry.mtime)).formatted(.dateTime.month(.abbreviated).day().hour().minute())))
+                        Text(Fmt.bytes(entry.size) + " · " + (preview ? tr("tap to preview")
+                             : Date(timeIntervalSince1970: TimeInterval(entry.mtime)).formatted(.dateTime.month(.abbreviated).day().hour().minute().locale(I18n.locale))))
                             .body(12, CD.textDim).lineLimit(1)
                     }
                     Spacer(minLength: 4)
@@ -328,7 +328,7 @@ private struct FileRow: View {
             }
             .buttonStyle(PressableStyle())
             .accessibilityElement(children: .combine)
-            .accessibilityHint(selecting ? "Selects the file" : preview ? "Previews the file" : "Downloads to your inbox")
+            .accessibilityHint(selecting ? tr("Selects the file") : preview ? tr("Previews the file") : tr("Downloads to your inbox"))
             .accessibilityAddTraits(selecting && selected ? [.isSelected] : [])
 
             if selecting {
@@ -343,9 +343,9 @@ private struct FileRow: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(selected ? "Selected" : "Not selected")
+                .accessibilityLabel(selected ? tr("Selected") : tr("Not selected"))
             } else {
-                CircleButton(icon: CdIcons.download, label: "Download \(entry.name)", fill: .clear, tint: CD.textSecondary, action: onDownload)
+                CircleButton(icon: CdIcons.download, label: tr("Download {0}", entry.name), fill: .clear, tint: CD.textSecondary, action: onDownload)
             }
         }
     }
@@ -363,7 +363,7 @@ private struct JobRow: View {
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(CD.accent.opacity(0.35), lineWidth: 1))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(job.name).body(14, weight: .semibold).lineLimit(1).truncationMode(.middle)
-                    Text(job.failed ?? (job.uploading ? "Uploading" : "Saving to inbox"))
+                    Text(job.failed ?? (job.uploading ? tr("Uploading") : tr("Saving to inbox")))
                         .body(12, job.failed != nil ? CD.dangerText : CD.textDim).lineLimit(1)
                 }
                 Spacer(minLength: 4)

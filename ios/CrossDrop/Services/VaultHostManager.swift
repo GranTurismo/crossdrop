@@ -75,12 +75,12 @@ final class VaultHostManager: ObservableObject {
         stop()
         failure = nil
         var rootURL = vaultRoot
-        var rootLabel = "CrossDrop vault"
+        var rootLabel = tr("CrossDrop vault")
         if let folder {
             let scoped = folder.startAccessingSecurityScopedResource()
             guard Self.isShareable(folder) else {
                 if scoped { folder.stopAccessingSecurityScopedResource() }
-                failure = "That folder can't be shared — pick a folder inside Files, not the app's own storage."
+                failure = tr("That folder can't be shared — pick a folder inside Files, not the app's own storage.")
                 return false
             }
             if scoped { scopedFolder = folder }
@@ -89,7 +89,7 @@ final class VaultHostManager: ObservableObject {
         }
         guard let ip = LocalIp.wifiIPv4() else {
             releaseScope()
-            failure = "Not on Wi-Fi — connect to a network to turn the drive on."
+            failure = tr("Not on Wi-Fi — connect to a network to turn the drive on.")
             return false
         }
 
@@ -110,7 +110,7 @@ final class VaultHostManager: ObservableObject {
             port = try srv.start(preferredPort: 8080)
         } catch {
             releaseScope()
-            failure = "Couldn't turn on the drive (\(error))."
+            failure = tr("Couldn't turn on the drive ({0}).", String(describing: error))
             return false
         }
         server = srv
@@ -156,7 +156,7 @@ final class VaultHostManager: ObservableObject {
         // iOS may have revoked the listener while suspended — a drive nobody can reach must not look "on".
         if !NetProbe.isListening(port: s.port) {
             stop()
-            failure = "The drive stopped while CrossDrop was in the background. Turn it on again to share."
+            failure = tr("The drive stopped while CrossDrop was in the background. Turn it on again to share.")
             return
         }
         advertiser.start(vaultId: id, name: s.vaultName, port: s.port, writable: s.writable, pinProtected: s.pin != nil)

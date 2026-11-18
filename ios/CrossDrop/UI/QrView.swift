@@ -28,7 +28,7 @@ struct QrCard: View {
             }
         )
         .accessibilityElement()
-        .accessibilityLabel("QR code for \(text)")
+        .accessibilityLabel(tr("QR code for {0}", text))
         .accessibilityAddTraits(.isImage)
     }
 

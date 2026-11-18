@@ -21,6 +21,9 @@ targets:
     supportedDestinations: [iOS, macCatalyst]
     sources:
       - path: CrossDrop
+      # Translations shared with Android and desktop: l10n/<lang>.json, read by Services/I18n.swift.
+      - path: ../l10n
+        type: folder
     dependencies:
       - package: CrossDropCore
       - target: CrossDropShare
@@ -28,6 +31,8 @@ targets:
       path: CrossDrop/Info.plist
       properties:
         CFBundleDisplayName: CrossDrop
+        # The languages CrossDrop is translated into: iOS lists them under Settings > CrossDrop > Language.
+        CFBundleLocalizations: [en, ka, hi, id, ar, fa, es, pt-BR, ru, tr]
         # Without these XcodeGen writes a literal 1.0 / 1 and MARKETING_VERSION is ignored.
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)

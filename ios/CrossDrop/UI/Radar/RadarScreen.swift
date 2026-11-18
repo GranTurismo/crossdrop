@@ -37,6 +37,9 @@ struct RadarScreen: View {
     @EnvironmentObject var sheets: SheetHost
     @Environment(\.navInset) private var navInset
     var active = true
+    var onShowConnectGuide: () -> Void = {}
+    @StateObject private var connectHint = ConnectHintModel()
+    @State private var pickingLanguage = I18n.devFlag("dev_language_sheet")
 
     @State private var targetPeers: [Peer] = []
     /// "to anyone": the picker's result feeds the QR share instead of a peer send.
@@ -60,15 +63,16 @@ struct RadarScreen: View {
                 ZStack(alignment: .bottom) {
                     RadarCanvas(selfName: container.deviceName, selfIcon: Platform.deviceIcon, peers: devices, active: active,
                                 onPeerTap: startSendFlow, onSelfTap: { renameText = container.deviceName; renaming = true })
-                    if devices.isEmpty {
-                        Text("Open CrossDrop on another device on this Wi-Fi").body(12, CD.textDim)
+                    if devices.isEmpty && connectHint.hint == .none {
+                        Text(tr("Open CrossDrop on another device on this Wi-Fi")).body(12, CD.textDim)
                             .multilineTextAlignment(.center).padding(.bottom, 6).padding(.horizontal, 16)
                     }
                 }
-                .frame(maxWidth: .infinity, minHeight: 220, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, minHeight: connectHint.hint == .none ? 220 : 120, maxHeight: .infinity)
                 .padding(.top, 8)
 
                 VStack(spacing: 10) {
+                    if connectHint.hint != .none { ConnectHelpCard(hint: connectHint.hint, onGuide: onShowConnectGuide) }
                     SendToAnyoneCard { startAnyoneFlow() }
                     ForEach(drives.prefix(2)) { d in DriveRow(peer: d) { startSendFlow(d) } }
                 }
@@ -79,7 +83,7 @@ struct RadarScreen: View {
             if loadingMedia {
                 HStack(spacing: 10) {
                     ProgressView().tint(CD.accent)
-                    Text("Preparing…").body(14, CD.textSecondary)
+                    Text(tr("Preparing…")).body(14, CD.textSecondary)
                 }
                 .padding(.horizontal, 18).padding(.vertical, 14)
                 .background(Capsule().fill(CD.inkSheet))
@@ -87,6 +91,10 @@ struct RadarScreen: View {
             }
         }
         .background(CD.ink)
+        .sheet(isPresented: $pickingLanguage) { LanguageSheet() }
+        .onAppear { connectHint.update(hasNetwork: container.hasNetwork, deviceCount: devices.count) }
+        .onChange(of: devices.count) { n in connectHint.update(hasNetwork: container.hasNetwork, deviceCount: n) }
+        .onChange(of: container.hasNetwork) { has in connectHint.update(hasNetwork: has, deviceCount: devices.count) }
         .fileImporter(isPresented: $showFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             let anyone = targetAnyone, peers = targetPeers
             targetAnyone = false; targetPeers = []                 // a cancelled picker must not leave a stale target
@@ -109,7 +117,7 @@ struct RadarScreen: View {
                 }
                 loadingMedia = false
                 guard !urls.isEmpty else {
-                    container.networkNotice = "Couldn't read the selected photos or videos."
+                    container.networkNotice = tr("Couldn't read the selected photos or videos.")
                     return
                 }
                 let temp = urls.map { $0.deletingLastPathComponent() }
@@ -141,8 +149,8 @@ struct RadarScreen: View {
             }
         }
         #endif
-        .alert("Can't share", isPresented: Binding(get: { container.qrShare.failure != nil }, set: { if !$0 { container.qrShare.failure = nil } })) {
-            Button("OK", role: .cancel) {}
+        .alert(tr("Can't share"), isPresented: Binding(get: { container.qrShare.failure != nil }, set: { if !$0 { container.qrShare.failure = nil } })) {
+            Button(tr("OK"), role: .cancel) {}
         } message: { Text(container.qrShare.failure ?? "") }
     }
 
@@ -167,9 +175,9 @@ struct RadarScreen: View {
         }
         let others = container.peers.filter { $0.vault == nil && $0.isReachable && $0.id != peer.id }
         sheets.present {
-            SendSheet(kicker: "Send to", title: peer.name, icon: deviceIconFor(peer.name),
-                      meta: MetaLine(lead: nil, rest: peer.sources.contains(.manual) ? "Added by address · Wi-Fi" : "Wi-Fi · this network"),
-                      note: "Straight to this device, end-to-end encrypted, never through a server. You'll both see a 6-digit code to compare.",
+            SendSheet(kicker: tr("Send to"), title: peer.name, icon: deviceIconFor(peer.name),
+                      meta: MetaLine(lead: nil, rest: peer.sources.contains(.manual) ? tr("Added by address · Wi-Fi") : tr("Wi-Fi · this network")),
+                      note: tr("Straight to this device, end-to-end encrypted, never through a server. You'll both see a 6-digit code to compare."),
                       primary: peer, others: others,
                       onPickMedia: { t in pick(peers: t) { showPhotos = true } },
                       onPickFiles: { t in pick(peers: t) { showFiles = true } },
@@ -178,7 +186,7 @@ struct RadarScreen: View {
                           sheets.dismiss(notify: false)
                           DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
                               sheets.present {
-                                  TextComposeSheet(target: t.count == 1 ? t[0].name : "\(t.count) devices",
+                                  TextComposeSheet(target: t.count == 1 ? t[0].name : trPlural(t.count, one: "1 device", other: "{n} devices"),
                                                    initial: UIPasteboard.general.hasStrings ? (UIPasteboard.general.string ?? "") : "") { text in
                                       sheets.dismiss()
                                       if let text, !text.isEmpty { coordinator.sendText(t, text: text) }
@@ -194,7 +202,7 @@ struct RadarScreen: View {
                                   guard !picked.isEmpty else { return }
                                   let vcf = picked.map { ContactsBridge.vcard($0) }.joined()
                                   let names = ContactPreview.parse(ContactCards.preview(vcf)).map(\.name)
-                                  coordinator.sendContacts(t, vcf: vcf, names: names.isEmpty ? ["Contact"] : names)
+                                  coordinator.sendContacts(t, vcf: vcf, names: names.isEmpty ? [tr("Contact")] : names)
                               }
                           }
                       },
@@ -212,9 +220,9 @@ struct RadarScreen: View {
             return
         }
         sheets.present {
-            SendSheet(kicker: "Share with", title: "Anyone nearby", icon: CdIcons.qr,
-                      meta: MetaLine(lead: nil, rest: "No app needed — they scan a QR code"),
-                      note: "They need to be on this Wi-Fi. The link is secret, and it stops working the moment you close the share screen.",
+            SendSheet(kicker: tr("Share with"), title: tr("Anyone nearby"), icon: CdIcons.qr,
+                      meta: MetaLine(lead: nil, rest: tr("No app needed — they scan a QR code")),
+                      note: tr("They need to be on this Wi-Fi. The link is secret, and it stops working the moment you close the share screen."),
                       onPickMedia: { _ in pick(peers: []) { showPhotos = true } },
                       onPickFiles: { _ in pick(peers: []) { showFiles = true } },
                       onCancel: { sheets.dismiss() })
@@ -238,10 +246,11 @@ struct RadarScreen: View {
                 Text("CrossDrop").displayStyle(16, tracking: -0.01)
                 Spacer(minLength: 8)
                 GlassChip(text: chipText, dot: container.discoveryEnabled ? CD.accent : CD.textDim)
+                LanguageButton { pickingLanguage = true }
             }
             VStack(alignment: .leading, spacing: 6) {
-                Text("Radar").displayStyle(36, tracking: -0.04).accessibilityAddTraits(.isHeader)
-                Text(count == 0 ? "Looking for devices…" : count == 1 ? "1 device nearby" : "\(count) devices nearby")
+                Text(tr("Radar")).displayStyle(36, tracking: -0.04).accessibilityAddTraits(.isHeader)
+                Text(count == 0 ? tr("Looking for devices…") : trPlural(count, one: "1 device nearby", other: "{n} devices nearby"))
                     .body(14, CD.textDim)
             }
         }
@@ -249,7 +258,7 @@ struct RadarScreen: View {
     }
 
     private var chipText: String {
-        var t = container.discoveryEnabled ? "Wi-Fi · local only" : "Wi-Fi discovery off"
+        var t = container.discoveryEnabled ? tr("Wi-Fi · local only") : tr("Wi-Fi discovery off")
         #if DEBUG
         if container.listenerPort > 0 { t += " · :\(container.listenerPort)" }
         #endif
@@ -261,10 +270,10 @@ struct RadarScreen: View {
             CdIconView(CdIcons.wifi, color: CD.amber, size: 18)
             Text(text).body(12, CD.textSecondary).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 4)
-            ChipButton(text: "Settings", fg: CD.amber, bg: CD.amber.opacity(0.1), border: CD.amber.opacity(0.35), height: 32, fontSize: 12) {
+            ChipButton(text: tr("Settings"), fg: CD.amber, bg: CD.amber.opacity(0.1), border: CD.amber.opacity(0.35), height: 32, fontSize: 12) {
                 openSystemSettings()
             }
-            CircleButton(icon: CdIcons.close, label: "Dismiss", size: 32, iconSize: 14, fill: .clear, tint: CD.textDim) {
+            CircleButton(icon: CdIcons.close, label: tr("Dismiss"), size: 32, iconSize: 14, fill: .clear, tint: CD.textDim) {
                 container.networkNotice = nil
             }
         }
@@ -280,15 +289,15 @@ struct RadarScreen: View {
         return HStack(spacing: 12) {
             IconTile(icon: CdIcons.arrowUp, tint: CD.accent, size: 40, radius: 14, iconSize: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(n) file\(n == 1 ? "" : "s") ready").body(14, weight: .semibold)
-                Text("Tap a device to send").body(12, CD.textDim)
+                Text(trPlural(n, one: "1 file ready", other: "{n} files ready")).body(14, weight: .semibold)
+                Text(tr("Tap a device to send")).body(12, CD.textDim)
             }
             Spacer(minLength: 4)
-            ChipButton(text: "To anyone", icon: CdIcons.qr, fg: CD.onAccent, bg: CD.accent, height: 36) {
+            ChipButton(text: tr("To anyone"), icon: CdIcons.qr, fg: CD.onAccent, bg: CD.accent, height: 36) {
                 let taken = container.takePendingShare()
                 container.qrShare.start(urls: taken.urls, temporary: taken.temporary)
             }
-            CircleButton(icon: CdIcons.close, label: "Discard waiting files", size: 36, iconSize: 14, fill: CD.glassHigh, tint: CD.textSecondary) {
+            CircleButton(icon: CdIcons.close, label: tr("Discard waiting files"), size: 36, iconSize: 14, fill: CD.glassHigh, tint: CD.textSecondary) {
                 container.clearPendingShare()
             }
         }
@@ -316,8 +325,8 @@ private struct SendToAnyoneCard: View {
             HStack(spacing: 14) {
                 IconTile(icon: CdIcons.qr, tint: CD.accent, bg: CD.accent.opacity(0.14), size: 46, radius: 16, iconSize: 24)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Send to anyone").body(15, weight: .semibold)
-                    Text("No app needed. They scan a QR code.").body(12, CD.textDim).lineLimit(1).minimumScaleFactor(0.85)
+                    Text(tr("Send to anyone")).body(15, weight: .semibold)
+                    Text(tr("No app needed. They scan a QR code.")).body(12, CD.textDim).lineLimit(1).minimumScaleFactor(0.85)
                 }
                 Spacer(minLength: 4)
                 CdIconView(CdIcons.arrowRight, color: CD.onAccent, size: 18)
@@ -331,7 +340,7 @@ private struct SendToAnyoneCard: View {
         }
         .buttonStyle(PressableStyle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Send to anyone. No app needed, they scan a QR code.")
+        .accessibilityLabel(tr("Send to anyone. No app needed, they scan a QR code."))
         .accessibilityAddTraits(.isButton)
         .pointerHover()
     }
@@ -350,12 +359,12 @@ private struct DriveRow: View {
                 if vault?.needsPin == true {
                     HStack(spacing: 5) {
                         CdIconView(CdIcons.lock, color: CD.amber, size: 12)
-                        Text("PIN protected").body(12, CD.amber, weight: .semibold)
+                        Text(tr("PIN protected")).body(12, CD.amber, weight: .semibold)
                     }
                 } else if vault?.writable == true {
-                    Text("Editable").body(12, CD.accent, weight: .semibold)
+                    Text(tr("Editable")).body(12, CD.accent, weight: .semibold)
                 } else {
-                    Text("Read-only").body(12, CD.textDim, weight: .semibold)
+                    Text(tr("Read-only")).body(12, CD.textDim, weight: .semibold)
                 }
             }
             .padding(.leading, 16).padding(.trailing, 14).padding(.vertical, 10)
@@ -366,7 +375,7 @@ private struct DriveRow: View {
         }
         .buttonStyle(PressableStyle())
         .accessibilityElement(children: .combine)
-        .accessibilityHint("Opens the drive")
+        .accessibilityHint(tr("Opens the drive"))
         .pointerHover()
     }
 }
@@ -446,7 +455,7 @@ private struct BigTile: View {
         }
         .buttonStyle(PressableStyle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityLabel(tr("{0}. {1}", title, subtitle))
         .accessibilityAddTraits(.isButton)
         .pointerHover()
     }
@@ -490,31 +499,31 @@ private struct SendSheet: View {
         VStack(spacing: 20) {
             SheetHeader(kicker: kicker, title: title, icon: icon, meta: meta)
             HStack(spacing: 10) {
-                BigTile(title: "Photos & videos", subtitle: "Library, albums, iCloud Photos", icon: CdIcons.photo, primary: true) { onPickMedia(targets) }
-                BigTile(title: "Files", subtitle: "Any type, pick several", icon: CdIcons.doc, primary: false) { onPickFiles(targets) }
+                BigTile(title: tr("Photos & videos"), subtitle: tr("Library, albums, iCloud Photos"), icon: CdIcons.photo, primary: true) { onPickMedia(targets) }
+                BigTile(title: tr("Files"), subtitle: tr("Any type, pick several"), icon: CdIcons.doc, primary: false) { onPickFiles(targets) }
             }
             if primary != nil {
                 if !others.isEmpty { alsoSendTo }
                 VStack(spacing: 10) {
                     HStack(spacing: 10) {
-                        if let onCamera { SmallTile(title: "Camera", subtitle: "Live to them", icon: CdIcons.camera) { onCamera(targets) } }
-                        if let onText { SmallTile(title: "Text", subtitle: "Note or link", icon: CdIcons.note) { onText(targets) } }
+                        if let onCamera { SmallTile(title: tr("Camera"), subtitle: tr("Live to them"), icon: CdIcons.camera) { onCamera(targets) } }
+                        if let onText { SmallTile(title: tr("Text"), subtitle: tr("Note or link"), icon: CdIcons.note) { onText(targets) } }
                     }
                     HStack(spacing: 10) {
-                        if let onContacts { SmallTile(title: "Contact", subtitle: "Share a card", icon: CdIcons.contacts) { onContacts(targets) } }
-                        if let onSwitch { SmallTile(title: "Switch", subtitle: "Move phone", icon: CdIcons.swap, action: onSwitch) }
+                        if let onContacts { SmallTile(title: tr("Contact"), subtitle: tr("Share a card"), icon: CdIcons.contacts) { onContacts(targets) } }
+                        if let onSwitch { SmallTile(title: tr("Switch"), subtitle: tr("Move phone"), icon: CdIcons.swap, action: onSwitch) }
                     }
                 }
             }
             NoteCard(text: note)
-            PillButton("Cancel", style: .glass, action: onCancel)
+            PillButton(tr("Cancel"), style: .glass, action: onCancel)
         }
     }
 
     /// Other nearby devices as toggle chips: the same send goes to every one that's on.
     private var alsoSendTo: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Also send to").body(12, CD.textDim, weight: .semibold)
+            Text(tr("Also send to")).body(12, CD.textDim, weight: .semibold)
             FlowChips(items: others.map { ($0.id, $0.name) }, selected: also) { id in
                 if also.contains(id) { also.remove(id) } else { also.insert(id) }
             }
@@ -547,7 +556,7 @@ private struct SmallTile: View {
         }
         .buttonStyle(PressableStyle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityLabel(tr("{0}. {1}", title, subtitle))
         .accessibilityAddTraits(.isButton)
         .pointerHover()
     }
@@ -612,7 +621,7 @@ struct TextComposeSheet: View {
     @FocusState private var focused: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Send text to \(target)").displayStyle(22).lineLimit(2)
+            Text(tr("Send text to {0}", target)).displayStyle(22).lineLimit(2)
             TextEditor(text: $text)
                 .font(.cd(15)).foregroundColor(CD.textPrimary)
                 .scrollContentBackground(.hidden)
@@ -621,10 +630,10 @@ struct TextComposeSheet: View {
                 .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(CD.glassMid))
                 .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(CD.hairlineStrong, lineWidth: 1))
                 .focused($focused)
-            Text("They can copy it or open the link with one tap.").body(12, CD.textDim)
+            Text(tr("They can copy it or open the link with one tap.")).body(12, CD.textDim)
             HStack(spacing: 10) {
-                PillButton("Cancel", style: .glass) { onDone(nil) }
-                PillButton("Send", icon: CdIcons.arrowUp) { onDone(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                PillButton(tr("Cancel"), style: .glass) { onDone(nil) }
+                PillButton(tr("Send"), icon: CdIcons.arrowUp) { onDone(text.trimmingCharacters(in: .whitespacesAndNewlines)) }
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
@@ -645,12 +654,12 @@ struct VaultMountSheet: View {
     var body: some View {
         let vault = peer.vault
         VStack(spacing: 20) {
-            SheetHeader(kicker: "Wireless drive", title: vault?.vaultName ?? peer.name, icon: CdIcons.drive, iconTint: CD.amber,
-                        meta: MetaLine(lead: vault?.needsPin == true ? "PIN protected" : nil,
-                                       rest: vault?.writable == true ? "you can add & edit" : "view & download"))
+            SheetHeader(kicker: tr("Wireless drive"), title: vault?.vaultName ?? peer.name, icon: CdIcons.drive, iconTint: CD.amber,
+                        meta: MetaLine(lead: vault?.needsPin == true ? tr("PIN protected") : nil,
+                                       rest: vault?.writable == true ? tr("you can add & edit") : tr("view & download")))
             HStack(spacing: 10) {
-                BigTile(title: "Open here", subtitle: "Browse, preview and save — encrypted", icon: CdIcons.drive, primary: true, action: onMount)
-                BigTile(title: "Open in browser", subtitle: showQr ? "Link copied — or scan below" : "Copy the link, show a QR",
+                BigTile(title: tr("Open here"), subtitle: tr("Browse, preview and save — encrypted"), icon: CdIcons.drive, primary: true, action: onMount)
+                BigTile(title: tr("Open in browser"), subtitle: showQr ? tr("Link copied — or scan below") : tr("Copy the link, show a QR"),
                         icon: CdIcons.globe, primary: false) {
                     if !url.isEmpty { UIPasteboard.general.string = url }
                     withAnimation(.easeInOut(duration: 0.25)) { showQr.toggle() }
@@ -664,8 +673,8 @@ struct VaultMountSheet: View {
                 .padding(.vertical, 8)
                 .transition(.opacity)
             }
-            NoteCard(text: "Files come straight from this drive over your Wi-Fi. Nothing is uploaded anywhere.")
-            PillButton("Cancel", style: .glass, action: onCancel)
+            NoteCard(text: tr("Files come straight from this drive over your Wi-Fi. Nothing is uploaded anywhere."))
+            PillButton(tr("Cancel"), style: .glass, action: onCancel)
         }
     }
 

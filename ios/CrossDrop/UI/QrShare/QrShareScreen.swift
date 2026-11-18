@@ -38,14 +38,14 @@ struct QrShareScreen: View {
             VStack(spacing: 0) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        BackHeader("Send to anyone", backLabel: "Stop sharing and go back", onBack: onStop)
+                        BackHeader(tr("Send to anyone"), backLabel: tr("Stop sharing and go back"), onBack: onStop)
                         StepStrip(step: step, state: state)
                         GeometryReader { g in
                             QrCard(text: state.url, size: min(236, g.size.width - 40)).frame(maxWidth: .infinity)
                         }
                         .frame(height: 236)
                         .padding(.top, 8)
-                        Text("Scan with any camera — no app needed").body(14, CD.textSecondary)
+                        Text(tr("Scan with any camera — no app needed")).body(14, CD.textSecondary)
                             .multilineTextAlignment(.center).frame(maxWidth: .infinity).padding(.top, 6)
 
                         HStack(spacing: 10) {
@@ -53,7 +53,7 @@ struct QrShareScreen: View {
                                 .monoStyle(13, color: CD.textSecondary).lineLimit(1).truncationMode(.middle)
                                 .textSelection(.enabled)
                             Spacer(minLength: 0)
-                            CopyButton(value: state.url, label: "Copy link", accent: true, height: 44)
+                            CopyButton(value: state.url, label: tr("Copy link"), accent: true, height: 44)
                         }
                         .padding(.leading, 16).padding(.trailing, 6).padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(CD.glass))
@@ -61,14 +61,13 @@ struct QrShareScreen: View {
 
                         FilesSummary(files: state.files)
 
-                        FootNote("They need to be on this Wi-Fi. Without the secret link the page doesn't exist, "
-                                 + "and it stops working the moment you leave this screen."
-                                 + (Platform.pausesInBackground ? " Keep CrossDrop open while they download." : ""))
+                        FootNote(tr("They need to be on this Wi-Fi. Without the secret link the page doesn't exist, and it stops working the moment you leave this screen.")
+                                 + (Platform.pausesInBackground ? " " + tr("Keep CrossDrop open while they download.") : ""))
                     }
                 }
                 Group {
-                    if state.delivered { PillButton("Done", height: 56, action: onStop) }
-                    else { PillButton("Stop sharing", style: .danger, height: 56, action: onStop) }
+                    if state.delivered { PillButton(tr("Done"), height: 56, action: onStop) }
+                    else { PillButton(tr("Stop sharing"), style: .danger, height: 56, action: onStop) }
                 }
                 .padding(.top, 16)
             }
@@ -85,9 +84,9 @@ private struct StepStrip: View {
 
     var body: some View {
         let labels = [
-            "Waiting for a scan",
-            state.downloadsStarted > 0 && !state.delivered ? "\(state.downloadsDone) of \(state.files.count) downloaded" : "Receiver connected",
-            "Delivered",
+            tr("Waiting for a scan"),
+            state.downloadsStarted > 0 && !state.delivered ? tr("{0} of {1} downloaded", state.downloadsDone, state.files.count) : tr("Receiver connected"),
+            tr("Delivered"),
         ]
         HStack(alignment: .top, spacing: 6) {
             ForEach(0..<3, id: \.self) { i in
@@ -110,7 +109,7 @@ private struct StepStrip: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Step \(step + 1) of 3: \(labels[step])")
+        .accessibilityLabel(tr("Step {0} of 3: {1}", step + 1, labels[step]))
         .onAppear { withAnimation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true)) { blink = true } }
         .onChange(of: step) { _ in UIAccessibility.post(notification: .announcement, argument: labels[step]) }
     }
@@ -119,6 +118,7 @@ private struct StepStrip: View {
 private struct FilesSummary: View {
     let files: [FileMeta]
     var body: some View {
+        let usedBytes = Fmt.bytes(files.reduce(0) { $0 + $1.size })
         GlassCard(radius: 22, fill: CD.glassLow, border: nil, padding: .hv(14, 12)) {
             HStack(spacing: 0) {
                 ZStack(alignment: .leading) {
@@ -132,11 +132,11 @@ private struct FilesSummary: View {
                 .frame(width: files.count > 1 ? 66 : 40, alignment: .leading)
                 .padding(.trailing, 12)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(files.count) file\(files.count == 1 ? "" : "s") · \(Fmt.bytes(files.reduce(0) { $0 + $1.size }))")
+                    Text(trPlural(files.count, one: "1 file", other: "{n} files") + " · " + usedBytes)
                         .body(14, weight: .semibold)
                     Text(files.prefix(3).map(\.name).joined(separator: ", ")
                          + (files.count > 3 ? " +\(files.count - 3)" : "")
-                         + (files.count > 1 ? " · or all as one zip" : ""))
+                         + (files.count > 1 ? " · " + tr("or all as one zip") : ""))
                         .body(12, CD.textDim).lineLimit(2)
                 }
                 Spacer(minLength: 0)

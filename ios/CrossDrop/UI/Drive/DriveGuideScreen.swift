@@ -1,6 +1,7 @@
 import SwiftUI
 
-let guideTabs = ["Mac", "Windows", "Browser"]
+/// Tab labels (a computed property: the language is read when the screen is drawn, not once at launch).
+var guideTabs: [String] { ["Mac", "Windows", tr("Browser")] }
 
 /// "Can't connect?" — the full per-platform guide with copyable address and passcode, plus
 /// troubleshooting for guest Wi-Fi, VPNs and public networks. Language stays physical: "address",
@@ -13,28 +14,28 @@ struct DriveGuideScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                BackHeader("Connect to your drive", onBack: onClose)
-                Text("Pick the device you're connecting from — no apps to install.").body(13, CD.textDim)
+                BackHeader(tr("Connect to your drive"), onBack: onClose)
+                Text(tr("Pick the device you're connecting from — no apps to install.")).body(13, CD.textDim)
                     .padding(.horizontal, 4)
                 SegmentedTabs(options: guideTabs, selected: $tab)
                 GlassCard(radius: 28, fill: CD.glassLow, spacing: 14) {
                     ConnectSteps(state: state, tab: tab, withCopy: true)
                 }
-                SectionLabel("Troubleshooting").padding(.top, 6)
+                SectionLabel(tr("Troubleshooting")).padding(.top, 6)
                 GroupCard(padding: .hv(6, 2)) {
-                    TroubleItem(title: "Devices can't see the drive?",
-                                text: "Check both devices are on the exact same Wi-Fi — not one on Guest and one on Main. Turn off any VPN apps on both devices. If asked to allow CrossDrop on your local network, make sure it's switched on in Settings (System Settings → Privacy & Security → Local Network on a Mac).")
+                    TroubleItem(title: tr("Devices can't see the drive?"),
+                                text: tr("Check both devices are on the exact same Wi-Fi — not one on Guest and one on Main. Turn off any VPN apps on both devices. If asked to allow CrossDrop on your local network, make sure it's switched on in Settings (System Settings → Privacy & Security → Local Network on a Mac)."))
                     if Platform.pausesInBackground {
                         RowSeparator()
-                        TroubleItem(title: "The drive stops when I switch apps?",
-                                    text: "iOS pauses apps in the background, so the drive only answers while CrossDrop is open. Keep it on screen while others connect — the screen stays awake automatically.")
+                        TroubleItem(title: tr("The drive stops when I switch apps?"),
+                                    text: tr("iOS pauses apps in the background, so the drive only answers while CrossDrop is open. Keep it on screen while others connect — the screen stays awake automatically."))
                     }
                     RowSeparator()
-                    TroubleItem(title: "On hotel, school or public Wi-Fi?",
-                                text: "Public networks often block devices from talking to each other. Turn on a phone's Personal Hotspot and connect the other device to it — the drive works instantly at full speed.")
+                    TroubleItem(title: tr("On hotel, school or public Wi-Fi?"),
+                                text: tr("Public networks often block devices from talking to each other. Turn on a phone's Personal Hotspot and connect the other device to it — the drive works instantly at full speed."))
                     RowSeparator()
-                    TroubleItem(title: "Video buffers or previews are slow?",
-                                text: "Move the devices closer to each other or to the router — the drive runs at the speed of your Wi-Fi.")
+                    TroubleItem(title: tr("Video buffers or previews are slow?"),
+                                text: tr("Move the devices closer to each other or to the router — the drive runs at the speed of your Wi-Fi."))
                 }
             }
             .padding(.horizontal, 16).padding(.top, 16).padding(.bottom, 28)
@@ -55,33 +56,40 @@ struct ConnectSteps: View {
         switch tab {
         case 0:
             GuideStep(n: 1) {
-                (Text("In Finder, press ") + Text(" ⌘K ").font(.mono(13)).foregroundColor(CD.textPrimary))
+                keycapText(tr("In Finder, press {0}"), key: "⌘K")
                     .body(13, CD.textSecondary)
             }
-            GuideStep(n: 2, text: "Paste the address and press Connect", copy: withCopy ? state.url : nil)
+            GuideStep(n: 2, text: tr("Paste the address and press Connect"), copy: withCopy ? state.url : nil)
             if let pin {
-                GuideStep(n: 3, text: "Choose Registered User and sign in with name “drive” and the passcode. It mounts like a disk.")
+                GuideStep(n: 3, text: tr("Choose Registered User and sign in with name “drive” and the passcode. It mounts like a disk."))
                 if withCopy { CredentialRows(pin: pin) }
             } else {
-                GuideStep(n: 3, text: "Choose Guest. It mounts like a disk — drag files in or out, or scrub video right on the drive.")
+                GuideStep(n: 3, text: tr("Choose Guest. It mounts like a disk — drag files in or out, or scrub video right on the drive."))
             }
         case 1:
-            GuideStep(n: 1, text: "Open This PC, then ••• (or right-click empty space) → Add a network location")
-            GuideStep(n: 2, text: "Choose a custom network location and paste the address", copy: withCopy ? state.url : nil)
+            GuideStep(n: 1, text: tr("Open This PC, then ••• (or right-click empty space) → Add a network location"))
+            GuideStep(n: 2, text: tr("Choose a custom network location and paste the address"), copy: withCopy ? state.url : nil)
             if let pin {
-                GuideStep(n: 3, text: "When asked, sign in with name “drive” and the passcode. A drive folder appears under This PC.")
+                GuideStep(n: 3, text: tr("When asked, sign in with name “drive” and the passcode. A drive folder appears under This PC."))
                 if withCopy { CredentialRows(pin: pin) }
             } else {
-                GuideStep(n: 3, text: "A drive folder appears under This PC — it behaves like a plugged-in USB stick.")
+                GuideStep(n: 3, text: tr("A drive folder appears under This PC — it behaves like a plugged-in USB stick."))
             }
         default:
-            GuideStep(n: 1, text: "On any laptop, tablet or phone on this Wi-Fi, open a browser — Safari, Chrome, Edge")
-            GuideStep(n: 2, text: "Scan the QR, or type the address", copy: withCopy ? state.url : nil)
-            GuideStep(n: 3, text: pin != nil ? "Enter the 4-digit passcode. Browse, stream or download — works on iPhone and iPad too."
-                                             : "Browse folders, stream video or download any file — works on iPhone and iPad too.",
+            GuideStep(n: 1, text: tr("On any laptop, tablet or phone on this Wi-Fi, open a browser — Safari, Chrome, Edge"))
+            GuideStep(n: 2, text: tr("Scan the QR, or type the address"), copy: withCopy ? state.url : nil)
+            GuideStep(n: 3, text: pin != nil ? tr("Enter the 4-digit passcode. Browse, stream or download — works on iPhone and iPad too.")
+                                             : tr("Browse folders, stream video or download any file — works on iPhone and iPad too."),
                       copy: withCopy ? pin : nil)
         }
     }
+}
+
+/// One translated sentence with a `{0}` where the key goes, shown as a keycap.
+private func keycapText(_ sentence: String, key: String) -> Text {
+    let cap = Text(verbatim: " \(key) ").font(.mono(13)).foregroundColor(CD.textPrimary)
+    guard let at = sentence.range(of: "{0}") else { return Text(sentence) }
+    return Text(String(sentence[..<at.lowerBound])) + cap + Text(String(sentence[at.upperBound...]))
 }
 
 private struct GuideStep<Body_: View>: View {
@@ -113,8 +121,8 @@ private struct CredentialRows: View {
     let pin: String
     var body: some View {
         VStack(spacing: 8) {
-            CopyField(value: "drive", label: "name")
-            CopyField(value: pin, label: "passcode")
+            CopyField(value: "drive", label: tr("name"))
+            CopyField(value: pin, label: tr("passcode"))
         }
         .padding(.leading, 38)
     }
@@ -154,7 +162,7 @@ private struct TroubleItem: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressableStyle())
-            .accessibilityValue(open ? "Expanded" : "Collapsed")
+            .accessibilityValue(open ? tr("Expanded") : tr("Collapsed"))
             .pointerHover()
             if open {
                 Text(text).body(13, CD.textSecondary).lineSpacing(3).fixedSize(horizontal: false, vertical: true)

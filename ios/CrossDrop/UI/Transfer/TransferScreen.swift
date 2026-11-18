@@ -6,12 +6,13 @@ import SwiftUI
 /// the Transfers tab.
 struct TransferScreen: View {
     let session: SessionState
-    var selfName = "This device"
+    var selfName: String?
     let onCancel: () -> Void
     let onClose: () -> Void
     var onHide: (() -> Void)?
     var onOpenInbox: (() -> Void)?
 
+    private var selfLabel: String { selfName ?? tr("This device") }
     private var status: SessionStatus { session.status }
     private var completed: Bool { status == .completed }
     private var failed: Bool { status == .failed || status == .declined || status == .cancelled }
@@ -49,7 +50,7 @@ struct TransferScreen: View {
     private var header: some View {
         HStack {
             if let onHide, !status.isTerminal {
-                CircleButton(icon: CdIcons.chevronLeft, label: "Back to transfers", action: onHide)
+                CircleButton(icon: CdIcons.chevronLeft, label: tr("Back to transfers"), action: onHide)
             } else {
                 Color.clear.frame(width: 44, height: 44)
             }
@@ -64,28 +65,28 @@ struct TransferScreen: View {
         let selfIcon = Platform.deviceIcon
         let peerIcon = deviceIconFor(session.peerName)
         return HStack(spacing: 0) {
-            Endpoint(name: sending ? selfName : session.peerName, icon: sending ? selfIcon : peerIcon, highlighted: sending)
+            Endpoint(name: sending ? selfLabel : session.peerName, icon: sending ? selfIcon : peerIcon, highlighted: sending)
             PacketFlow(active: status == .transferring).padding(.bottom, 22)
-            Endpoint(name: sending ? session.peerName : selfName, icon: sending ? peerIcon : selfIcon, highlighted: !sending)
+            Endpoint(name: sending ? session.peerName : selfLabel, icon: sending ? peerIcon : selfIcon, highlighted: !sending)
         }
         .padding(.horizontal, 6)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(sending ? "From \(selfName) to \(session.peerName)" : "From \(session.peerName) to \(selfName)")
+        .accessibilityLabel(sending ? tr("From {0} to {1}", selfLabel, session.peerName) : tr("From {0} to {1}", session.peerName, selfLabel))
     }
 
     private var stats: some View {
         HStack(spacing: 10) {
             let fileCount = session.offer?.files.count
             if session.bytesPerSec > 0 || fileCount == nil {
-                StatTile(label: "Speed", value: session.bytesPerSec > 0 ? Fmt.rate(session.bytesPerSec) : "—")
+                StatTile(label: tr("Speed"), value: session.bytesPerSec > 0 ? Fmt.rate(session.bytesPerSec) : "—")
             } else {
-                StatTile(label: "Files", value: "\(fileCount ?? 0)")
+                StatTile(label: tr("Files"), value: "\(fileCount ?? 0)")
             }
             if session.bytesSkipped > 0 {
-                StatTile(label: "Already local", value: "Δ \(Fmt.bytes(session.bytesSkipped))", valueColor: CD.accent)
+                StatTile(label: tr("Already local"), value: "Δ \(Fmt.bytes(session.bytesSkipped))", valueColor: CD.accent)
             } else {
                 // Before the manifest arrives there is no total to show (bytesTotal is a 1-byte placeholder).
-                StatTile(label: sending ? "Sent" : "Received",
+                StatTile(label: sending ? tr("Sent") : tr("Received"),
                          value: session.offer == nil && session.bytesDone == 0 ? "—"
                              : "\(Fmt.bytes(session.bytesDone)) / \(Fmt.bytes(session.bytesTotal))")
             }
@@ -95,13 +96,13 @@ struct TransferScreen: View {
     @ViewBuilder private var actions: some View {
         HStack(spacing: 10) {
             if status.isTerminal && completed && !sending, let onOpenInbox {
-                PillButton("Done", style: .glass, action: onClose)
-                PillButton("Open inbox", icon: CdIcons.inbox, action: onOpenInbox)
+                PillButton(tr("Done"), style: .glass, action: onClose)
+                PillButton(tr("Open inbox"), icon: CdIcons.inbox, action: onOpenInbox)
             } else if status.isTerminal {
-                PillButton("Done", style: completed ? .accent : .glass, action: onClose)
+                PillButton(tr("Done"), style: completed ? .accent : .glass, action: onClose)
             } else {
-                PillButton("Cancel transfer", style: .danger, action: onCancel)
-                if let onHide { PillButton("Hide", style: .glass, action: onHide) }
+                PillButton(tr("Cancel transfer"), style: .danger, action: onCancel)
+                if let onHide { PillButton(tr("Hide"), style: .glass, action: onHide) }
             }
         }
     }
@@ -112,13 +113,13 @@ private struct StatusChip: View {
     var body: some View {
         let (label, color): (String, Color) = {
             switch session.status {
-            case .connecting: return ("Connecting", CD.accent)
-            case .awaitingAccept: return ("Waiting for \(session.peerName)", CD.accent)
-            case .transferring: return (session.direction == .sending ? "Sending" : "Receiving", CD.accent)
-            case .completed: return ("Complete", CD.accent)
-            case .failed: return ("Failed", CD.dangerText)
-            case .declined: return ("Declined", CD.dangerText)
-            case .cancelled: return ("Cancelled", CD.textSecondary)
+            case .connecting: return (tr("Connecting"), CD.accent)
+            case .awaitingAccept: return (tr("Waiting for {0}", session.peerName), CD.accent)
+            case .transferring: return (session.direction == .sending ? tr("Sending") : tr("Receiving"), CD.accent)
+            case .completed: return (tr("Complete"), CD.accent)
+            case .failed: return (tr("Failed"), CD.dangerText)
+            case .declined: return (tr("Declined"), CD.dangerText)
+            case .cancelled: return (tr("Cancelled"), CD.textSecondary)
             }
         }()
         HStack(spacing: 7) {
@@ -208,8 +209,8 @@ private struct ProgressRing: View {
         }
         .frame(height: 216)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Transfer progress")
-        .accessibilityValue(completed ? "Delivered" : "\(Int(shown * 100)) percent")
+        .accessibilityLabel(tr("Transfer progress"))
+        .accessibilityValue(completed ? tr("Delivered") : tr("{0} percent", Int(shown * 100)))
     }
 
     @ViewBuilder private func center(d: CGFloat) -> some View {
@@ -218,7 +219,7 @@ private struct ProgressRing: View {
                 CdIconView(CdIcons.check, color: CD.onAccent, size: 32)
                     .frame(width: 64, height: 64)
                     .background(Circle().fill(CD.accent).shadow(color: CD.accent.opacity(0.45), radius: 15))
-                Text("Delivered").displayStyle(17)
+                Text(tr("Delivered")).displayStyle(17)
             }
         } else {
             VStack(spacing: 4) {
@@ -226,8 +227,8 @@ private struct ProgressRing: View {
                     + Text("%").font(.display(28)).foregroundColor(CD.textDim))
                 Text(session.currentFileName ?? {
                     switch session.status {
-                    case .connecting: return "Securing the channel…"
-                    case .awaitingAccept: return "Waiting for them to accept"
+                    case .connecting: return tr("Securing the channel…")
+                    case .awaitingAccept: return tr("Waiting for them to accept")
                     default: return ""
                     }
                 }())
@@ -259,9 +260,9 @@ private struct VerificationCode: View {
         GlassCard(radius: 26, fill: CD.glass, border: CD.hairline, spacing: 12) {
             HStack(spacing: 8) {
                 CdIconView(CdIcons.shield, color: CD.accent, size: 18)
-                Text("Verification code").body(13, weight: .semibold).layoutPriority(1)
+                Text(tr("Verification code")).body(13, weight: .semibold).layoutPriority(1)
                 Spacer(minLength: 8)
-                Text("match it on \(peerName)").body(12, CD.textDim).lineLimit(1).truncationMode(.tail)
+                Text(tr("match it on {0}", peerName)).body(12, CD.textDim).lineLimit(1).truncationMode(.tail)
             }
             HStack(spacing: 6) {
                 ForEach(Array(sas.enumerated()), id: \.offset) { _, ch in
@@ -271,7 +272,7 @@ private struct VerificationCode: View {
                 }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Code " + sas.map(String.init).joined(separator: " "))
+            .accessibilityLabel(tr("Code {0}", sas.map(String.init).joined(separator: " ")))
         }
     }
 }

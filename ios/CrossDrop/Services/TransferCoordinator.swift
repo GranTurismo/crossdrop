@@ -123,7 +123,7 @@ final class TransferCoordinator: ObservableObject {
             if let p = peers.first {
                 let gid = UUID()
                 var s = SessionState(direction: .sending, peerName: p.name, status: .failed)
-                s.error = skippedFolders > 0 ? "Folders can't be sent — pick files instead." : "nothing readable selected"
+                s.error = skippedFolders > 0 ? tr("Folders can't be sent — pick files instead.") : tr("nothing readable selected")
                 s.groupId = gid
                 sessions.append(s)
                 focusedGroupId = gid
@@ -198,7 +198,7 @@ final class TransferCoordinator: ObservableObject {
     }
 
     private func launchSend(_ sid: UUID, peer: Peer, files: [OutgoingFile], options: SendOptions) {
-        guard let host = peer.host else { reduce(.failed("device has no address"), id: sid); return }
+        guard let host = peer.host else { reduce(.failed(tr("device has no address")), id: sid); return }
         var opts = options
         let kind = options.kind
         if let kind, kind == OfferKind.camera || kind == OfferKind.switchPhones, opts.trust == nil {
@@ -524,19 +524,32 @@ final class TransferCoordinator: ObservableObject {
     private func record(_ s: SessionState) {
         let files = s.offer?.files ?? []
         let summary: String
-        if s.kind == OfferKind.text { summary = isLinkText(s.offer?.text ?? "") ? "Link" : "Text" }
+        if s.kind == OfferKind.text { summary = isLinkText(s.offer?.text ?? "") ? tr("Link") : tr("Text") }
         else if s.kind == OfferKind.contact {
-            let n = files.first?.name ?? "Contact"
+            let n = files.first?.name ?? tr("Contact")
             summary = n.lowercased().hasSuffix(".vcf") ? String(n.dropLast(4)) : n
         }
         else if files.count == 1 { summary = files[0].name }
-        else if files.count > 1 { summary = "\(files.count) files" }
+        else if files.count > 1 { summary = trPlural(files.count, one: "1 file", other: "{n} files") }
         else { summary = s.currentFileName ?? "—" }
         history.add(HistoryEntry(
             ts: Date().timeIntervalSince1970 * 1000, direction: s.direction.rawValue, peerName: s.peerName,
             summary: summary, files: s.kind == OfferKind.text ? 1 : files.count,
             bytes: files.isEmpty ? s.bytesDone : files.reduce(0) { $0 + $1.size },
-            status: s.status.rawValue.uppercased()))
+            status: Self.historyCode(s.status)))
+    }
+
+    /// The persisted outcome code (the history row maps it to a translated label).
+    private static func historyCode(_ status: SessionStatus) -> String {
+        switch status {
+        case .connecting: return "CONNECTING"
+        case .awaitingAccept: return "AWAITINGACCEPT"
+        case .transferring: return "TRANSFERRING"
+        case .completed: return "COMPLETED"
+        case .failed: return "FAILED"
+        case .declined: return "DECLINED"
+        case .cancelled: return "CANCELLED"
+        }
     }
 
     // MARK: keep awake
@@ -555,7 +568,7 @@ final class TransferCoordinator: ObservableObject {
             if let t = tokens.removeValue(forKey: s.id) { DispatchQueue.global(qos: .userInitiated).async { t.cancel() } }
             if let i = sessions.firstIndex(where: { $0.id == s.id }) {
                 sessions[i].status = .failed
-                sessions[i].error = "Interrupted — CrossDrop has to stay open while transferring."
+                sessions[i].error = tr("Interrupted — CrossDrop has to stay open while transferring.")
                 ended(sessions[i])
             }
         }

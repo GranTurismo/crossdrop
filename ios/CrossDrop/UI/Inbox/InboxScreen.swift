@@ -2,7 +2,16 @@ import SwiftUI
 import QuickLook
 
 private enum InboxFilter: String, CaseIterable {
-    case all = "All", photos = "Photos", videos = "Videos", docs = "Docs", other = "Other"
+    case all, photos, videos, docs, other
+    var label: String {
+        switch self {
+        case .all: return tr("All")
+        case .photos: return tr("Photos")
+        case .videos: return tr("Videos")
+        case .docs: return tr("Docs")
+        case .other: return tr("Other")
+        }
+    }
     var kinds: Set<FileKind>? {
         switch self {
         case .all: return nil
@@ -33,10 +42,10 @@ struct InboxScreen: View {
             ScrollView {
                 VStack(spacing: 14) {
                     HStack {
-                        ScreenTitle("Inbox")
+                        ScreenTitle(tr("Inbox"))
                         Spacer()
                         if !files.isEmpty {
-                            ChipButton(text: "Wipe all", icon: CdIcons.trash, fg: CD.dangerText, bg: CD.danger.opacity(0.1),
+                            ChipButton(text: tr("Wipe all"), icon: CdIcons.trash, fg: CD.dangerText, bg: CD.danger.opacity(0.1),
                                        border: CD.danger.opacity(0.3), height: 40) { confirmWipe = true }
                         }
                     }
@@ -49,13 +58,13 @@ struct InboxScreen: View {
                                 ForEach(InboxFilter.allCases, id: \.self) { f in
                                     let n = f.kinds.map { k in files.filter { k.contains(FileKind.of($0.name)) }.count } ?? files.count
                                     if f == .all || n > 0 {
-                                        FilterPill(text: f.rawValue, selected: filter == f) { filter = f }
+                                        FilterPill(text: f.label, selected: filter == f) { filter = f }
                                     }
                                 }
                             }
                         }
                         if shown.isEmpty {
-                            Text("Nothing here in \(filter.rawValue.lowercased()).").body(13, CD.textDim)
+                            Text(tr("Nothing here in {0}.", filter.label.lowercased())).body(13, CD.textDim)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(8)
                         } else {
                             GroupCard {
@@ -66,8 +75,8 @@ struct InboxScreen: View {
                             }
                         }
                     }
-                    FootNote("Kept in CrossDrop's own folder on this \(Platform.deviceNoun) (also reachable from the Files app). "
-                             + "Wiping overwrites each file with zeros first.", icon: CdIcons.lock)
+                    FootNote(tr("Kept in CrossDrop's own folder on this {0} (also reachable from the Files app). Wiping overwrites each file with zeros first.",
+                                Platform.deviceNoun), icon: CdIcons.lock)
                 }
                 .padding(.horizontal, 16).padding(.top, 28).padding(.bottom, navInset + 8)
                 .readableWidth()
@@ -75,13 +84,13 @@ struct InboxScreen: View {
         }
         .quickLookPreview($preview)
         .onAppear { inbox.refresh() }
-        .confirmDialog("Wipe the inbox?", isPresented: $confirmWipe,
-                       message: "All \(files.count) received files are overwritten with zeros and deleted. This can't be undone.",
-                       confirmLabel: "Wipe all") { inbox.shredAll() }
-        .confirmDialog("Delete \(confirmDelete?.name ?? "file")?",
+        .confirmDialog(tr("Wipe the inbox?"), isPresented: $confirmWipe,
+                       message: tr("All {0} received files are overwritten with zeros and deleted. This can't be undone.", files.count),
+                       confirmLabel: tr("Wipe all")) { inbox.shredAll() }
+        .confirmDialog(tr("Delete {0}?", confirmDelete?.name ?? tr("file")),
                        isPresented: Binding(get: { confirmDelete != nil }, set: { if !$0 { confirmDelete = nil } }),
-                       message: "The file is overwritten with zeros and removed from this device.",
-                       confirmLabel: "Delete") {
+                       message: tr("The file is overwritten with zeros and removed from this device."),
+                       confirmLabel: tr("Delete")) {
             if let f = confirmDelete { inbox.shred(f) }
             confirmDelete = nil
         }
@@ -107,7 +116,7 @@ private struct StorageCard: View {
             HStack(alignment: .lastTextBaseline) {
                 Text(Fmt.bytes(total)).displayStyle(26)
                 Spacer()
-                Text("\(files.count) file\(files.count == 1 ? "" : "s")").body(13, CD.textDim)
+                Text(trPlural(files.count, one: "1 file", other: "{n} files")).body(13, CD.textDim)
             }
             GeometryReader { g in
                 let gaps = CGFloat(max(0, byKind.count - 1)) * 4
@@ -157,25 +166,25 @@ private struct FileRow: View {
             }
             .buttonStyle(PressableStyle())
             .accessibilityElement(children: .combine)
-            .accessibilityHint("Opens the file")
-            ChipButton(text: "Open", label: "Open \(file.name)", action: onOpen)
-            CircleButton(icon: CdIcons.trash, label: "Delete \(file.name)", size: 40, iconSize: 17, fill: .clear, tint: CD.textDim, action: onDelete)
+            .accessibilityHint(tr("Opens the file"))
+            ChipButton(text: tr("Open"), label: tr("Open {0}", file.name), action: onOpen)
+            CircleButton(icon: CdIcons.trash, label: tr("Delete {0}", file.name), size: 40, iconSize: 17, fill: .clear, tint: CD.textDim, action: onDelete)
         }
         .padding(.leading, 10).padding(.trailing, 4).padding(.vertical, 9)
         .contextMenu {
-            Button(action: onOpen) { Label("Open", systemImage: "eye") }
-            ShareLink(item: file.url) { Label("Share…", systemImage: "square.and.arrow.up") }
-            Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
+            Button(action: onOpen) { Label(tr("Open"), systemImage: "eye") }
+            ShareLink(item: file.url) { Label(tr("Share…"), systemImage: "square.and.arrow.up") }
+            Button(role: .destructive, action: onDelete) { Label(tr("Delete"), systemImage: "trash") }
         }
     }
 
     static func whenLabel(_ d: Date) -> String {
         let cal = Calendar.current
         let start = cal.startOfDay(for: Date())
-        if d >= start { return d.formatted(date: .omitted, time: .shortened) }
-        if cal.isDateInYesterday(d) { return "Yesterday" }
-        if let weekAgo = cal.date(byAdding: .day, value: -6, to: start), d >= weekAgo { return d.formatted(.dateTime.weekday(.abbreviated)) }
-        return d.formatted(.dateTime.month(.abbreviated).day())
+        if d >= start { return d.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(I18n.locale)) }
+        if cal.isDateInYesterday(d) { return tr("Yesterday") }
+        if let weekAgo = cal.date(byAdding: .day, value: -6, to: start), d >= weekAgo { return d.formatted(.dateTime.weekday(.abbreviated).locale(I18n.locale)) }
+        return d.formatted(.dateTime.month(.abbreviated).day().locale(I18n.locale))
     }
 }
 
@@ -184,8 +193,8 @@ private struct EmptyInbox: View {
         GlassCard(padding: .hv(20, 36), alignment: .center) {
             CdIconView(CdIcons.inbox, color: CD.textSecondary, size: 26)
                 .frame(width: 56, height: 56).background(Circle().fill(CD.glassHigh))
-            Text("Nothing received yet").displayStyle(17).padding(.top, 14)
-            Text("Files you accept land here.").body(13, CD.textDim).padding(.top, 4)
+            Text(tr("Nothing received yet")).displayStyle(17).padding(.top, 14)
+            Text(tr("Files you accept land here.")).body(13, CD.textDim).padding(.top, 4)
         }
     }
 }

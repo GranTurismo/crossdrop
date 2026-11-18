@@ -35,7 +35,7 @@ struct FloatingSheetLayer: View {
                 Color(hex: 0x040609, alpha: 0.62)
                     .ignoresSafeArea()
                     .onTapGesture { host.dismiss() }
-                    .accessibilityLabel("Close")
+                    .accessibilityLabel(tr("Close"))
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { host.dismiss() }
                     .transition(.opacity)
@@ -77,7 +77,7 @@ struct FloatingSheetLayer: View {
         .accessibilityAddTraits(.isModal)
         .background(
             // Esc (hardware keyboard / Mac) closes the sheet like a tap on the scrim.
-            Button("Close") { host.dismiss() }.keyboardShortcut(.cancelAction)
+            Button(tr("Close")) { host.dismiss() }.keyboardShortcut(.cancelAction)
                 .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
         )
     }

@@ -87,8 +87,8 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
     func netServiceBrowser(_ browser: NetServiceBrowser, didNotSearch errorDict: [String: NSNumber]) {
         let code = errorDict[NetService.errorCode]?.intValue ?? 0
         onError?(Self.localNetworkDenied(code)
-            ? "Local Network access is off — turn it on for CrossDrop in Settings, then tap Rescan, so nearby devices can be found."
-            : "Couldn't search for nearby devices (error \(code)).")
+            ? tr("Local Network access is off — turn it on for CrossDrop in Settings, then tap Rescan, so nearby devices can be found.")
+            : tr("Couldn't search for nearby devices (error {0}).", code))
     }
 
     // MARK: NetServiceDelegate
@@ -117,8 +117,8 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
     func netService(_ sender: NetService, didNotPublish errorDict: [String: NSNumber]) {
         let code = errorDict[NetService.errorCode]?.intValue ?? 0
         onError?(Self.localNetworkDenied(code)
-            ? "Local Network access is off — turn it on for CrossDrop in Settings so other devices can see this one."
-            : "Couldn't announce this device on the network (error \(code)).")
+            ? tr("Local Network access is off — turn it on for CrossDrop in Settings so other devices can see this one.")
+            : tr("Couldn't announce this device on the network (error {0}).", code))
     }
 
     /// `kDNSServiceErr_PolicyDenied` (-65570) / NSNetServicesErrorDomain -72008: the Local Network prompt was declined.

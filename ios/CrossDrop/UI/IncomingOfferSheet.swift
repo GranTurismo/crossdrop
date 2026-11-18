@@ -19,6 +19,20 @@ struct IncomingOfferSheet: View {
         let contact = offer.kind == OfferKind.contact
         let cards = offer.contacts
         let cardCount = max(cards.count, 1)
+        let kicker: String = {
+            if text != nil { return link ? tr("Incoming link") : tr("Incoming text") }
+            if camera { return tr("Live camera") }
+            if switching { return tr("Switch phones") }
+            if contact { return cardCount == 1 ? tr("Incoming contact") : tr("Incoming contacts") }
+            return tr("Incoming files")
+        }()
+        let headline: String = {
+            if text != nil { return link ? tr("{0} sent you a link", offer.peerName) : tr("{0} sent you some text", offer.peerName) }
+            if camera { return tr("{0} wants to share their camera", offer.peerName) }
+            if switching { return tr("{0} wants to move to this {1}", offer.peerName, Platform.deviceNoun) }
+            if contact { return trPlural(cardCount, one: "{0} sent you a contact", other: "{0} sent you {n} contacts", offer.peerName) }
+            return trPlural(files.count, one: "{0} wants to send you a file", other: "{0} wants to send you {n} files", offer.peerName)
+        }()
         ZStack {
             CD.ink.ignoresSafeArea()
             ScreenGlow(centerY: 215, radius: 275)
@@ -27,9 +41,7 @@ struct IncomingOfferSheet: View {
                     VStack(spacing: 22) {
                         HStack(spacing: 8) {
                             Dot(color: CD.accent)
-                            Text(text != nil ? (link ? "INCOMING LINK" : "INCOMING TEXT") : camera ? "LIVE CAMERA"
-                                 : switching ? "SWITCH PHONES" : contact ? (cardCount == 1 ? "INCOMING CONTACT" : "INCOMING CONTACTS")
-                                 : "INCOMING FILES").font(.cd(12, weight: .semibold)).tracking(CDFont.scaled(12) * 0.06)
+                            Text(kicker.caps).font(.cd(12, weight: .semibold)).tracking(CDFont.tracking(12, em: 0.06))
                                 .foregroundColor(CD.textSecondary)
                         }
                         .padding(.horizontal, 14).frame(height: 32)
@@ -43,18 +55,12 @@ struct IncomingOfferSheet: View {
                         .padding(.top, 10)
 
                         VStack(spacing: 8) {
-                            Text(text != nil ? "\(offer.peerName) sent you " + (link ? "a link" : "some text")
-                                 : camera ? "\(offer.peerName) wants to share their camera"
-                                 : switching ? "\(offer.peerName) wants to move to this \(Platform.deviceNoun)"
-                                 : contact ? "\(offer.peerName) sent you " + (cardCount == 1 ? "a contact" : "\(cardCount) contacts")
-                                 : "\(offer.peerName) wants to send you " + (files.count == 1 ? "a file" : "\(files.count) files"))
+                            Text(headline)
                                 .displayStyle(28, tracking: -0.035).multilineTextAlignment(.center).lineLimit(3)
                                 .accessibilityAddTraits(.isHeader)
                             TimelineView(.periodic(from: offer.receivedAt, by: 1)) { ctx in
                                 let left = max(0, Int(ceil(timeout - ctx.date.timeIntervalSince(offer.receivedAt))))
-                                (Text((text == nil && !camera && !contact ? "\(Fmt.bytes(total)) · " : "") + "auto-declines in ").foregroundColor(CD.textDim).font(.cd(14))
-                                    + Text("\(left)").font(.mono(14)).foregroundColor(CD.accent)
-                                    + Text(" s").font(.cd(14)).foregroundColor(CD.accent))
+                                countdownLabel(lead: text == nil && !camera && !contact ? "\(Fmt.bytes(total)) · " : "", left: left)
                                     .multilineTextAlignment(.center)
                             }
                         }
@@ -66,7 +72,7 @@ struct IncomingOfferSheet: View {
                             }
                         } else if camera {
                             GlassCard(radius: 28, fill: CD.glass, border: CD.hairline, padding: .all(16)) {
-                                Text("Every photo and video they take shows up here the moment it's taken, without asking again. Closing the viewer ends it.")
+                                Text(tr("Every photo and video they take shows up here the moment it's taken, without asking again. Closing the viewer ends it."))
                                     .body(14, CD.textSecondary).frame(maxWidth: .infinity, alignment: .leading)
                             }
                         } else if switching {
@@ -88,7 +94,7 @@ struct IncomingOfferSheet: View {
                             }
                             if files.count > 4 {
                                 RowSeparator()
-                                Text("+ \(files.count - 4) more").body(13, CD.textDim)
+                                Text(tr("+ {0} more", files.count - 4)).body(13, CD.textDim)
                                     .padding(.horizontal, 10).padding(.vertical, 12)
                             }
                         }
@@ -103,21 +109,21 @@ struct IncomingOfferSheet: View {
                     let w = g.size.width - 10
                     HStack(spacing: 10) {
                         if let text {
-                            PillButton("Dismiss", style: .outline, height: 62, fontSize: 16) { onRespond(false) }
-                            PillButton("Copy", style: link ? .glass : .accent, height: 62, icon: CdIcons.copy, fontSize: 16, glow: !link) {
+                            PillButton(tr("Dismiss"), style: .outline, height: 62, fontSize: 16) { onRespond(false) }
+                            PillButton(tr("Copy"), style: link ? .glass : .accent, height: 62, icon: CdIcons.copy, fontSize: 16, glow: !link) {
                                 UIPasteboard.general.string = text
                                 onRespond(true)
                             }
                             if link {
-                                PillButton("Open", style: .accent, height: 62, icon: CdIcons.globe, fontSize: 16, glow: true) {
+                                PillButton(tr("Open"), style: .accent, height: 62, icon: CdIcons.globe, fontSize: 16, glow: true) {
                                     onRespond(true)
                                     if let u = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) { UIApplication.shared.open(u) }
                                 }
                             }
                         } else {
-                            PillButton("Decline", style: .outline, height: 62, fontSize: 16) { onRespond(false) }
+                            PillButton(tr("Decline"), style: .outline, height: 62, fontSize: 16) { onRespond(false) }
                                 .frame(width: w * 0.4)
-                            PillButton(camera ? "Watch" : switching ? "Start moving" : contact ? "Add to contacts" : "Accept",
+                            PillButton(camera ? tr("Watch") : switching ? tr("Start moving") : contact ? tr("Add to contacts") : tr("Accept"),
                                        style: .accent, height: 62, icon: contact ? CdIcons.contacts : CdIcons.check,
                                        fontSize: 16, glow: true) { onRespond(true) }
                                 .frame(width: w * 0.6)
@@ -132,6 +138,20 @@ struct IncomingOfferSheet: View {
         }
         .accessibilityAddTraits(.isModal)
     }
+}
+
+/// "auto-declines in 12 s" with the seconds picked out in mono accent. The translated sentence ("auto-declines in
+/// {0}", same key as Android) is split at its placeholder so word order stays the translator's call; `lead` is a
+/// language-neutral prefix ("4.2 MB · ").
+private func countdownLabel(lead: String, left: Int) -> Text {
+    let marker = "\u{1}"
+    let parts = tr("auto-declines in {0}", marker).components(separatedBy: marker)
+    let head = Text(lead + parts[0]).foregroundColor(CD.textDim).font(.cd(14))
+    guard parts.count > 1 else { return head }
+    return head
+        + Text("\(left)").font(.mono(14)).foregroundColor(CD.accent)
+        + Text(" s").font(.cd(14)).foregroundColor(CD.accent)
+        + Text(parts.dropFirst().joined(separator: "")).font(.cd(14)).foregroundColor(CD.textDim)
 }
 
 /// Sender glyph in a glass disc, ringed by the auto-decline countdown and a soft pulse.
@@ -189,10 +209,10 @@ private struct ContactCardsView: View {
             }
             if cards.count > 4 {
                 RowSeparator()
-                Text("+ \(cards.count - 4) more").body(13, CD.textDim)
+                Text(tr("+ {0} more", cards.count - 4)).body(13, CD.textDim)
                     .padding(.horizontal, 10).padding(.vertical, 12)
             }
-            Text("Goes straight into your contacts. Anyone who's already there is skipped.")
+            Text(tr("Goes straight into your contacts. Anyone who's already there is skipped."))
                 .body(12, CD.textDim).padding(.horizontal, 10).padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -221,10 +241,10 @@ private struct SwitchSummary: View {
     var body: some View {
         let b = offer.batch
         let rows: [(CdIcon, String, Int)] = [
-            (CdIcons.photo, "Photos", b?.photos ?? offer.files.filter { $0.cat == ItemCategory.photo }.count),
-            (CdIcons.video, "Videos", b?.videos ?? offer.files.filter { $0.cat == ItemCategory.video }.count),
-            (CdIcons.contacts, "Contacts", b?.contacts ?? 0),
-            (CdIcons.doc, "Files", b?.files ?? 0),
+            (CdIcons.photo, tr("Photos"), b?.photos ?? offer.files.filter { $0.cat == ItemCategory.photo }.count),
+            (CdIcons.video, tr("Videos"), b?.videos ?? offer.files.filter { $0.cat == ItemCategory.video }.count),
+            (CdIcons.contacts, tr("Contacts"), b?.contacts ?? 0),
+            (CdIcons.doc, tr("Files"), b?.files ?? 0),
         ].filter { $0.2 > 0 }
         GlassCard(radius: 28, fill: CD.glass, border: CD.hairline, padding: .all(6)) {
             ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
@@ -237,7 +257,7 @@ private struct SwitchSummary: View {
                 }
                 .padding(12)
             }
-            Text("Photos and videos go to your library with their original dates, contacts to your address book. Keep both devices awake and on this Wi-Fi.")
+            Text(tr("Photos and videos go to your library with their original dates, contacts to your address book. Keep both devices awake and on this Wi-Fi."))
                 .body(12, CD.textDim).padding(.horizontal, 12).padding(.vertical, 10)
         }
     }

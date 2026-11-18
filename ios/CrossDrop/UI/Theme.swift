@@ -89,10 +89,21 @@ extension Font {
     static func mono(_ size: CGFloat) -> Font { .custom(CDFont.mono, fixedSize: CDFont.scaled(size)) }
 }
 
+extension CDFont {
+    /// Letter-spacing in points for `size`, dropped for scripts whose letters must stay joined or shaped
+    /// (Arabic, Persian, Hindi, Georgian): tracking there detaches the letters. Use for all translated text.
+    static func tracking(_ size: CGFloat, em: CGFloat) -> CGFloat { I18n.isCursiveOrCaseless ? 0 : scaled(size) * em }
+}
+
+extension String {
+    /// Capitals for small labels, only where the script has them (Turkish gets its dotted İ).
+    var caps: String { I18n.isCursiveOrCaseless ? self : uppercased(with: Locale(identifier: I18n.language)) }
+}
+
 extension Text {
-    /// Display text (Sora) — titles and big figures. `tracking` is in em.
+    /// Display text (Sora) — titles and big figures. `tracking` is in em. Sora is Latin-only; other scripts fall back to the system font.
     func displayStyle(_ size: CGFloat, tracking: CGFloat = -0.03, color: Color = CD.textPrimary) -> Text {
-        font(.display(size)).tracking(CDFont.scaled(size) * tracking).foregroundColor(color)
+        font(.display(size)).tracking(CDFont.tracking(size, em: tracking)).foregroundColor(color)
     }
 
     /// Figures (JetBrains Mono).

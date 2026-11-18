@@ -95,7 +95,7 @@ struct SectionLabel: View {
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text.uppercased()).font(.cd(12, weight: .semibold)).tracking(CDFont.scaled(12) * 0.08)
+        Text(text.caps).font(.cd(12, weight: .semibold)).tracking(CDFont.tracking(12, em: 0.08))
             .foregroundColor(CD.textDim)
             .padding(.horizontal, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -123,7 +123,7 @@ struct FootNote: View {
 /// Overlay header: round glass back button + Sora title, optional subtitle and trailing actions.
 struct BackHeader<Subtitle: View, Trailing: View>: View {
     let title: String
-    var backLabel = "Back"
+    var backLabel: String? = nil           // nil = "Back" (read at draw time, so it follows the language)
     var titleSize: CGFloat = 22
     let onBack: () -> Void
     @ViewBuilder var subtitle: () -> Subtitle
@@ -131,7 +131,7 @@ struct BackHeader<Subtitle: View, Trailing: View>: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CircleButton(icon: CdIcons.chevronLeft, label: backLabel, iconSize: 20, action: onBack)
+            CircleButton(icon: CdIcons.chevronLeft, label: backLabel ?? tr("Back"), iconSize: 20, action: onBack)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).displayStyle(titleSize).lineLimit(1).accessibilityAddTraits(.isHeader)
                 subtitle()
@@ -143,7 +143,7 @@ struct BackHeader<Subtitle: View, Trailing: View>: View {
 }
 
 extension BackHeader where Subtitle == EmptyView, Trailing == EmptyView {
-    init(_ title: String, backLabel: String = "Back", titleSize: CGFloat = 22, onBack: @escaping () -> Void) {
+    init(_ title: String, backLabel: String? = nil, titleSize: CGFloat = 22, onBack: @escaping () -> Void) {
         self.init(title: title, backLabel: backLabel, titleSize: titleSize, onBack: onBack, subtitle: { EmptyView() }, trailing: { EmptyView() })
     }
 }
@@ -272,18 +272,19 @@ struct ChipButton: View {
 /// Copies `value` to the clipboard; the label flips to "Copied" as confirmation.
 struct CopyButton: View {
     let value: String
-    var label = "Copy"
+    var label: String? = nil               // nil = "Copy"
     var accent = false
     var height: CGFloat = 36
     @State private var copied = false
 
     var body: some View {
-        ChipButton(text: copied ? "Copied" : label, icon: copied ? CdIcons.check : CdIcons.copy,
+        let title = label ?? tr("Copy")
+        ChipButton(text: copied ? tr("Copied") : title, icon: copied ? CdIcons.check : CdIcons.copy,
                    fg: accent ? CD.onAccent : CD.textPrimary, bg: accent ? CD.accent : CD.glassHigh,
-                   height: height, label: copied ? "Copied" : "\(label): \(value)") {
+                   height: height, label: copied ? tr("Copied") : tr("{0}: {1}", title, value)) {
             UIPasteboard.general.string = value
             copied = true
-            UIAccessibility.post(notification: .announcement, argument: "Copied")
+            UIAccessibility.post(notification: .announcement, argument: tr("Copied"))
         }
         .onChange(of: value) { _ in copied = false }
     }
@@ -340,8 +341,8 @@ struct CdToggleStyle: ToggleStyle {
         }
         .buttonStyle(PressableStyle())
         .accessibilityElement(children: .combine)
-        .accessibilityValue(configuration.isOn ? "On" : "Off")
-        .accessibilityHint("Double-tap to toggle")
+        .accessibilityValue(configuration.isOn ? tr("On") : tr("Off"))
+        .accessibilityHint(tr("Double-tap to toggle"))
     }
 }
 
@@ -469,7 +470,7 @@ struct StepNumber: View {
         Text("\(n)").font(.cd(12, weight: .bold)).foregroundColor(CD.accent)
             .frame(width: 26, height: 26)
             .background(Circle().fill(CD.accent.opacity(0.14)))
-            .accessibilityLabel("Step \(n)")
+            .accessibilityLabel(tr("Step {0}", n))
     }
 }
 
@@ -491,8 +492,8 @@ struct ProgressBar: View {
         }
         .frame(height: height)
         .accessibilityElement()
-        .accessibilityLabel("Progress")
-        .accessibilityValue("\(Int(min(1, max(0, fraction)) * 100)) percent")
+        .accessibilityLabel(tr("Progress"))
+        .accessibilityValue(tr("{0} percent", Int(min(1, max(0, fraction)) * 100)))
     }
 }
 
@@ -504,7 +505,7 @@ extension View {
                        danger: Bool = true, onConfirm: @escaping () -> Void) -> some View {
         alert(title, isPresented: isPresented) {
             Button(confirmLabel, role: danger ? .destructive : nil, action: onConfirm)
-            Button("Cancel", role: .cancel) {}
+            Button(tr("Cancel"), role: .cancel) {}
         } message: {
             Text(message)
         }
@@ -512,13 +513,13 @@ extension View {
 
     /// "Name others see" rename prompt (alert with a text field).
     func renameDialog(isPresented: Binding<Bool>, text: Binding<String>, onSave: @escaping (String) -> Void) -> some View {
-        alert("Name others see", isPresented: isPresented) {
-            TextField("Device name", text: text)
+        alert(tr("Name others see"), isPresented: isPresented) {
+            TextField(tr("Device name"), text: text)
                 .textInputAutocapitalization(.words)
-            Button("Save") { onSave(text.wrappedValue) }
-            Button("Cancel", role: .cancel) {}
+            Button(tr("Save")) { onSave(text.wrappedValue) }
+            Button(tr("Cancel"), role: .cancel) {}
         } message: {
-            Text("How other devices see this one.")
+            Text(tr("How other devices see this one."))
         }
     }
 }

@@ -58,12 +58,12 @@ final class QrShareManager: ObservableObject {
         }
         scopedURLs = scoped
         tempURLs = temporary
-        guard !files.isEmpty else { fail("nothing readable selected"); return }
+        guard !files.isEmpty else { fail(tr("nothing readable selected")); return }
         launch(files)
     }
 
     private func launch(_ files: [OutgoingFile]) {
-        guard let ip = LocalIp.wifiIPv4() else { fail("Not on Wi-Fi — connect to a network to share"); return }
+        guard let ip = LocalIp.wifiIPv4() else { fail(tr("Not on Wi-Fi — connect to a network to share")); return }
         var bytes = [UInt8](repeating: 0, count: 16)
         _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
         let token = bytes.map { String(format: "%02x", $0) }.joined()
@@ -74,7 +74,7 @@ final class QrShareManager: ObservableObject {
                 self?.refresh()
             }
         }
-        do { try srv.start() } catch { fail("Could not start sharing: \(error)"); return }
+        do { try srv.start() } catch { fail(tr("Could not start sharing: {0}", String(describing: error))); return }
         server = srv
         let url = "http://\(ip):\(srv.port)/\(token)/"
         #if DEBUG
@@ -106,7 +106,7 @@ final class QrShareManager: ObservableObject {
         if let s {
             history.add(HistoryEntry(
                 ts: Date().timeIntervalSince1970 * 1000, direction: "SENDING", peerName: "browser share",
-                summary: s.files.count == 1 ? s.files[0].name : "\(s.files.count) files",
+                summary: s.files.count == 1 ? s.files[0].name : trPlural(s.files.count, one: "1 file", other: "{n} files"),
                 files: s.files.count,
                 bytes: s.bytesServed > 0 ? s.bytesServed : s.files.reduce(0) { $0 + $1.size },
                 status: s.downloadsDone > 0 ? "COMPLETED" : "CANCELLED"))
@@ -123,7 +123,7 @@ final class QrShareManager: ObservableObject {
         probeUntil = Date().addingTimeInterval(1.5)
         if !NetProbe.isListening(port: srv.port) {
             stop()
-            failure = "Sharing stopped while CrossDrop was in the background. Start it again to get a fresh code."
+            failure = tr("Sharing stopped while CrossDrop was in the background. Start it again to get a fresh code.")
         }
     }
 

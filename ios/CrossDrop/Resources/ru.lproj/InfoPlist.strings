@@ -1,0 +1,4 @@
+"NSLocalNetworkUsageDescription" = "CrossDrop использует локальную сеть, чтобы находить устройства поблизости и отправлять им файлы напрямую — ничего не выходит за пределы вашей сети Wi-Fi.";
+"NSCameraUsageDescription" = "Камера CrossDrop сразу отправляет каждое фото или видео на выбранные устройства.";
+"NSMicrophoneUsageDescription" = "Звук в видео, снятых камерой CrossDrop.";
+"NSPhotoLibraryUsageDescription" = "Для переноса CrossDrop читает ваши фото и видео и передаёт их напрямую на другое устройство.";

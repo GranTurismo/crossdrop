@@ -1,11 +1,22 @@
 import SwiftUI
 
 /// What a file is, for its tile and the inbox's storage breakdown (mirrors Android's `FileKind`).
-enum FileKind: String, CaseIterable {
-    case photo = "Photos", video = "Videos", audio = "Audio", doc = "Documents"
-    case archive = "Archives", app = "Apps", folder = "Folders", other = "Other"
+enum FileKind: CaseIterable {
+    case photo, video, audio, doc, archive, app, folder, other
 
-    var label: String { rawValue }
+    /// What people read.
+    var label: String {
+        switch self {
+        case .photo: return tr("Photos")
+        case .video: return tr("Videos")
+        case .audio: return tr("Audio")
+        case .doc: return tr("Documents")
+        case .archive: return tr("Archives")
+        case .app: return tr("Apps")
+        case .folder: return tr("Folders")
+        case .other: return tr("Other")
+        }
+    }
 
     var icon: CdIcon {
         switch self {

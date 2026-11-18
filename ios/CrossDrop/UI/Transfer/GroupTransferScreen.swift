@@ -18,11 +18,11 @@ struct GroupTransferScreen: View {
             ScreenGlow(color: done && group.completed == 0 ? CD.dangerText : CD.accent, alpha: 0.14, centerY: 260, radius: 230)
             VStack(spacing: 0) {
                 HStack {
-                    if let onHide, !done { CircleButton(icon: CdIcons.chevronLeft, label: "Back to transfers", action: onHide) }
+                    if let onHide, !done { CircleButton(icon: CdIcons.chevronLeft, label: tr("Back to transfers"), action: onHide) }
                     else { Color.clear.frame(width: 44, height: 44) }
                     Spacer()
-                    Text(!done ? "Sending to \(group.sessions.count) devices"
-                         : allOk ? "Delivered to all \(group.sessions.count)" : "\(group.completed) of \(group.sessions.count) delivered")
+                    Text(!done ? tr("Sending to {0} devices", group.sessions.count)
+                         : allOk ? tr("Delivered to all {0}", group.sessions.count) : tr("{0} of {1} delivered", group.completed, group.sessions.count))
                         .body(13, done && !allOk ? CD.textSecondary : CD.accent, weight: .semibold)
                     Spacer()
                     Color.clear.frame(width: 44, height: 44)
@@ -31,24 +31,24 @@ struct GroupTransferScreen: View {
                     VStack(spacing: 12) {
                         ring(done: done, allOk: allOk)
                         Text([("\(Fmt.bytes(group.bytesDone)) / \(Fmt.bytes(group.bytesTotal))"),
-                              group.bytesPerSec > 0 ? "\(Fmt.rate(group.bytesPerSec)) total" : nil]
+                              group.bytesPerSec > 0 ? tr("{0}/s total", Fmt.bytes(group.bytesPerSec)) : nil]
                                 .compactMap { $0 }.joined(separator: " · "))
                             .monoStyle(13, color: CD.textDim)
                         ForEach(group.sessions) { s in DeviceRow(s: s) }
-                        Text("Each device gets its own encrypted connection. Compare the code on a device to be sure it's the one you meant.")
+                        Text(tr("Each device gets its own encrypted connection. Compare the code on a device to be sure it's the one you meant."))
                             .body(12, CD.textDim).padding(.horizontal, 6)
                     }
                     .padding(.top, 16)
                 }
                 HStack(spacing: 10) {
                     if done && group.problems > 0 && group.direction == .sending {
-                        PillButton("Done", style: .glass, action: onClose)
-                        PillButton("Retry \(group.problems)", icon: CdIcons.arrowUp, action: onRetry)
+                        PillButton(tr("Done"), style: .glass, action: onClose)
+                        PillButton(tr("Retry {0}", group.problems), icon: CdIcons.arrowUp, action: onRetry)
                     } else if done {
-                        PillButton("Done", style: allOk ? .accent : .glass, action: onClose)
+                        PillButton(tr("Done"), style: allOk ? .accent : .glass, action: onClose)
                     } else {
-                        PillButton("Cancel all", style: .danger, action: onCancelAll)
-                        if let onHide { PillButton("Hide", style: .glass, action: onHide) }
+                        PillButton(tr("Cancel all"), style: .danger, action: onCancelAll)
+                        if let onHide { PillButton(tr("Hide"), style: .glass, action: onHide) }
                     }
                 }
                 .padding(.top, 16)
@@ -76,8 +76,8 @@ struct GroupTransferScreen: View {
         }
         .frame(width: 176, height: 176)
         .accessibilityElement()
-        .accessibilityLabel("Overall progress")
-        .accessibilityValue("\(Int(f * 100)) percent")
+        .accessibilityLabel(tr("Overall progress"))
+        .accessibilityValue(tr("{0} percent", Int(f * 100)))
     }
 }
 
@@ -108,13 +108,13 @@ private struct DeviceRow: View {
 
     private func sessionLabel(_ s: SessionState) -> (String, Color) {
         switch s.status {
-        case .connecting: return ("Connecting…", CD.textDim)
-        case .awaitingAccept: return ("Waiting for them to accept", CD.textDim)
+        case .connecting: return (tr("Connecting…"), CD.textDim)
+        case .awaitingAccept: return (tr("Waiting for them to accept"), CD.textDim)
         case .transferring: return ("\(Int(s.fraction * 100))%" + (s.bytesPerSec > 0 ? " · \(Fmt.rate(s.bytesPerSec))" : ""), CD.accent)
-        case .completed: return ("Delivered", CD.accent)
-        case .declined: return ("Declined", CD.dangerText)
-        case .cancelled: return ("Cancelled", CD.textSecondary)
-        case .failed: return ("Failed" + (s.error.map { ": \($0)" } ?? ""), CD.dangerText)
+        case .completed: return (tr("Delivered"), CD.accent)
+        case .declined: return (tr("Declined"), CD.dangerText)
+        case .cancelled: return (tr("Cancelled"), CD.textSecondary)
+        case .failed: return (s.error.map { tr("Failed: {0}", $0) } ?? tr("Failed"), CD.dangerText)
         }
     }
 }

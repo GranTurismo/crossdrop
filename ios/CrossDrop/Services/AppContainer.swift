@@ -18,6 +18,8 @@ final class AppContainer: ObservableObject {
     @Published private(set) var peers: [Peer] = []
     @Published private(set) var listenerPort: Int = 0
     @Published var networkNotice: String?
+    /// A Wi-Fi/Ethernet network (or this device's own Personal Hotspot) exists to find other devices on; drives the radar's help.
+    @Published private(set) var hasNetwork = true
     /// Files opened from another app ("Open in CrossDrop"), waiting for the user to pick a device.
     @Published var pendingShare: [URL] = []
     private var pendingTemporary: [URL] = []
@@ -168,6 +170,49 @@ final class AppContainer: ObservableObject {
         pendingShare = []; pendingTemporary = []
     }
 
+    /// True when an interface that other devices can share is up with a usable address: Wi-Fi or Ethernet (`en*`),
+    /// or the bridge Personal Hotspot creates. Public and IPv6-only networks count (see `LocalAddress`); cellular
+    /// alone doesn't, because phones on it can't see each other. If the interfaces can't be read we say yes,
+    /// so the app never nags on a guess.
+    nonisolated static func localNetworkUp() -> Bool {
+        var list: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&list) == 0, let first = list else { return true }
+        defer { freeifaddrs(list) }
+        var cursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let p = cursor {
+            let ifa = p.pointee
+            cursor = ifa.ifa_next
+            let name = String(cString: ifa.ifa_name)
+            let up = Int32(ifa.ifa_flags) & IFF_UP != 0 && Int32(ifa.ifa_flags) & IFF_LOOPBACK == 0
+            guard up, name.hasPrefix("en") || name.hasPrefix("bridge"), let addr = ifa.ifa_addr else { continue }
+            switch Int32(addr.pointee.sa_family) {
+            case AF_INET:
+                let host = addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { UInt32(bigEndian: $0.pointee.sin_addr.s_addr) }
+                if LocalAddress.isShareableIPv4(host) { return true }
+            case AF_INET6:
+                let bytes = addr.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { ptr in
+                    withUnsafeBytes(of: ptr.pointee.sin6_addr) { Array($0) }
+                }
+                if LocalAddress.isShareableIPv6(bytes) { return true }
+            default: break
+            }
+        }
+        return false
+    }
+
+    /// The first-run welcome is shown once; anyone who has already transferred something has seen enough.
+    /// Discovery (and with it the Local Network prompt) waits until it is done, so the tour explains first.
+    static var welcomeSeen: Bool {
+        get {
+            #if DEBUG
+            if UserDefaults.standard.bool(forKey: "dev_skip_welcome") { return true }
+            if UserDefaults.standard.bool(forKey: "dev_welcome") { return false }
+            #endif
+            return UserDefaults.standard.bool(forKey: "welcome_seen") || HistoryStore.hasEntries
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "welcome_seen") }
+    }
+
     func setDiscoveryEnabled(_ on: Bool) {
         discoveryEnabled = on
         UserDefaults.standard.set(on, forKey: "nsd_enabled")
@@ -187,19 +232,21 @@ final class AppContainer: ObservableObject {
             }
             listenerPort = listener.port
         } catch {
-            networkNotice = "could not start listener: \(error)"
+            networkNotice = tr("could not start listener: {0}", String(describing: error))
         }
-        if discoveryEnabled { discovery.start(port: listener.port); vaultDiscovery.start() }
+        if discoveryEnabled && Self.welcomeSeen { discovery.start(port: listener.port); vaultDiscovery.start() }
         pathMonitor.pathUpdateHandler = { [weak self] path in
             // Wi-Fi changed (new network / IP): rebind mDNS so we advertise and browse on the right interface.
             let sig = path.availableInterfaces.map(\.name).joined(separator: ",") + "|\(path.status)"
             DispatchQueue.main.async {
+                self?.hasNetwork = Self.localNetworkUp()
                 guard let self, sig != self.lastPathSignature else { return }
                 let first = self.lastPathSignature.isEmpty
                 self.lastPathSignature = sig
                 if !first { self.restartDiscovery() }
             }
         }
+        hasNetwork = Self.localNetworkUp()
         pathMonitor.start(queue: .global(qos: .utility))
         coordinator.onOfferArrived = { [weak self] offer in self?.notifyOffer(offer) }
         // Ask for notifications in context — after the first finished transfer, not at launch.
@@ -347,7 +394,7 @@ final class AppContainer: ObservableObject {
     func didEnterBackground() { wasBackgrounded = true }
 
     func restartDiscovery() {
-        guard discoveryEnabled, listener.port > 0 else { return }
+        guard discoveryEnabled, Self.welcomeSeen, listener.port > 0 else { return }
         discovery.start(port: listener.port)
         vaultDiscovery.start()
     }
@@ -387,20 +434,21 @@ final class AppContainer: ObservableObject {
         let n = offer.offer.files.count
         switch offer.kind {
         case .some(OfferKind.text) where offer.text != nil:
-            c.title = "\(offer.peerName) sent you " + (isLinkText(offer.text!) ? "a link" : "some text")
+            c.title = isLinkText(offer.text!) ? tr("{0} sent you a link", offer.peerName) : tr("{0} sent you some text", offer.peerName)
             c.body = String(offer.text!.prefix(120))
         case .some(OfferKind.contact):
-            c.title = "\(offer.peerName) sent you " + (offer.contacts.count > 1 ? "\(offer.contacts.count) contacts" : "a contact")
-            c.body = offer.contacts.isEmpty ? "Open CrossDrop to add it" : ContactCards.title(names: offer.contacts.map(\.name))
+            let cards = max(1, offer.contacts.count)
+            c.title = trPlural(cards, one: "{0} sent you a contact", other: "{0} sent you {n} contacts", offer.peerName)
+            c.body = offer.contacts.isEmpty ? tr("Open CrossDrop to add it") : ContactCards.title(names: offer.contacts.map(\.name))
         case .some(OfferKind.camera):
-            c.title = "\(offer.peerName) wants to share their camera"
-            c.body = "Open CrossDrop to watch their photos arrive live"
+            c.title = tr("{0} wants to share their camera", offer.peerName)
+            c.body = tr("Open CrossDrop to watch their photos arrive live")
         case .some(OfferKind.switchPhones):
-            c.title = "\(offer.peerName) wants to move to this \(Platform.deviceNoun)"
-            c.body = "Open CrossDrop to start"
+            c.title = tr("{0} wants to move to this {1}", offer.peerName, Platform.deviceNoun)
+            c.body = tr("Open CrossDrop to start")
         default:
-            c.title = "\(offer.peerName) wants to send you files"
-            c.body = n == 1 ? offer.offer.files[0].name : "\(n) files"
+            c.title = tr("{0} wants to send you files", offer.peerName)
+            c.body = n == 1 ? offer.offer.files[0].name : trPlural(n, one: "1 file", other: "{n} files")
         }
         c.sound = .default
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: offer.id.uuidString, content: c, trigger: nil))

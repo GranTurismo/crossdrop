@@ -57,7 +57,7 @@ final class CameraModel: NSObject, ObservableObject {
             }
         }
         input = configured
-        if configured == nil { error = "No camera available" }
+        if configured == nil { error = tr("No camera available") }
     }
 
     func stop() {
@@ -114,12 +114,12 @@ final class CameraModel: NSObject, ObservableObject {
 extension CameraModel: AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate {
     nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         guard error == nil, let data = photo.fileDataRepresentation() else {
-            Task { @MainActor in self.error = "Couldn't take the photo" }
+            Task { @MainActor in self.error = tr("Couldn't take the photo") }
             return
         }
         Task { @MainActor in
             let url = self.newURL("jpg")
-            do { try data.write(to: url); self.deliver(url, video: false) } catch { self.error = "Couldn't save the photo" }
+            do { try data.write(to: url); self.deliver(url, video: false) } catch { self.error = tr("Couldn't save the photo") }
         }
     }
 
@@ -127,7 +127,7 @@ extension CameraModel: AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordi
         Task { @MainActor in
             self.recording = false
             let ok = error == nil || ((error as NSError?)?.userInfo[AVErrorRecordingSuccessfullyFinishedKey] as? Bool == true)
-            if ok { self.deliver(url, video: true) } else { self.error = "Recording failed" }
+            if ok { self.deliver(url, video: true) } else { self.error = tr("Recording failed") }
         }
     }
 }
@@ -184,11 +184,11 @@ struct CameraScreen: View {
     private var denied: some View {
         VStack(spacing: 16) {
             CdIconView(CdIcons.camera, color: CD.textSecondary, size: 44)
-            Text("Camera access is off").displayStyle(22)
-            Text("CrossDrop needs the camera to send photos the moment you take them.")
+            Text(tr("Camera access is off")).displayStyle(22)
+            Text(tr("CrossDrop needs the camera to send photos the moment you take them."))
                 .body(14, CD.textDim).multilineTextAlignment(.center)
-            PillButton("Open Settings", fullWidth: false) { openSystemSettings() }
-            PillButton("Close", style: .glass, fullWidth: false, action: onClose)
+            PillButton(tr("Open Settings"), fullWidth: false) { openSystemSettings() }
+            PillButton(tr("Close"), style: .glass, fullWidth: false, action: onClose)
         }
         .padding(24)
     }
@@ -196,10 +196,10 @@ struct CameraScreen: View {
     private var controls: some View {
         VStack(spacing: 16) {
             HStack(spacing: 10) {
-                CircleButton(icon: CdIcons.close, label: "Close camera", fill: Color.black.opacity(0.45), action: onClose)
+                CircleButton(icon: CdIcons.close, label: tr("Close camera"), fill: Color.black.opacity(0.45), action: onClose)
                 HStack(spacing: 8) {
                     Dot(color: CD.accent)
-                    Text("Live to " + targets.map(\.name).joined(separator: ", ")).body(13, weight: .semibold).lineLimit(1)
+                    Text(tr("Live to {0}", targets.map(\.name).joined(separator: ", "))).body(13, weight: .semibold).lineLimit(1)
                 }
                 .padding(.horizontal, 14).frame(height: 40).frame(maxWidth: .infinity, alignment: .leading)
                 .background(Capsule().fill(Color.black.opacity(0.45)))
@@ -224,12 +224,12 @@ struct CameraScreen: View {
                 Spacer()
                 shutter
                 Spacer()
-                CircleButton(icon: CdIcons.swap, label: "Switch camera", size: 54, fill: Color.black.opacity(0.45)) { cam.flip() }
+                CircleButton(icon: CdIcons.swap, label: tr("Switch camera"), size: 54, fill: Color.black.opacity(0.45)) { cam.flip() }
             }
             .padding(.horizontal, 28)
             HStack(spacing: 6) {
-                modeChip("Photo", !videoMode) { if !cam.recording { videoMode = false } }
-                modeChip("Video", videoMode) { if !cam.recording { videoMode = true } }
+                modeChip(tr("Photo"), !videoMode) { if !cam.recording { videoMode = false } }
+                modeChip(tr("Video"), videoMode) { if !cam.recording { videoMode = true } }
             }
         }
         .padding(.horizontal, 16).padding(.bottom, 20)
@@ -254,7 +254,7 @@ struct CameraScreen: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(videoMode ? (cam.recording ? "Stop recording" : "Record video") : "Take photo")
+        .accessibilityLabel(videoMode ? (cam.recording ? tr("Stop recording") : tr("Record video")) : tr("Take photo"))
     }
 
     private var thumb: some View {
@@ -273,17 +273,17 @@ struct CameraScreen: View {
     /// "Pixel ✓ · Waiting for Mac" for the newest shot.
     private var status: some View {
         let text: String = {
-            guard let s = shots.last else { return "Take a photo — it lands on the other screen instantly" }
+            guard let s = shots.last else { return tr("Take a photo — it lands on the other screen instantly") }
             let mine = coordinator.sessions.filter { $0.groupId == s.groupId }
-            if mine.isEmpty { return "Saved" }
+            if mine.isEmpty { return tr("Saved") }
             return mine.map { x in
                 switch x.status {
-                case .completed: return "\(x.peerName) ✓"
-                case .awaitingAccept: return "Waiting for \(x.peerName) to accept"
-                case .transferring: return "\(x.peerName) \(Int(x.fraction * 100))%"
-                case .connecting: return "Connecting to \(x.peerName)"
-                case .declined: return "\(x.peerName) declined"
-                default: return "\(x.peerName): not sent"
+                case .completed: return tr("{0} ✓", x.peerName)
+                case .awaitingAccept: return tr("Waiting for {0} to accept", x.peerName)
+                case .transferring: return tr("{0} {1}%", x.peerName, Int(x.fraction * 100))
+                case .connecting: return tr("Connecting to {0}", x.peerName)
+                case .declined: return tr("{0} declined", x.peerName)
+                default: return tr("{0}: not sent", x.peerName)
                 }
             }.joined(separator: "  ·  ")
         }()

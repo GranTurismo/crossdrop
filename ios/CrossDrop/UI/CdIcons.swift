@@ -12,9 +12,11 @@ struct CdIcon: Equatable {
     let parts: [Part]
     var stroke: CGFloat = 1.9
     var filled = false
+    /// A directional icon (chevron, "go" arrow) that flips in right-to-left languages.
+    var mirrors = false
 
-    init(_ parts: Part..., stroke: CGFloat = 1.9, filled: Bool = false) {
-        self.parts = parts; self.stroke = stroke; self.filled = filled
+    init(_ parts: Part..., stroke: CGFloat = 1.9, filled: Bool = false, mirrors: Bool = false) {
+        self.parts = parts; self.stroke = stroke; self.filled = filled; self.mirrors = mirrors
     }
 
     /// The icon in viewBox units.
@@ -71,11 +73,11 @@ enum CdIcons {
     // actions & glyphs
     static let qr = CdIcon(.rect(3, 3, 7, 7, 1), .rect(14, 3, 7, 7, 1), .rect(3, 14, 7, 7, 1),
                            d("M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"), stroke: 1.8)
-    static let arrowRight = CdIcon(d("M5 12h14M13 6l6 6-6 6"), stroke: 2.2)
+    static let arrowRight = CdIcon(d("M5 12h14M13 6l6 6-6 6"), stroke: 2.2, mirrors: true)
     static let arrowUp = CdIcon(d("M12 19V5M6 11l6-6 6 6"), stroke: 2.2)
     static let arrowDown = CdIcon(d("M12 5v14M6 13l6 6 6-6"), stroke: 2.2)
-    static let chevronLeft = CdIcon(d("M15 6l-6 6 6 6"), stroke: 2)
-    static let chevronRight = CdIcon(d("M9 6l6 6-6 6"), stroke: 2.2)
+    static let chevronLeft = CdIcon(d("M15 6l-6 6 6 6"), stroke: 2, mirrors: true)
+    static let chevronRight = CdIcon(d("M9 6l6 6-6 6"), stroke: 2.2, mirrors: true)
     static let check = CdIcon(d("M5 12.5l4.5 4.5L19 7"), stroke: 2.4)
     static let close = CdIcon(d("M6 6l12 12M18 6L6 18"), stroke: 2.2)
     static let lock = CdIcon(.rect(5, 11, 14, 10, 2), d("M8 11V8a4 4 0 0 1 8 0v3"), stroke: 2.2)
@@ -113,6 +115,7 @@ struct CdIconView: View {
             }
         }
         .frame(width: size, height: size)
+        .scaleEffect(x: icon.mirrors && I18n.isRTL ? -1 : 1, y: 1)
         .accessibilityHidden(label == nil)
         .accessibilityLabel(label ?? "")
     }

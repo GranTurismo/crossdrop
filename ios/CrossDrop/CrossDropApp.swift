@@ -4,6 +4,7 @@ import SwiftUI
 struct CrossDropApp: App {
     @StateObject private var container = AppContainer()
     @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var i18n = I18nModel.shared
 
     var body: some Scene {
         WindowGroup {
@@ -11,6 +12,9 @@ struct CrossDropApp: App {
                 .environmentObject(container)
                 .environmentObject(container.coordinator)
                 .preferredColorScheme(.dark)
+                // Arabic and Persian read right to left; follow the app's language, not only the system's.
+                .environment(\.layoutDirection, I18n.isRTL ? .rightToLeft : .leftToRight)
+                .environment(\.locale, I18n.locale)
                 .onAppear {
                     container.start()
                     Self.configureWindows()
@@ -27,9 +31,9 @@ struct CrossDropApp: App {
         .commands {
             // One app-wide window; File menu on Mac, ⌘-key overlay on iPad.
             CommandGroup(replacing: .newItem) {
-                Button("Send Files…") { container.requestSend() }
+                Button(tr("Send Files…")) { container.requestSend() }
                     .keyboardShortcut("o", modifiers: .command)
-                Button("Rescan Network") { container.restartDiscovery() }
+                Button(tr("Rescan Network")) { container.restartDiscovery() }
                     .keyboardShortcut("r", modifiers: .command)
             }
         }

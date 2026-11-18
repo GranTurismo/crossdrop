@@ -2,8 +2,18 @@ import SwiftUI
 import UniformTypeIdentifiers
 @preconcurrency import CrossDropCore
 
-enum AppTab: String, CaseIterable {
-    case radar = "Radar", transfers = "Transfers", inbox = "Inbox", settings = "Settings"
+enum AppTab: CaseIterable {
+    case radar, transfers, inbox, settings
+
+    var label: String {
+        switch self {
+        case .radar: return tr("Radar")
+        case .transfers: return tr("Transfers")
+        case .inbox: return tr("Inbox")
+        case .settings: return tr("Settings")
+        }
+    }
+
     var icon: CdIcon {
         switch self {
         case .radar: return CdIcons.radar
@@ -27,14 +37,21 @@ struct RootView: View {
     /// The live transfer view is minimised to the Transfers tab.
     @State private var transferHidden = false
     @State private var liveHidden = false
+    /// First-run welcome (skippable); Settings can replay it.
+    @State private var welcome = !AppContainer.welcomeSeen
+    /// "Can't see the other device?" how-to.
+    @State private var guideOpen = false
     @Environment(\.sizeCategory) private var sizeCategory
+    /// Bumped when the language changes: rebuilds the views so every translated string is read again.
+    @ObservedObject private var i18n = I18nModel.shared
 
     init() {
         #if DEBUG
-        if let t = UserDefaults.standard.string(forKey: "dev_tab"), let tab = AppTab.allCases.first(where: { $0.rawValue.lowercased() == t }) {
+        if let t = UserDefaults.standard.string(forKey: "dev_tab"), let tab = AppTab.allCases.first(where: { String(describing: $0) == t }) {
             _tab = State(initialValue: tab)
         }
         if UserDefaults.standard.bool(forKey: "dev_hide_transfer") { _transferHidden = State(initialValue: true) }
+        if UserDefaults.standard.bool(forKey: "dev_connect_guide") { _guideOpen = State(initialValue: true) }
         #endif
     }
 
@@ -94,6 +111,19 @@ struct RootView: View {
                     .zIndex(6)
                 }
 
+                if guideOpen {
+                    ConnectGuideScreen(onClose: { guideOpen = false })
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(3)
+                }
+
+                if welcome {
+                    WelcomeScreen(permissionNote: tr("Your device will ask to find devices on your local network. Anything else, like photos or camera, is asked only when you use it."),
+                                  onFinish: finishWelcome)
+                        .transition(.opacity)
+                        .zIndex(3)
+                }
+
                 if dropTargeted { dropHint.zIndex(7) }
             }
         }
@@ -106,6 +136,8 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.3), value: container.switchTarget == nil)
         .animation(.easeInOut(duration: 0.3), value: coordinator.live == nil || liveHidden)
         .animation(.easeInOut(duration: 0.25), value: coordinator.incomingOffer?.id)
+        .animation(.easeInOut(duration: 0.3), value: welcome)
+        .animation(.easeInOut(duration: 0.3), value: guideOpen)
         // A newly focused group always opens the transfer view; one that ends while minimised is cleared.
         .onChange(of: coordinator.focusedGroupId) { id in if id != nil { transferHidden = false } }
         .onChange(of: coordinator.focusedGroup?.isTerminal) { done in
@@ -116,7 +148,14 @@ struct RootView: View {
         .onChange(of: coordinator.incomingOffer?.id) { id in if id != nil { sheets.dismiss() } }
         // ⌘O "Send Files…" lands on the radar, which raises the picker.
         .onChange(of: container.sendRequest) { _ in tab = .radar }
-        .id(sizeCategory)       // fonts are computed from the text-size setting — rebuild when it changes
+        .id("\(sizeCategory)-\(i18n.version)")       // fonts follow the text-size setting and text follows the language: rebuild when either changes
+    }
+
+    private func finishWelcome() {
+        let first = !AppContainer.welcomeSeen
+        AppContainer.welcomeSeen = true
+        welcome = false
+        if first { container.restartDiscovery() }      // held back until now: the Local Network prompt follows the tour
     }
 
     // MARK: tabs
@@ -124,7 +163,7 @@ struct RootView: View {
     @ViewBuilder private var tabs: some View {
         ZStack {
             // The radar stays mounted (its pickers and ⌘O handler live there); hidden it stops animating.
-            RadarScreen(active: tab == .radar)
+            RadarScreen(active: tab == .radar, onShowConnectGuide: { guideOpen = true })
                 .opacity(tab == .radar ? 1 : 0)
                 .allowsHitTesting(tab == .radar)
                 .accessibilityHidden(tab != .radar)
@@ -137,7 +176,7 @@ struct RootView: View {
             case .inbox:
                 InboxScreen(inbox: container.inbox)
             case .settings:
-                SettingsScreen(inbox: container.inbox, history: container.history)
+                SettingsScreen(inbox: container.inbox, history: container.history, onShowWelcome: { welcome = true })
             }
         }
     }
@@ -217,7 +256,7 @@ struct RootView: View {
             }
             let ready = (urls, temps)
             await MainActor.run {
-                guard !ready.0.isEmpty else { container.networkNotice = "Couldn't read the dropped files."; return }
+                guard !ready.0.isEmpty else { container.networkNotice = tr("Couldn't read the dropped files."); return }
                 container.queueShare(ready.0, temporary: ready.1)
             }
         }
@@ -228,7 +267,7 @@ struct RootView: View {
         RoundedRectangle(cornerRadius: 30, style: .continuous)
             .strokeBorder(CD.accent, style: StrokeStyle(lineWidth: 2, dash: [10, 8]))
             .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(CD.accent.opacity(0.08)))
-            .overlay(Text("Drop to send").displayStyle(20, color: CD.accent))
+            .overlay(Text(tr("Drop to send")).displayStyle(20, color: CD.accent))
             .padding(16)
             .allowsHitTesting(false)
             .transition(.opacity)
@@ -270,10 +309,10 @@ private struct FloatingNav: View {
             if t == .transfers && transferLive { return "" }
             return nil
         }()
-        let extra: String = {
-            if t == .inbox && count > 0 { return ", \(count) file\(count == 1 ? "" : "s")" }
-            if t == .transfers && transferLive { return ", transfer in progress" }
-            return ""
+        let spoken: String = {
+            if t == .inbox && count > 0 { return trPlural(count, one: "{0}, 1 file", other: "{0}, {n} files", t.label) }
+            if t == .transfers && transferLive { return tr("{0}, transfer in progress", t.label) }
+            return t.label
         }()
         return Button { tab = t } label: {
             HStack(spacing: 6) {
@@ -282,7 +321,7 @@ private struct FloatingNav: View {
                         if let badge, !selected { NavBadge(text: badge).offset(x: 9, y: -6) }
                     }
                 if selected {
-                    Text(t.rawValue).font(.cd(13, weight: .semibold)).foregroundColor(CD.onAccent)
+                    Text(t.label).font(.cd(13, weight: .semibold)).foregroundColor(CD.onAccent)
                         .lineLimit(1).fixedSize()
                         .transition(.opacity.combined(with: .scale(scale: 0.8, anchor: .leading)))
                 }
@@ -294,7 +333,7 @@ private struct FloatingNav: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(t.rawValue + extra)
+        .accessibilityLabel(spoken)
         .accessibilityAddTraits(selected ? [.isSelected] : [])
         .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
         .pointerHover()
@@ -349,20 +388,20 @@ private struct ContactDropHost: View {
     }
 
     private func card(_ d: ContactInbox.Drop) -> some View {
-        let first = d.names.first ?? "Contact"
+        let first = d.names.first ?? tr("Contact")
         let n = d.names.count
         let waiting = d.kept != nil
         let title: String = {
-            if d.unreadable { return "Couldn't read that contact card" }
-            if waiting { return n == 1 ? "Add \(first) to your contacts?" : "Add \(n) contacts?" }
-            if d.added > 0 && d.skipped == 0 { return d.added == 1 ? "Added \(first)" : "Added \(d.added) contacts" }
-            if d.added == 0 && d.skipped > 0 { return d.skipped == 1 && n == 1 ? "\(first) is already in your contacts" : "Already in your contacts" }
-            if d.added > 0 { return "Added \(d.added) · \(d.skipped) already there" }
-            return "Couldn't add the contact"
+            if d.unreadable { return tr("Couldn't read that contact card") }
+            if waiting { return n == 1 ? tr("Add {0} to your contacts?", first) : trPlural(n, one: "Add 1 contact?", other: "Add {n} contacts?") }
+            if d.added > 0 && d.skipped == 0 { return d.added == 1 ? tr("Added {0}", first) : trPlural(d.added, one: "Added 1 contact", other: "Added {n} contacts") }
+            if d.added == 0 && d.skipped > 0 { return d.skipped == 1 && n == 1 ? tr("{0} is already in your contacts", first) : tr("Already in your contacts") }
+            if d.added > 0 { return tr("Added {0} · {1} already there", d.added, d.skipped) }
+            return tr("Couldn't add the contact")
         }()
-        let subtitle = d.unreadable ? "From \(d.peerName) · saved to your Inbox"
-            : waiting ? "From \(d.peerName) · CrossDrop needs contacts access. Until then it's in your Inbox."
-            : "From \(d.peerName)"
+        let subtitle = d.unreadable ? tr("From {0} · saved to your Inbox", d.peerName)
+            : waiting ? tr("From {0} · CrossDrop needs contacts access. Until then it's in your Inbox.", d.peerName)
+            : tr("From {0}", d.peerName)
         return GlassCard(radius: 24, fill: CD.glassRaised, border: CD.hairlineStrong, glow: CD.accent.opacity(0.16), glowRadius: 30,
                          padding: .all(14), spacing: 12) {
             HStack(spacing: 12) {
@@ -376,16 +415,16 @@ private struct ContactDropHost: View {
             HStack(spacing: 8) {
                 Spacer()
                 if waiting && !d.unreadable {
-                    ChipButton(text: "Later") { inbox.dismiss(d.id) }
-                    ChipButton(text: "Allow", icon: CdIcons.contacts, fg: CD.onAccent, bg: CD.accent) { allow() }
+                    ChipButton(text: tr("Later")) { inbox.dismiss(d.id) }
+                    ChipButton(text: tr("Allow"), icon: CdIcons.contacts, fg: CD.onAccent, bg: CD.accent) { allow() }
                 } else if let id = d.firstAdded {
-                    ChipButton(text: "Done") { inbox.dismiss(d.id) }
-                    ChipButton(text: "View", icon: CdIcons.contacts, fg: CD.onAccent, bg: CD.accent) {
+                    ChipButton(text: tr("Done")) { inbox.dismiss(d.id) }
+                    ChipButton(text: tr("View"), icon: CdIcons.contacts, fg: CD.onAccent, bg: CD.accent) {
                         ContactPickerPresenter.show(contactId: id)
                         inbox.dismiss(d.id)
                     }
                 } else {
-                    ChipButton(text: "Done") { inbox.dismiss(d.id) }
+                    ChipButton(text: tr("Done")) { inbox.dismiss(d.id) }
                 }
             }
         }

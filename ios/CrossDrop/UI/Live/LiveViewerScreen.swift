@@ -21,17 +21,17 @@ struct LiveViewerScreen: View {
                 HStack(spacing: 10) {
                     HStack(spacing: 7) {
                         Dot(color: CD.accent)
-                        Text("LIVE").font(.cd(12, weight: .bold)).foregroundColor(CD.accent)
+                        Text(tr("Live").caps).font(.cd(12, weight: .bold)).foregroundColor(CD.accent)
                     }
                     .padding(.horizontal, 12).frame(height: 32).background(Capsule().fill(CD.accent.opacity(0.14)))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(feed.peerName).displayStyle(17).lineLimit(1)
-                        Text(feed.shots.isEmpty ? "Waiting for the first shot…" : feed.shots.count == 1 ? "1 shot" : "\(feed.shots.count) shots")
+                        Text(feed.shots.isEmpty ? tr("Waiting for the first shot…") : trPlural(feed.shots.count, one: "1 shot", other: "{n} shots"))
                             .body(12, CD.textDim)
                     }
                     Spacer(minLength: 4)
-                    ChipButton(text: "Hide", bg: CD.glassMid, border: CD.hairlineStrong, height: 38, action: onHide)
-                    ChipButton(text: "Stop", icon: CdIcons.close, bg: CD.glassMid, border: CD.hairlineStrong, height: 38, action: onStop)
+                    ChipButton(text: tr("Hide"), bg: CD.glassMid, border: CD.hairlineStrong, height: 38, action: onHide)
+                    ChipButton(text: tr("Stop"), icon: CdIcons.close, bg: CD.glassMid, border: CD.hairlineStrong, height: 38, action: onStop)
                 }
                 ZStack(alignment: .top) {
                     RoundedRectangle(cornerRadius: 28, style: .continuous).fill(Color.black)
@@ -43,7 +43,7 @@ struct LiveViewerScreen: View {
                     } else {
                         VStack(spacing: 10) {
                             CdIconView(CdIcons.camera, color: CD.textSecondary, size: 40)
-                            Text("Shots from \(feed.peerName) appear here\nthe moment they're taken.")
+                            Text(tr("Shots from {0} appear here\nthe moment they're taken.", feed.peerName))
                                 .body(14, CD.textDim).multilineTextAlignment(.center)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -51,7 +51,7 @@ struct LiveViewerScreen: View {
                     if let s = feed.incoming {
                         HStack(spacing: 8) {
                             Dot(color: CD.accent, size: 6)
-                            Text("Arriving… \(Int(s.fraction * 100))%").body(12, CD.textPrimary)
+                            Text(tr("Arriving… {0}%", Int(s.fraction * 100))).body(12, CD.textPrimary)
                         }
                         .padding(.horizontal, 12).frame(height: 32)
                         .background(Capsule().fill(Color.black.opacity(0.6)))
@@ -83,7 +83,7 @@ struct LiveViewerScreen: View {
                         }
                     }
                 }
-                Text("Saved to your inbox as they arrive. Tap a shot to open it.").body(12, CD.textDim)
+                Text(tr("Saved to your inbox as they arrive. Tap a shot to open it.")).body(12, CD.textDim)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .padding(16)

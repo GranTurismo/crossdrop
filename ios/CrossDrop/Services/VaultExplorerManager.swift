@@ -115,7 +115,7 @@ final class VaultExplorerManager: ObservableObject {
                 DispatchQueue.main.async {
                     guard let self, self.generation == gen else { return }
                     self.state?.loading = false
-                    self.state?.error = (error as? VaultError)?.message ?? "unreachable: \(Self.describe(error))"
+                    self.state?.error = (error as? VaultError)?.message ?? tr("unreachable: {0}", Self.describe(error))
                 }
             }
         }
@@ -151,7 +151,7 @@ final class VaultExplorerManager: ObservableObject {
                     self.state?.path = path
                     self.state?.selected = []
                 case .failure(let e):
-                    self.state?.error = (e as? VaultError)?.message ?? "lost connection"
+                    self.state?.error = (e as? VaultError)?.message ?? tr("lost connection")
                 }
             }
         }
@@ -300,7 +300,7 @@ final class VaultExplorerManager: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.history.add(HistoryEntry(ts: Date().timeIntervalSince1970 * 1000, direction: direction,
-                                          peerName: self.state?.peerName ?? "vault", summary: name, files: 1,
+                                          peerName: self.state?.peerName ?? tr("vault"), summary: name, files: 1,
                                           bytes: bytes, status: "COMPLETED"))
         }
     }
@@ -369,7 +369,7 @@ final class VaultExplorerManager: ObservableObject {
     nonisolated static func describe(_ e: Error) -> String {
         if let v = e as? VaultError { return v.message }
         if let p = e as? ProtocolError { return p.message }
-        if e is EOFError { return "connection closed" }
+        if e is EOFError { return tr("connection closed") }
         return e.localizedDescription
     }
 

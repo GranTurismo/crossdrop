@@ -55,7 +55,7 @@ final class VaultDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDeleg
         let id = str("id") ?? sender.name.replacingOccurrences(of: "xdrop-vault-", with: "")
         if id == selfVaultId() { return }                                  // our own beacon
         guard let host = BonjourDiscovery.pickHost(sender.addresses ?? []) else { return }
-        let name = str("name").flatMap { $0.isEmpty ? nil : $0 } ?? "Vault"
+        let name = str("name").flatMap { $0.isEmpty ? nil : $0 } ?? tr("Vault")
         nameToId[sender.name] = id
         peers[id] = Peer(
             instanceId: id, name: name, host: host, port: sender.port,

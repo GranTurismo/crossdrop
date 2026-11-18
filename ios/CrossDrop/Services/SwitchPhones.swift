@@ -368,14 +368,14 @@ final class SwitchSender: ObservableObject {
             case .declined: state?.phase = .declined; state?.bytesPerSec = 0; return
             case .cancelled: state?.phase = .cancelled; state?.bytesPerSec = 0; return
             default:
-                state?.phase = .failed; state?.error = result.error ?? "connection lost"; state?.bytesPerSec = 0
+                state?.phase = .failed; state?.error = result.error ?? tr("connection lost"); state?.bytesPerSec = 0
                 return
             }
         }
         if unreadable > 0 {
             // Typically iCloud originals that couldn't be downloaded right now: say so, keep the ledger.
             state?.phase = .failed; state?.bytesPerSec = 0
-            state?.error = "\(unreadable) item(s) couldn't be read (iCloud photos need a connection). Tap Resume to try them again."
+            state?.error = tr("{0} item(s) couldn't be read (iCloud photos need a connection). Tap Resume to try them again.", unreadable)
             return
         }
         UserDefaults.standard.removeObject(forKey: ledgerKey)
@@ -389,7 +389,7 @@ final class SwitchSender: ObservableObject {
         guard !files.isEmpty else { return SessionState(direction: .sending, peerName: peer.name, status: .completed) }
         guard let gid = coordinator.send([peer], files: files, options: SendOptions(kind: OfferKind.switchPhones, batch: info),
                                          quiet: true, scoped: [], temporary: []) else {
-            var s = SessionState(direction: .sending, peerName: peer.name, status: .failed); s.error = "device unreachable"; return s
+            var s = SessionState(direction: .sending, peerName: peer.name, status: .failed); s.error = tr("device unreachable"); return s
         }
         while true {
             if Task.isCancelled { coordinator.cancelGroup(gid) }
@@ -545,8 +545,8 @@ final class SwitchImporter: ObservableObject, SwitchReceiving, @unchecked Sendab
 
     @MainActor func batchEnded(failed: Bool, error: String?) {
         state?.phase = .failed
-        state?.error = failed ? "Connection lost. Start again on the other phone — it picks up where it stopped."
-            : "The other phone stopped the move."
+        state?.error = failed ? tr("Connection lost. Start again on the other phone — it picks up where it stopped.")
+            : tr("The other phone stopped the move.")
     }
 
     @MainActor func stop() {

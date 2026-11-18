@@ -21,35 +21,35 @@ struct SwitchSendScreen: View {
             CD.ink.ignoresSafeArea()
             ScreenGlow(alpha: 0.14, centerY: 140, radius: 240)
             VStack(spacing: 0) {
-                BackHeader("Switch phones", onBack: onClose)
+                BackHeader(tr("Switch phones"), onBack: onClose)
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        (Text("Move everything to ") + Text(peer.name).foregroundColor(CD.accent))
+                        switchAccentText(tr("Move everything to {0}", peer.name), accenting: peer.name)
                             .font(.display(28)).foregroundColor(CD.textPrimary)
-                        Text("Straight over Wi-Fi, encrypted, nothing uploaded. Works between iPhone and Android in both directions.")
+                        Text(tr("Straight over Wi-Fi, encrypted, nothing uploaded. Works between iPhone and Android in both directions."))
                             .body(14, CD.textSecondary)
                         GlassCard(radius: 26, fill: CD.glass, border: CD.hairline, padding: .all(6)) {
-                            row(CdIcons.photo, "Photos", PhotosBridge.readAuthorized() ? "\(plan.photos)" : "Needs photo access",
+                            row(CdIcons.photo, tr("Photos"), PhotosBridge.readAuthorized() ? "\(plan.photos)" : tr("Needs photo access"),
                                 $photos, PhotosBridge.readAuthorized())
                             RowSeparator()
-                            row(CdIcons.video, "Videos", PhotosBridge.readAuthorized() ? "\(plan.videos)" : "Needs photo access",
+                            row(CdIcons.video, tr("Videos"), PhotosBridge.readAuthorized() ? "\(plan.videos)" : tr("Needs photo access"),
                                 $videos, PhotosBridge.readAuthorized())
                             RowSeparator()
-                            row(CdIcons.contacts, "Contacts", ContactsBridge.authorized() ? "\(plan.contacts)" : "Needs contacts access",
+                            row(CdIcons.contacts, tr("Contacts"), ContactsBridge.authorized() ? "\(plan.contacts)" : tr("Needs contacts access"),
                                 $contacts, ContactsBridge.authorized())
                         }
                         if !PhotosBridge.readAuthorized() || !ContactsBridge.authorized() {
-                            PillButton("Allow access", style: .glass, icon: CdIcons.lock) { Task { await ask() } }
+                            PillButton(tr("Allow access"), style: .glass, icon: CdIcons.lock) { Task { await ask() } }
                         }
                         if plan.limited {
-                            FootNote("Only the photos you selected are visible to CrossDrop. Allow full access to move your whole library.", icon: CdIcons.help)
+                            FootNote(tr("Only the photos you selected are visible to CrossDrop. Allow full access to move your whole library."), icon: CdIcons.help)
                         }
-                        FootNote("Messages, apps and app data can't be moved by any app. Keep both screens on and on the same Wi-Fi until it's done. If the connection drops, start again — it continues where it stopped.", icon: CdIcons.shield)
+                        FootNote(tr("Messages, apps and app data can't be moved by any app. Keep both screens on and on the same Wi-Fi until it's done. If the connection drops, start again — it continues where it stopped."), icon: CdIcons.shield)
                     }
                     .padding(.top, 8)
                 }
                 let any = (photos && plan.photos > 0) || (videos && plan.videos > 0) || (contacts && plan.contacts > 0)
-                PillButton("Start moving", icon: CdIcons.swap, glow: true) {
+                PillButton(tr("Start moving"), icon: CdIcons.swap, glow: true) {
                     sender.start(peer, photos: photos && PhotosBridge.readAuthorized(), videos: videos && PhotosBridge.readAuthorized(),
                                  contacts: contacts && ContactsBridge.authorized())
                 }
@@ -87,13 +87,13 @@ struct SwitchSendScreen: View {
         let failed = [.failed, .declined, .cancelled].contains(s.phase)
         let title: String = {
             switch s.phase {
-            case .preparing: return "Getting your library ready…"
-            case .waiting: return "Waiting for \(s.peerName) to accept"
-            case .moving: return "Moving to \(s.peerName)"
-            case .done: return "All moved to \(s.peerName)"
-            case .failed: return "Paused — connection lost"
-            case .declined: return "\(s.peerName) declined"
-            case .cancelled: return "Stopped"
+            case .preparing: return tr("Getting your library ready…")
+            case .waiting: return tr("Waiting for {0} to accept", s.peerName)
+            case .moving: return tr("Moving to {0}", s.peerName)
+            case .done: return tr("All moved to {0}", s.peerName)
+            case .failed: return tr("Paused — connection lost")
+            case .declined: return tr("{0} declined", s.peerName)
+            case .cancelled: return tr("Stopped")
             }
         }()
         return ZStack {
@@ -102,20 +102,20 @@ struct SwitchSendScreen: View {
             VStack(spacing: 16) {
                 Text(title).displayStyle(22).multilineTextAlignment(.center).padding(.top, 24)
                 SwitchRing(fraction: s.phase == .done ? 1 : s.fraction, done: s.phase == .done, failed: failed)
-                Text("\(s.itemsDone) of \(s.itemsTotal) items" + (s.bytesPerSec > 0 ? " · \(Fmt.rate(s.bytesPerSec))" : ""))
+                Text(tr("{0} of {1} items", s.itemsDone, s.itemsTotal) + (s.bytesPerSec > 0 ? " · \(Fmt.rate(s.bytesPerSec))" : ""))
                     .monoStyle(13, color: CD.textDim)
-                if s.batches > 1 && !s.finished { Text("Batch \(s.batch + 1) of \(s.batches)").body(12, CD.textDim) }
+                if s.batches > 1 && !s.finished { Text(tr("Batch {0} of {1}", s.batch + 1, s.batches)).body(12, CD.textDim) }
                 if let e = s.error { Text(e).body(13, CD.dangerText).multilineTextAlignment(.center) }
                 Spacer()
                 HStack(spacing: 10) {
                     switch s.phase {
                     case .done, .declined, .cancelled:
-                        PillButton("Done", style: s.phase == .done ? .accent : .glass) { sender.close(); onClose() }
+                        PillButton(tr("Done"), style: s.phase == .done ? .accent : .glass) { sender.close(); onClose() }
                     case .failed:
-                        PillButton("Close", style: .glass) { sender.close(); onClose() }
-                        PillButton("Resume") { sender.resume() }
+                        PillButton(tr("Close"), style: .glass) { sender.close(); onClose() }
+                        PillButton(tr("Resume")) { sender.resume() }
                     default:
-                        PillButton("Stop", style: .danger) { sender.cancel() }
+                        PillButton(tr("Stop"), style: .danger) { sender.cancel() }
                     }
                 }
             }
@@ -136,42 +136,47 @@ struct SwitchReceiveScreen: View {
         let done = state.phase == .done, failed = state.phase == .failed
         let total = max(state.photosTotal + state.videosTotal, 1)
         let f = done ? 1 : min(1, Double(state.photos + state.videos) / Double(total))
+        let title: String = {
+            if done { return tr("Welcome to your new {0}", Platform.deviceNoun) }
+            if failed { return tr("Move paused") }
+            if state.phase == .importing { return tr("Adding to your library…") }
+            return tr("Moving from {0}", state.peerName)
+        }()
         ZStack {
             CD.ink.ignoresSafeArea()
             ScreenGlow(color: failed ? CD.dangerText : CD.accent, alpha: 0.14, centerY: 240, radius: 240)
             ScrollView {
                 VStack(spacing: 16) {
-                    Text(done ? "Welcome to your new \(Platform.deviceNoun)" : failed ? "Move paused"
-                         : state.phase == .importing ? "Adding to your library…" : "Moving from \(state.peerName)")
+                    Text(title)
                         .displayStyle(22).multilineTextAlignment(.center).padding(.top, 24)
                     SwitchRing(fraction: f, done: done, failed: failed)
                     if let r = receiving, !done {
-                        Text("Batch \(state.batch + 1) of \(state.batches) · \(Int(r.fraction * 100))%" + (r.bytesPerSec > 0 ? " · \(Fmt.rate(r.bytesPerSec))" : ""))
+                        Text(tr("Batch {0} of {1}", state.batch + 1, state.batches) + " · \(Int(r.fraction * 100))%" + (r.bytesPerSec > 0 ? " · \(Fmt.rate(r.bytesPerSec))" : ""))
                             .monoStyle(13, color: CD.textDim)
                     }
                     GlassCard(radius: 26, fill: CD.glass, border: CD.hairline, padding: .all(6)) {
-                        if state.photosTotal + state.photos > 0 { count(CdIcons.photo, "Photos", "\(state.photos) / \(state.photosTotal)") }
+                        if state.photosTotal + state.photos > 0 { count(CdIcons.photo, tr("Photos"), "\(state.photos) / \(state.photosTotal)") }
                         if state.videosTotal + state.videos > 0 {
                             if state.photosTotal + state.photos > 0 { RowSeparator() }
-                            count(CdIcons.video, "Videos", "\(state.videos) / \(state.videosTotal)")
+                            count(CdIcons.video, tr("Videos"), "\(state.videos) / \(state.videosTotal)")
                         }
                         if state.contactsTotal > 0 {
                             RowSeparator()
-                            count(CdIcons.contacts, "Contacts", "\(state.contactsAdded) added" + (state.contactsSkipped > 0 ? " · \(state.contactsSkipped) already here" : ""))
+                            count(CdIcons.contacts, tr("Contacts"), tr("{0} added", state.contactsAdded) + (state.contactsSkipped > 0 ? " · " + tr("{0} already here", state.contactsSkipped) : ""))
                         }
-                        if state.files > 0 { RowSeparator(); count(CdIcons.doc, "Files", "\(state.files) in inbox") }
+                        if state.files > 0 { RowSeparator(); count(CdIcons.doc, tr("Files"), tr("{0} in inbox", state.files)) }
                     }
                     if let e = state.error { Text(e).body(13, CD.dangerText).multilineTextAlignment(.center) }
                     if state.failedItems > 0 {
-                        Text("\(state.failedItems) item(s) couldn't be added to Photos and were put in your inbox.").body(12, CD.amber)
+                        Text(tr("{0} item(s) couldn't be added to Photos and were put in your inbox.", state.failedItems)).body(12, CD.amber)
                             .multilineTextAlignment(.center)
                     }
-                    FootNote("Photos and videos keep their original dates.", icon: CdIcons.shield)
+                    FootNote(tr("Photos and videos keep their original dates."), icon: CdIcons.shield)
                     HStack(spacing: 10) {
-                        if done || failed { PillButton("Done") { importer.close(); onHide() } }
+                        if done || failed { PillButton(tr("Done")) { importer.close(); onHide() } }
                         else {
-                            PillButton("Stop", style: .danger) { importer.stop(); onHide() }
-                            PillButton("Hide", style: .glass, action: onHide)
+                            PillButton(tr("Stop"), style: .danger) { importer.stop(); onHide() }
+                            PillButton(tr("Hide"), style: .glass, action: onHide)
                         }
                     }
                     .padding(.top, 8)
@@ -192,6 +197,13 @@ struct SwitchReceiveScreen: View {
         }
         .padding(12)
     }
+}
+
+/// One translated sentence with `part` (a device name) picked out in the accent colour.
+private func switchAccentText(_ sentence: String, accenting part: String) -> Text {
+    var attr = AttributedString(sentence)
+    if let r = attr.range(of: part) { attr[r].foregroundColor = CD.accent }
+    return Text(attr)
 }
 
 private struct SwitchRing: View {

@@ -175,7 +175,7 @@ private struct SelfNode: View {
                 .frame(width: RadarCanvas.selfD, height: RadarCanvas.selfD)
                 Text(name).displayStyle(14, tracking: 0).lineLimit(1).truncationMode(.tail)
                     .padding(.top, 12)
-                Text(onTap != nil ? "you · tap to rename" : "you").body(11, CD.textDim)
+                Text(onTap != nil ? tr("you · tap to rename") : tr("you")).body(11, CD.textDim)
                     .padding(.top, 4)
             }
             .frame(width: RadarCanvas.selfW)
@@ -184,8 +184,8 @@ private struct SelfNode: View {
         .buttonStyle(PressableStyle())
         .disabled(onTap == nil)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Your device, \(name)")
-        .accessibilityHint(onTap != nil ? "Double-tap to rename" : "")
+        .accessibilityLabel(tr("Your device, {0}", name))
+        .accessibilityHint(onTap != nil ? tr("Double-tap to rename") : "")
         .accessibilityAddTraits(onTap != nil ? .isButton : [])
     }
 }
@@ -206,7 +206,7 @@ private struct PeerNode: View {
                     .overlay(Circle().strokeBorder(Color.white.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [3, 3])))
                 Text(name).font(.cd(13, weight: .semibold)).foregroundColor(CD.textPrimary)
                     .lineLimit(1).truncationMode(.tail)
-                Text(reachable ? "Wi-Fi" : "Connecting…").font(.cd(11, weight: .semibold)).foregroundColor(CD.textDim)
+                Text(reachable ? "Wi-Fi" : tr("Connecting…")).font(.cd(11, weight: .semibold)).foregroundColor(CD.textDim)
                     .lineLimit(1)
             }
             .frame(width: RadarCanvas.nodeW)
@@ -216,7 +216,7 @@ private struct PeerNode: View {
         .disabled(!reachable)
         .opacity(reachable ? 1 : 0.6)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Send to \(name)" + (reachable ? ", seen over Wi-Fi" : ", not reachable yet"))
+        .accessibilityLabel(reachable ? tr("Send to {0}, seen over Wi-Fi", name) : tr("Send to {0}, not reachable yet", name))
         .accessibilityAddTraits(.isButton)
         .pointerHover()
     }

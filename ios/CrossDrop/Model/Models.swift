@@ -28,7 +28,7 @@ struct Peer: Identifiable, Equatable {
     var isReachable: Bool { host != nil && port > 0 }
 
     /// Shown when a sighting carries no name of its own (partial resolve).
-    static let unnamed = "Nearby device"
+    static var unnamed: String { tr("Nearby device") }
 }
 
 enum Direction: String { case sending = "SENDING", receiving = "RECEIVING" }
@@ -163,13 +163,14 @@ struct HistoryEntry: Codable, Identifiable {
 }
 
 enum Fmt {
-    private static let byteFormatter: ByteCountFormatter = {
-        let f = ByteCountFormatter()
-        f.countStyle = .file
-        f.allowsNonnumericFormatting = false   // "0 KB", not "Zero KB"
-        return f
-    }()
-    static func bytes(_ n: Int64) -> String { byteFormatter.string(fromByteCount: n) }
+    /// Same shape as Android's `formatBytes` ("1.2 MB", "340 KB", "12 B"): units stay Latin in every language, digits follow the app locale.
+    static func bytes(_ n: Int64) -> String {
+        let d = Double(n), loc = I18n.locale
+        if n >= 1 << 30 { return String(format: "%.2f GB", locale: loc, d / Double(1 << 30)) }
+        if n >= 1 << 20 { return String(format: "%.1f MB", locale: loc, d / Double(1 << 20)) }
+        if n >= 1 << 10 { return String(format: "%.0f KB", locale: loc, d / Double(1 << 10)) }
+        return "\(n) B"
+    }
     static func rate(_ bps: Int64) -> String { bytes(bps) + "/s" }
 }
 
