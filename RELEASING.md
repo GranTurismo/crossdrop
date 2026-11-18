@@ -131,7 +131,7 @@ Set up 2026-11-17, nothing in the repository holds a certificate or a provisioni
   reads and prints the state). Apple's own review then takes about a day.
 - **It skips itself** (with a notice) when `ios/project.yml` still has the same `CURRENT_PROJECT_VERSION` as the previous
   release, because App Store Connect refuses a build number it has seen. To ship an Apple update, bump
-  `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` there before tagging (last uploaded: 1.3.0, build 4).
+  `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` there before tagging (last uploaded: 1.4.0, build 5; its submission to App Review is still to do — see below).
 - **The Mac downloads** are signed with the Developer ID certificate and notarized with the same API key (no Apple
   ID password anywhere); macOS opens them with a double-click. The certificate expires **2027-12-07**: renew it at
   developer.apple.com → Certificates (type "Developer ID Application"), export the new identity and replace the four
