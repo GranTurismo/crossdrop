@@ -1,0 +1,5 @@
+# Platform/brand name used as a tab label (Mac and Browser: only Browser is translated)
+Windows
+# SimpleDateFormat patterns, not display text
+MMM d
+MMM d, HH:mm

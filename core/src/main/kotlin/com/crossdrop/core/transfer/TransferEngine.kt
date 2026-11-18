@@ -8,6 +8,7 @@ import com.crossdrop.core.delta.ChunkCodec
 import com.crossdrop.core.delta.ChunkEntry
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.delta.FastCdc
+import com.crossdrop.core.i18n.tr
 import java.io.EOFException
 import java.io.File
 import com.crossdrop.core.protocol.*
@@ -180,7 +181,7 @@ class TransferEngine(
             runCatching { io?.write(FrameType.CANCEL, Cancel("sender cancelled").encode()) }
             throw e
         } catch (e: Exception) {
-            emit(TransferEvent.Failed(e.message ?: "transfer failed", e))
+            emit(TransferEvent.Failed(e.message ?: tr("transfer failed"), e))
         } finally {
             runCatching { socket?.close() }
         }
@@ -232,7 +233,7 @@ class TransferEngine(
         if (doneType != FrameType.DONE) throw ProtocolException("expected DONE echo, got $doneType")
         val echo = donePayload.decode<Done>()
         if (!echo.sha256.equals(sha, ignoreCase = true)) {
-            emit(TransferEvent.Failed("integrity check failed"))
+            emit(TransferEvent.Failed(tr("integrity check failed")))
             return
         }
         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
@@ -299,7 +300,7 @@ class TransferEngine(
                         readFully(input, bytes)
                         pos = offs[ci] + bytes.size
                         if (!Blake3.hash(bytes).contentEquals(chunks[ci].hash))
-                            throw ProtocolException("${file.meta.name} changed mid-transfer")
+                            throw ProtocolException(tr("{0} changed mid-transfer", file.meta.name))
                         io.write(FrameType.CHUNK, ChunkCodec.encodeChunk(index, ci, bytes))
                         sent += bytes.size; windowBytes += bytes.size
                         val now = System.currentTimeMillis()
@@ -359,7 +360,7 @@ class TransferEngine(
                 }
             }
             if (fileBytes != file.meta.size)
-                throw ProtocolException("${file.meta.name} changed mid-transfer")
+                throw ProtocolException(tr("{0} changed mid-transfer", file.meta.name))
             val root = fileHasher.digest()
             io.write(FrameType.PUSH_END, ChunkCodec.encodePushEnd(index, count, root))
             roots += root.toHex()
@@ -380,7 +381,7 @@ class TransferEngine(
         if (doneType != FrameType.DONE) throw ProtocolException("expected DONE echo, got $doneType")
         val echo = donePayload.decode<Done>()
         if (echo.roots != null && echo.roots != roots) {
-            emit(TransferEvent.Failed("integrity check failed"))
+            emit(TransferEvent.Failed(tr("integrity check failed")))
             return
         }
         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
@@ -393,7 +394,7 @@ class TransferEngine(
         while (left > 0) {
             val s = input.skip(left)
             if (s > 0) { left -= s; continue }
-            if (input.read() < 0) throw ProtocolException("source truncated mid-transfer")
+            if (input.read() < 0) throw ProtocolException(tr("source truncated mid-transfer"))
             left--
         }
     }
@@ -402,7 +403,7 @@ class TransferEngine(
         var off = 0
         while (off < buf.size) {
             val n = input.read(buf, off, buf.size - off)
-            if (n < 0) throw ProtocolException("source truncated mid-transfer")
+            if (n < 0) throw ProtocolException(tr("source truncated mid-transfer"))
             off += n
         }
     }
@@ -479,7 +480,7 @@ class TransferEngine(
             runCatching { io?.write(FrameType.CANCEL, Cancel("receiver cancelled").encode()) }
             throw e
         } catch (e: Exception) {
-            emit(TransferEvent.Failed(e.message ?: "receive failed", e))
+            emit(TransferEvent.Failed(e.message ?: tr("receive failed"), e))
         } finally {
             runCatching { socket.close() }
         }
@@ -532,7 +533,7 @@ class TransferEngine(
                         val localSha = digest.digest().toHex()
                         io.write(FrameType.DONE, Done(offer.transferId, localSha).encode())
                         if (!localSha.equals(done.sha256, ignoreCase = true)) {
-                            emit(TransferEvent.Failed("integrity check failed"))
+                            emit(TransferEvent.Failed(tr("integrity check failed")))
                             return
                         }
                         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
@@ -774,7 +775,7 @@ class TransferEngine(
                                 throw ProtocolException("${meta.name} ended inconsistently")
                             val root = fileHasher.digest()
                             if (!root.contentEquals(end.root))
-                                throw ProtocolException("${meta.name} failed integrity check")
+                                throw ProtocolException(tr("{0} failed integrity check", meta.name))
                             out.close()
                             java.nio.file.Files.move(part.toPath(), target.toPath(),
                                 java.nio.file.StandardCopyOption.REPLACE_EXISTING)
@@ -834,7 +835,7 @@ class TransferEngine(
             // Content assembled but the root disagrees — drop the indexes we
             // trusted so a retry re-chunks baselines rather than re-failing.
             offer.files.forEach { runCatching { delta.invalidate(it) } }
-            emit(TransferEvent.Failed("integrity check failed"))
+            emit(TransferEvent.Failed(tr("integrity check failed")))
             return
         }
         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))

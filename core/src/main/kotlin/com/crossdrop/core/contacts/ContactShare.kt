@@ -1,5 +1,7 @@
 package com.crossdrop.core.contacts
 
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.core.protocol.MAX_INLINE_TEXT
 
 /**
@@ -53,10 +55,13 @@ object ContactShare {
 
     /** What the prompt and history call these cards: "Jane Doe", "Jane Doe and 2 others". */
     fun title(contacts: List<VContact>): String = when (contacts.size) {
-        0 -> "Contact"
+        0 -> tr("Contact")
         1 -> contacts.first().displayName
-        2 -> "${contacts[0].displayName} and ${contacts[1].displayName}"
-        else -> "${contacts.first().displayName} and ${contacts.size - 1} others"
+        2 -> tr("{0} and {1}", contacts[0].displayName, contacts[1].displayName)
+        else -> {
+            val others = contacts.size - 1
+            trPlural(others, "{0} and 1 other", "{0} and {n} others", contacts.first().displayName)
+        }
     }
 
     private fun safeName(s: String): String =

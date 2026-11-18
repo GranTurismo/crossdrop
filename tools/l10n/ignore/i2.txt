@@ -1,0 +1,29 @@
+# vCard 3.0 syntax written to .vcf files (not UI)
+;TYPE=CELL
+;TYPE=HOME
+;TYPE=WORK
+;TYPE=MAIN
+;TYPE=FAX
+;TYPE=PAGER
+NICKNAME:
+ORG:
+TITLE:
+EMAIL;TYPE=INTERNET
+;TYPE=
+URL:
+BDAY:%04d-%02d-%02d
+BDAY:--%02d-%02d
+PHOTO;ENCODING=b;TYPE=JPEG:
+# temp folder / file names, never shown
+picked-switch-(UUID().uuidString)
+CrossDrop_(f.string(from: Date())).(ext)
+# History entry summary is stored as English identity text; the Transfers screen maps it to tr("Switch phones") when drawing it (same as Android TransfersScreen)
+Switch phones
+# Number / rate formatting only (digits, "·" and "/" separators around already-translated text)
+ · (Fmt.rate(s.bytesPerSec))
+ · (Int(r.fraction * 100))%
+ · (Fmt.rate(r.bytesPerSec))
+(state.photos) / (state.photosTotal)
+(state.videos) / (state.videosTotal)
+(Int(fraction * 100))
+(Fmt.bytes(job.received)) / (Fmt.bytes(job.total))

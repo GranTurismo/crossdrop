@@ -1,0 +1,8 @@
+# Strings the audit should not flag: brand names and technical terms that are never translated.
+CrossDrop
+Wi-Fi
+Bluetooth
+QR
+WebDAV
+Sora
+Contact

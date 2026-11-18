@@ -1,0 +1,66 @@
+# debug-only hooks (Developer section / dev_* intents)
+Vault @$host:$resolved
+# MediaStore folder names and EXIF date format, not UI text
+Pictures/
+Movies/
+Pictures/
+yyyy:MM:dd HH:mm:ss
+DCIM/
+# inbox file name (a name on disk, not UI text)
+Contacts from ${sanitize(_state.value?.peerName ?: 
+# temp-file names, never shown
+put-${System.nanoTime()}.tmp
+# error text of the vault host, served to browsers and sent to peers over the wire (English by design)
+"$it" is not a valid file name on a Windows host
+# already wrapped: the second literal of a trPlural(...) call
+Sending to {n} devices
+# vCard syntax, not UI text
+BEGIN:VCARD
+VERSION:3.0
+BDAY:$it
+NOTE:
+PHOTO;ENCODING=b;TYPE=$kind:
+END:VCARD
+# wire-protocol / diagnostic errors: only the technical detail after "Failed:", not a message written for people
+short CHUNK_MAP
+bad CHUNK_MAP entry count $count
+bad CHUNK_MAP header
+short CHUNK_REQ
+bad CHUNK_REQ count $count
+short PUSH_CHUNK
+bad PUSH_CHUNK header
+oversized PUSH_CHUNK
+bad PUSH_END
+bad PUSH_END header
+short CHUNK
+bad CHUNK header
+payload too large for QR v10: ${data.size} B
+expected HELLO_ACK, got $ackType
+expected ACCEPT/DECLINE
+expected DONE echo, got $doneType
+expected CHUNK_REQ, got $reqType
+CHUNK_REQ index out of range
+expected DONE echo, got $doneType
+expected HELLO, got $helloType
+expected OFFER, got $offerType
+short DATA frame
+bad file index $fileIndex
+unexpected chunk-map part ${mp.fileIndex}/${mp.part}
+expected CHUNK_MAP, got $type
+unexpected chunk ${c.fileIndex}/${c.chunkIndex}
+chunk ${c.chunkIndex} failed hash check
+duplicate chunk ${c.chunkIndex}
+expected CHUNK, got $type
+unexpected push chunk for file ${c.fileIndex}
+expected PUSH_CHUNK, got $type
+expected DONE, got $type
+expected HELLO_ACK, got $t
+expected VAULT_DIR, got $t
+expected VAULT_ATTR, got $t
+expected VAULT_DATA, got $t
+expected VAULT_PUSH_ACK, got $t
+expected VAULT_DONE, got $ft
+^(CON|PRN|AUX|NUL|COM[1-9¹²³]|LPT[1-9¹²³]|CONIN\$|CONOUT\$)$
+expected HELLO, got $t0
+expected VAULT_DATA, got $t
+expected VAULT_DONE

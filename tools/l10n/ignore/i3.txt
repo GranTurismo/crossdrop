@@ -1,0 +1,43 @@
+# i3: iOS Transfer / Transfers / Inbox screens, Services, Model. Deliberately left English (or false positives).
+# history entry id: identity key
+(ts)-(peerName)-(summary)
+# URL scheme to the macOS Privacy settings pane
+x-apple.systempreferences:com.apple.preference.security?Privacy_LocalNetwork
+# debug-only (-dev_send_contact): made-up contact card
+Test Card
+# debug-only (-dev_vault_peer): fake vault beacon name
+Vault @(h):(p)
+# Bonjour service instance name (network identity, not shown)
+crossdrop-(instanceId)
+xdrop-vault-(vaultId)
+# on-disk folder name for received files; Files-app visible path, identity
+Received
+Drive
+/Library
+# debug-only seed data / fake sessions (#if DEBUG): believable file and device names
+Holiday in Tbilisi.mov
+Boarding pass.pdf
+Project Files.zip
+Podcast ep 12.m4a
+Résumé 2026.docx
+MacBook Air
+Pixel 9 Pro
+# macOS activity reason (visible only in pmset/Activity Monitor, never in the app UI)
+CrossDrop is transferring or sharing files
+# temp folder names
+picked-(UUID().uuidString)
+vault-preview-(UUID().uuidString)
+# default drive name: it is advertised on the network under the owner's device name and shown on other people's
+# screens in their own language, so it stays a name (Android and desktop leave it as is)
+(deviceName()) Drive
+# numbers, sizes and speeds only (formatted values, no words)
+($0.0.label) (Fmt.bytes($0.1))
+(Fmt.bytes(file.size)) · (Self.whenLabel(file.modified))
+(Fmt.bytes(group.bytesDone)) / (Fmt.bytes(group.bytesTotal))
+(Fmt.bytes(session.bytesDone)) / (Fmt.bytes(session.bytesTotal))
+Δ (Fmt.bytes(session.bytesSkipped))
+(Int(f * 100))
+(Int(s.fraction * 100))%
+(Int(session.fraction * 100))
+(Int(g.fraction * 100))%
+(fileCount ?? 0)

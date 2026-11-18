@@ -1,0 +1,54 @@
+# mDNS service instance names, never shown
+crossdrop-$instanceId
+# mDNS service instance names, never shown
+xdrop-vault-$vaultId
+# mDNS service instance names, never shown
+crossdrop-${System.nanoTime().toString(16)}
+# folder / env names used by the forbidden-root guard
+Library
+# folder / env names used by the forbidden-root guard
+ProgramFiles(x86)
+# log text
+}, root=$rootLabel)
+# HTTP protocol text of the loopback media bridge (never shown)
+UTF-8
+# HTTP protocol text of the loopback media bridge (never shown)
+GET 
+# HTTP protocol text of the loopback media bridge (never shown)
+HTTP/1.1 $status ${if (status == 206) 
+# HTTP protocol text of the loopback media bridge (never shown)
+Not Found
+# HTTP protocol text of the loopback media bridge (never shown)
+Range Not Satisfiable
+# HTTP protocol text of the loopback media bridge (never shown)
+Error
+# file-system paths
+Library/Application Support/CrossDrop
+# file-system paths
+AppData/Local
+# file-system paths
+Pictures
+# file-system paths
+CrossDrop/
+# file-system paths
+\WindowsApps\
+# file-system paths
+Microsoft\Windows\SendTo\CrossDrop.lnk
+# macOS file manager is a product name (File Explorer is wrapped)
+Finder
+# comment line inside the settings .properties file
+CrossDrop settings
+# PowerShell script text
+))};$s.Save()
+# PowerShell script text
+-NoProfile
+# PowerShell script text
+-NonInteractive
+# PowerShell script text
+-ExecutionPolicy
+# PowerShell script text
+Bypass
+# PowerShell script text
+-Command
+# second form of a trPlural (the audit only sees the first literal)
+Send to {n} devices

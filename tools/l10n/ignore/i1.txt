@@ -1,0 +1,22 @@
+# temp-folder name for picked files, never shown
+picked-(UUID().uuidString)
+# cipher names in the About card (technical names)
+HKDF-SHA256
+ChaCha20-Poly1305
+# the rotating instance id label under the device name: an identifier in monospace
+id (Self.formatId(container.instanceId))
+# debug-only (Settings > Developer: add peer by address, DEBUG builds)
+Developer
+Add peer by address
+Place a peer on the radar manually
+host:port — e.g. 192.168.1.20:43595
+Places a peer on the radar as if discovery had found it. Useful when Bonjour can't cross a network.
+port :(container.listenerPort) · new every launch
+ · :(container.listenerPort)
+# language-neutral prefix (size and a dot) in front of the translated countdown sentence
+(Fmt.bytes(total)) · 
+# vault root label and a dot in front of the translated "no one connected" / "{0} connected"
+(s.rootLabel) · 
+# second (plural) form of a trPlural call: the audit only recognises the first literal after tr(
+Add {n} contacts?
+Added {n} contacts

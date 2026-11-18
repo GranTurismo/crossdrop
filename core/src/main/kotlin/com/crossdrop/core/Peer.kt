@@ -1,10 +1,15 @@
 package com.crossdrop.core
 
+import com.crossdrop.core.i18n.tr
+
 /** How a peer was sighted. Multiple sources can converge on the same [Peer.instanceId]. */
 enum class DiscoverySource { NSD, BLE }
 
-/** Shown when a sighting carries no name of its own (BLE without a device name, partial mDNS resolve). */
-const val UNNAMED_PEER = "Nearby device"
+/**
+ * Shown when a sighting carries no name of its own (BLE without a device name, partial mDNS resolve).
+ * A getter, not a constant: the text is translated when it is read.
+ */
+val UNNAMED_PEER: String get() = tr("Nearby device")
 
 /** A reachable (or at least visible) CrossDrop instance on the local network. */
 data class Endpoint(val host: String, val port: Int) {

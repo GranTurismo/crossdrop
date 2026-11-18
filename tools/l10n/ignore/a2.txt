@@ -1,0 +1,20 @@
+# audit false positive: the second literal of a one-line trPlural(n, "1 contact", "Send {n} contacts")
+Send {n} contacts
+# file-name / SimpleDateFormat patterns (never shown as text)
+yyyyMMdd_HHmmss_SSS
+CrossDrop_$stamp.$ext
+MMM d
+# debug-only suffix (BuildConfig.DEBUG)
+port :$port · new every launch
+# technical names
+Bluetooth LE
+HKDF-SHA256
+ChaCha20-Poly1305
+# Developer section (debug tools, stays English)
+Developer
+Loopback self-test
+Send a 4 MB file to this device
+Add peer by address
+Place a peer on the radar manually
+# identity comparison with the persisted (English) history summary; the displayed text is tr("Switch phones")
+Switch phones

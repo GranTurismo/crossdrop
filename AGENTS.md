@@ -352,6 +352,77 @@ the merged sightings with it.
 - Android `NsdDiscovery.publish` waits for an in-flight unregister before re-registering (same
   name registered too early gets the `(2)` rename).
 
+## Languages (localization)
+
+CrossDrop is translated into Georgian, Hindi, Indonesian, Arabic, Persian, Spanish (neutral Latin American), Brazilian
+Portuguese, Russian and Turkish; English is the code itself. The language follows the phone (first of the user's system
+languages we ship, else English; Android 13+ and iOS also list the languages as per-app languages).
+
+- **Every user-visible string goes through `tr()`**: the English text is the key (`tr("Send to {0}", name)`,
+  `trPlural(n, "1 file", "{n} files")`). Runtime: `core/.../i18n/I18n.kt` (Android + desktop) and its Swift twin
+  `ios/CrossDrop/Services/I18n.swift`: keep the two (and the plural rules) in step. Catalogs are `l10n/<lang>.json`,
+  shared by all platforms (Android assets, desktop resources, iOS folder reference). A missing entry shows English.
+- Never call `tr()` in a constant, enum constructor, `static let`, `lazy` or `remember { }` cache: the language is read at call
+  time. Keep one string literal per call (no `+`, no `$x`/`\(x)` inside: use `{0}` placeholders); translate whole sentences.
+- `tools/l10n/l10n.py`: `extract` (code -> `tools/l10n/source/en.json`), `check` (every language complete, placeholders and
+  plural forms right), `audit` (user-visible literals not yet wrapped; intentional exceptions go in `tools/l10n/audit_ignore.txt`),
+  `plist` (iOS permission texts -> `InfoPlist.strings`). `core` tests (`L10nCatalogTest`) fail when a catalog is incomplete.
+- Adding a string: wrap it, run `extract`, add the key to all nine `l10n/*.json`, run `check`. See `tools/l10n/README.md`.
+- **In-app language list**: a globe button on the welcome tour and on the radar, and a "Language" row at the top of Settings, open
+  `ui/language/LanguageUi.kt` (shared with desktop; Swift twin `ios/CrossDrop/UI/Language/LanguageUi.swift`): "Automatic" plus each
+  language in its own script. The pick is stored (Android prefs / desktop `settings.properties` / iOS UserDefaults key `language`,
+  "auto" = follow the phone) and wins over the system language (`I18n.setChoice`). It applies instantly: on Kotlin the runtime's
+  `onRead` hook reads a Compose snapshot state (`LanguageReactivity`), so every `tr()` in a composable refreshes by itself and
+  no state is lost; on iOS `I18nModel.version` rebuilds the tree (`.id` in `RootView`). Layout direction follows the language
+  (not only the phone's). Debug: iOS `-dev_language_sheet YES`; `-dev_lang <code>` still wins over a saved pick.
+- Scripts: Arabic and Persian are right to left (desktop sets the layout direction in `Main.kt`; Android and iOS follow the
+  locale). Never apply negative or positive letter-spacing or forced capitals to translated text directly: use `trackingEm()` /
+  `.caps()` (Kotlin) and `CDFont.tracking()` / `.caps` (Swift), which switch them off for Arabic, Persian, Hindi and Georgian.
+  Sora (display font) is Latin-only: other scripts use the system font.
+- Translations are machine-made: ask a native reader to review before a store release. Out of scope so far: the browser pages
+  (`share.html`, `vault.html`, `VaultHttp`), the iOS share extension, and the Play / App Store listing text.
+- Test a language: the in-app list, or Android 13+ `adb shell cmd locale set-app-locales com.crossdrop.debug --locales ar` (when the list is on Automatic); iOS launch args
+  `-dev_lang ar`; desktop `-Duser.language=ar`.
+
+## First-run welcome
+
+`ui/welcome/WelcomeScreen.kt` is a skippable four-page tour (find → send → "Send to anyone" → private) with a
+small animation per page. It is platform-free and shared verbatim with `:desktop` (`sharedUi` in
+`desktop/build.gradle.kts`); iOS has a SwiftUI twin in `ios/CrossDrop/UI/Welcome/WelcomeScreen.swift`
+(keep the copy and the page order in step). Shown once: `AppContainer.welcomeSeen` (prefs `welcome_seen`, also
+true when the history already has an entry, so an update never greets someone who has used the app). Settings →
+"Show the welcome tour" replays it. Android's `Root` doesn't compose the radar while it is up, so the
+permission prompts follow the tour; iOS holds discovery back (`AppContainer.start`/`restartDiscovery` check
+`welcomeSeen`) so the Local Network prompt does too. Debug hooks: Android `-e dev_skip_welcome 1`; iOS launch args
+`-dev_skip_welcome YES`, `-dev_welcome YES` (force it), `-dev_welcome_page <0-3>`. A fresh install in tests
+(`pm clear`, a new simulator) shows the tour first, so pass the skip hook.
+
+## "Can't see the other device?" help and Connect directly
+
+The radar says something when it can help: `core/connect/ConnectAdvice` decides (no network for 2 s → "You're not on
+Wi-Fi"; on a network but 0 devices for 10 s → "Can't see the other device?"), `ui/connect/ConnectHelp.kt` is the
+card + plain how-to guide (shared with `:desktop`; Swift twin `ios/CrossDrop/UI/Connect/ConnectHelp.swift`, keep the
+rule, thresholds and copy in step). "Has a network" is Android `net/LocalNetworkMonitor` (Wi-Fi/Ethernet transport or an
+`ap*`/`swlan*` interface), desktop `LocalIp` polled every 4 s, iOS `AppContainer.localNetworkUp()` (private IPv4 on `en*`/`bridge*`).
+The card also hides while a direct link is on.
+
+**Connect directly (Android only)**: `net/DirectLink` starts Android's *local-only hotspot* (`startLocalOnlyHotspot`:
+random SSID/password, no internet shared, API 26+; needs `CHANGE_WIFI_STATE` + Nearby devices on 13+, or the Location permission *and* Location switched on before 13, so
+`ACCESS_FINE_LOCATION` is declared through API 32 and asked for only here, after an explanation). The phone answers a hotspot request whenever it
+likes or never, so `core/connect/DirectLinkMachine` (tested) tags every request: a 20 s start timeout, Stop that cancels a start in flight, and late
+"started"/"stopped" answers for an older request are ignored (the late hotspot is closed).
+`ui/connect/ConnectDirectScreen` shows `WifiQr.payload(...)` (`core/connect/WifiQr`, the standard `WIFI:T:WPA;S:..;P:..;;`
+text: Android and iPhone cameras offer to join, no app needed) plus name/password with copy buttons for devices that
+can't scan. While it is on the radar shows a "Direct connection is on" row; it stops on Stop, after 30 min, or when the
+system or process ends it. A device with no app then uses the normal "Send to anyone" QR over that network. iPhone/Mac/Windows
+can't create a network from an app, so they only get the guide. Debug hooks: Android `-e dev_directlink on|fail`.
+Proven on the emulator (it does create the hotspot; the QR decodes with ZXing to the same SSID/password the system
+reports). **Not proven**: two real phones, i.e. a second device joining and then discovering this one over the hotspot
+(NSD on the ap interface differs by Android version/maker). If that fails, add a gateway probe: the guest tries the
+gateway address on a fixed port that answers with this phone's listener port. Phone makers' hotspot quirks (some drop the
+phone's own Wi-Fi) need a Samsung and a Xiaomi/Oppo to test. Not built: an in-app "scan a code to join" (needs a QR decoder; the
+system camera does the job today), a Windows/Mac "Join" helper.
+
 ## Wire protocol
 
 `[u32 BE len][u8 type][payload]`; HELLO/HELLO_ACK cleartext JSON, everything
