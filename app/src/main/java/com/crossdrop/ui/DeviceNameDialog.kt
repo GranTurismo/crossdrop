@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.ui.theme.Accent
 import com.crossdrop.ui.theme.HairlineStrong
 import com.crossdrop.ui.theme.InkSheet
@@ -42,21 +43,21 @@ fun DeviceNameDialog(current: String, onDone: (String?) -> Unit) {
         onDismissRequest = { onDone(null) },
         containerColor = InkSheet,
         shape = RoundedCornerShape(28.dp),
-        title = { Text("Name others see", style = displayStyle(20)) },
+        title = { Text(tr("Name others see"), style = displayStyle(20)) },
         text = {
             OutlinedTextField(
                 value = text, onValueChange = { text = it },
-                singleLine = true, label = { Text("Device name") },
+                singleLine = true, label = { Text(tr("Device name")) },
                 shape = RoundedCornerShape(16.dp), colors = fieldColors(),
             )
         },
         confirmButton = {
             TextButton(onClick = { onDone(text) }, enabled = text.isNotBlank()) {
-                Text("Save", color = Accent, fontWeight = FontWeight.SemiBold)
+                Text(tr("Save"), color = Accent, fontWeight = FontWeight.SemiBold)
             }
         },
         dismissButton = {
-            TextButton(onClick = { onDone(null) }) { Text("Cancel", color = TextDim, fontWeight = FontWeight.SemiBold) }
+            TextButton(onClick = { onDone(null) }) { Text(tr("Cancel"), color = TextDim, fontWeight = FontWeight.SemiBold) }
         },
     )
 }
@@ -92,10 +93,10 @@ fun AddPeerDialog(onDone: () -> Unit, onAdd: (host: String, port: Int) -> Unit) 
             TextButton(
                 onClick = { parsed?.let { (h, p) -> onAdd(h, p) } },
                 enabled = parsed != null,
-            ) { Text("Add", color = Accent, fontWeight = FontWeight.SemiBold) }
+            ) { Text(tr("Add"), color = Accent, fontWeight = FontWeight.SemiBold) }
         },
         dismissButton = {
-            TextButton(onClick = onDone) { Text("Cancel", color = TextDim, fontWeight = FontWeight.SemiBold) }
+            TextButton(onClick = onDone) { Text(tr("Cancel"), color = TextDim, fontWeight = FontWeight.SemiBold) }
         },
     )
 }
@@ -108,27 +109,27 @@ fun SendTextDialog(initial: String, target: String, onDone: (String?) -> Unit) {
         onDismissRequest = { onDone(null) },
         containerColor = InkSheet,
         shape = RoundedCornerShape(28.dp),
-        title = { Text("Send text to $target", style = displayStyle(20), maxLines = 2) },
+        title = { Text(tr("Send text to {0}", target), style = displayStyle(20), maxLines = 2) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = text, onValueChange = { text = it },
-                    minLines = 3, maxLines = 8, label = { Text("Text or link") },
+                    minLines = 3, maxLines = 8, label = { Text(tr("Text or link")) },
                     shape = RoundedCornerShape(16.dp), colors = fieldColors(),
                 )
                 Text(
-                    "They can copy it or open the link with one tap.",
+                    tr("They can copy it or open the link with one tap."),
                     color = TextDim, fontSize = 12.sp,
                 )
             }
         },
         confirmButton = {
             TextButton(onClick = { onDone(text) }, enabled = text.isNotBlank()) {
-                Text("Send", color = Accent, fontWeight = FontWeight.SemiBold)
+                Text(tr("Send"), color = Accent, fontWeight = FontWeight.SemiBold)
             }
         },
         dismissButton = {
-            TextButton(onClick = { onDone(null) }) { Text("Cancel", color = TextDim, fontWeight = FontWeight.SemiBold) }
+            TextButton(onClick = { onDone(null) }) { Text(tr("Cancel"), color = TextDim, fontWeight = FontWeight.SemiBold) }
         },
     )
 }

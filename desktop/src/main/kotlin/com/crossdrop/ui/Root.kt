@@ -50,6 +50,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.di.AppContainer
 import com.crossdrop.net.isTerminal
 import androidx.compose.ui.graphics.toComposeImageBitmap
@@ -65,11 +67,17 @@ import com.crossdrop.ui.theme.OnAccent
 import com.crossdrop.ui.transfer.TransferScreen
 import com.crossdrop.ui.transfers.TransfersScreen
 
-enum class Tab(val label: String) {
-    RADAR("Radar"),
-    TRANSFERS("Transfers"),
-    INBOX("Inbox"),
-    SETTINGS("Settings"),
+enum class Tab {
+    RADAR, TRANSFERS, INBOX, SETTINGS;
+
+    /** Read at call time so a language change is picked up (never cache a translated string). */
+    val label: String
+        get() = when (this) {
+            RADAR -> tr("Radar")
+            TRANSFERS -> tr("Transfers")
+            INBOX -> tr("Inbox")
+            SETTINGS -> tr("Settings")
+        }
 }
 
 /**
@@ -97,6 +105,10 @@ fun Root(container: AppContainer) {
     val listenerPort by container.listenerPort.collectAsState()
 
     var tabName by remember { mutableStateOf(Tab.RADAR.name) }
+    var welcome by remember { mutableStateOf(!container.welcomeSeen) }
+    val finishWelcome = { container.welcomeSeen = true; welcome = false }
+    val hasNetwork by container.hasNetwork.collectAsState()
+    var guideOpen by remember { mutableStateOf(false) }
     val tab = Tab.valueOf(tabName)
     var inboxCount by remember { mutableIntStateOf(container.inbox.list().size) }
     var historyTick by remember { mutableIntStateOf(0) }
@@ -151,7 +163,7 @@ fun Root(container: AppContainer) {
                         onClearPending = { container.pending.value = null },
                         onComposeText = { composingText = true },
                         onPickForSeveral = {
-                            val picked = com.crossdrop.platform.SystemActions.pickFiles(title = "Choose files to send")
+                            val picked = com.crossdrop.platform.SystemActions.pickFiles(title = tr("Choose files to send"))
                             container.openFiles(picked)
                         },
                         onShareToAnyone = { files -> container.qrShare.start(files) },
@@ -159,6 +171,8 @@ fun Root(container: AppContainer) {
                         onRename = container::setDeviceName,
                         selfPort = listenerPort,
                         nsdEnabled = nsdEnabled,
+                        hasNetwork = hasNetwork,
+                        onShowConnectGuide = { guideOpen = true },
                     )
                     Tab.TRANSFERS -> TransfersScreen(
                         groups = groups,
@@ -187,12 +201,25 @@ fun Root(container: AppContainer) {
                             inboxTick++
                         },
                         onClearHistory = { container.history.clear(); historyTick++ },
+                        onShowWelcome = { welcome = true },
                         vaultState = vaultHost,
                         onOpenDrive = { driveOpen = true },
                         refreshSignal = listOf(doneCount, inboxTick, historyTick),
                     )
                 }
             }
+        }
+
+        // ---- first-run welcome (skippable; Settings can replay it)
+        Overlay(true.takeIf { welcome }, fade = true) {
+            BackHandler { finishWelcome() }
+            com.crossdrop.ui.welcome.WelcomeScreen(onFinish = finishWelcome)
+        }
+
+        // ---- how to get two devices on one network
+        Overlay(true.takeIf { guideOpen }) {
+            BackHandler { guideOpen = false }
+            com.crossdrop.ui.connect.ConnectGuideScreen(onClose = { guideOpen = false })
         }
 
         // ---- live transfer (one device, or a send to several)
@@ -296,7 +323,7 @@ fun Root(container: AppContainer) {
                     .getData(java.awt.datatransfer.DataFlavor.stringFlavor) as? String
             }.getOrNull().orEmpty().take(4000)
         }
-        SendTextDialog(initial = clip, target = "devices nearby") { text ->
+        SendTextDialog(initial = clip, target = tr("devices nearby")) { text ->
             composingText = false
             if (!text.isNullOrBlank()) container.pending.value = com.crossdrop.ui.radar.Pending.Text(text)
         }
@@ -368,10 +395,10 @@ private fun SideNav(
                 Modifier.fillMaxWidth().height(66.dp).clip(RoundedCornerShape(26.dp)).background(bg)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) })
                     .semantics {
-                        contentDescription = t.label + when {
-                            t == Tab.INBOX && inboxCount > 0 -> ", $inboxCount files"
-                            t == Tab.TRANSFERS && transferLive -> ", transfer in progress"
-                            else -> ""
+                        contentDescription = when {
+                            t == Tab.INBOX && inboxCount > 0 -> trPlural(inboxCount, "{0}, 1 file", "{0}, {n} files", t.label)
+                            t == Tab.TRANSFERS && transferLive -> tr("{0}, transfer in progress", t.label)
+                            else -> t.label
                         }
                     },
                 horizontalAlignment = Alignment.CenterHorizontally,

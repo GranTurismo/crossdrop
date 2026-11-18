@@ -54,6 +54,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.SessionState
 import com.crossdrop.switchphones.SwitchImporter
 import com.crossdrop.switchphones.SwitchSender
@@ -128,62 +129,63 @@ fun SwitchSendScreen(
     Box(Modifier.fillMaxSize()) {
         ScreenGlow(alpha = 0.14f, centerY = 140.dp, radius = 240.dp)
         Column(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp)) {
-            BackHeader("Switch phones", onClose)
+            BackHeader(tr("Switch phones"), onClose)
             Column(
                 Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 Text(
                     buildAnnotatedString {
-                        append("Move everything to ")
-                        withStyle(SpanStyle(color = Accent)) { append(peerName) }
+                        val line = tr("Move everything to {0}", peerName)
+                        append(line)
+                        val at = line.indexOf(peerName)
+                        if (at >= 0) addStyle(SpanStyle(color = Accent), at, at + peerName.length)
                     },
                     style = displayStyle(28, tracking = -0.03f).copy(lineHeight = 32.sp),
                 )
                 Text(
-                    "Straight over Wi-Fi, encrypted, nothing uploaded. Works between Android and iPhone in both directions.",
+                    tr("Straight over Wi-Fi, encrypted, nothing uploaded. Works between Android and iPhone in both directions."),
                     color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp,
                 )
                 GroupCard {
                     PickRow(
-                        CdIcons.Photo, "Photos",
-                        if (!mediaOk) "Needs photo access" else p?.let { "%,d · %s".format(it.photos, formatBytes(it.photoBytes)) } ?: "Counting…",
+                        CdIcons.Photo, tr("Photos"),
+                        if (!mediaOk) tr("Needs photo access") else p?.let { "%,d · %s".format(it.photos, formatBytes(it.photoBytes)) } ?: tr("Counting…"),
                         photos && mediaOk, mediaOk,
                     ) { photos = it }
                     RowSeparator()
                     PickRow(
-                        CdIcons.Video, "Videos",
-                        if (!mediaOk) "Needs photo access" else p?.let { "%,d · %s".format(it.videos, formatBytes(it.videoBytes)) } ?: "Counting…",
+                        CdIcons.Video, tr("Videos"),
+                        if (!mediaOk) tr("Needs photo access") else p?.let { "%,d · %s".format(it.videos, formatBytes(it.videoBytes)) } ?: tr("Counting…"),
                         videos && mediaOk, mediaOk,
                     ) { videos = it }
                     RowSeparator()
                     PickRow(
-                        CdIcons.Contacts, "Contacts",
-                        if (!contactsOk) "Needs contacts access" else p?.let { "%,d".format(it.contacts) } ?: "Counting…",
+                        CdIcons.Contacts, tr("Contacts"),
+                        if (!contactsOk) tr("Needs contacts access") else p?.let { "%,d".format(it.contacts) } ?: tr("Counting…"),
                         contacts && contactsOk, contactsOk,
                     ) { contacts = it }
                 }
                 if (!mediaOk || !contactsOk) {
                     PillButton(
-                        "Allow access", {
+                        tr("Allow access"), {
                             launcher.launch(mediaPermissions() + Manifest.permission.READ_CONTACTS)
                         },
                         Modifier.fillMaxWidth(), style = PillStyle.Glass, icon = CdIcons.Lock,
                     )
                 }
                 if (p?.partialMedia == true) {
-                    FootNote("Only the photos you selected are visible to CrossDrop. Allow all photos to move your whole gallery.", icon = CdIcons.Help)
+                    FootNote(tr("Only the photos you selected are visible to CrossDrop. Allow all photos to move your whole gallery."), icon = CdIcons.Help)
                 }
                 FootNote(
-                    "Messages, apps and app data can't be moved by any app. Keep both screens on and on the same Wi-Fi " +
-                        "until it's done. If the connection drops, start again — it continues where it stopped.",
+                    tr("Messages, apps and app data can't be moved by any app. Keep both screens on and on the same Wi-Fi until it's done. If the connection drops, start again — it continues where it stopped."),
                     icon = CdIcons.Shield,
                 )
             }
             val any = (photos && mediaOk && (p?.photos ?: 0) > 0) || (videos && mediaOk && (p?.videos ?: 0) > 0) ||
                 (contacts && contactsOk && (p?.contacts ?: 0) > 0)
             PillButton(
-                "Start moving", { scope.launch { onStart(photos && mediaOk, videos && mediaOk, contacts && contactsOk) } },
+                tr("Start moving"), { scope.launch { onStart(photos && mediaOk, videos && mediaOk, contacts && contactsOk) } },
                 Modifier.fillMaxWidth().padding(vertical = 18.dp), enabled = any && p != null, icon = CdIcons.Swap, glow = true,
             )
         }
@@ -220,13 +222,13 @@ private fun SwitchSendProgress(s: SwitchSender.State, onCancel: () -> Unit, onRe
         ) {
             Text(
                 when (s.phase) {
-                    SwitchSender.Phase.PREPARING -> "Getting your library ready…"
-                    SwitchSender.Phase.WAITING -> "Waiting for ${s.peerName} to accept"
-                    SwitchSender.Phase.MOVING -> "Moving to ${s.peerName}"
-                    SwitchSender.Phase.DONE -> "All moved to ${s.peerName}"
-                    SwitchSender.Phase.FAILED -> "Paused — connection lost"
-                    SwitchSender.Phase.DECLINED -> "${s.peerName} declined"
-                    SwitchSender.Phase.CANCELLED -> "Stopped"
+                    SwitchSender.Phase.PREPARING -> tr("Getting your library ready…")
+                    SwitchSender.Phase.WAITING -> tr("Waiting for {0} to accept", s.peerName)
+                    SwitchSender.Phase.MOVING -> tr("Moving to {0}", s.peerName)
+                    SwitchSender.Phase.DONE -> tr("All moved to {0}", s.peerName)
+                    SwitchSender.Phase.FAILED -> tr("Paused — connection lost")
+                    SwitchSender.Phase.DECLINED -> tr("{0} declined", s.peerName)
+                    SwitchSender.Phase.CANCELLED -> tr("Stopped")
                 },
                 style = displayStyle(22), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 24.dp),
             )
@@ -234,24 +236,24 @@ private fun SwitchSendProgress(s: SwitchSender.State, onCancel: () -> Unit, onRe
             Ring(if (s.phase == SwitchSender.Phase.DONE) 1f else s.fraction, done = s.phase == SwitchSender.Phase.DONE, failed = failed)
             Text(
                 listOfNotNull(
-                    "%,d of %,d items".format(s.itemsDone, s.itemsTotal),
+                    tr("{0} of {1} items", "%,d".format(s.itemsDone), "%,d".format(s.itemsTotal)),
                     "${formatBytes(s.bytesDone)} / ${formatBytes(s.bytesTotal)}",
                     s.bytesPerSec.takeIf { it > 0 }?.let { "${formatBytes(it)}/s" },
                 ).joinToString(" · "),
                 style = monoStyle(13, TextDim), textAlign = TextAlign.Center,
             )
-            if (s.batches > 1 && !s.finished) Text("Batch ${s.batch + 1} of ${s.batches}", color = TextDim, fontSize = 12.sp)
+            if (s.batches > 1 && !s.finished) Text(tr("Batch {0} of {1}", s.batch + 1, s.batches), color = TextDim, fontSize = 12.sp)
             s.error?.let { Text(it, color = DangerText, fontSize = 13.sp, textAlign = TextAlign.Center) }
             Spacer(Modifier.weight(1f))
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 when (s.phase) {
                     SwitchSender.Phase.DONE, SwitchSender.Phase.DECLINED, SwitchSender.Phase.CANCELLED ->
-                        PillButton("Done", onClose, Modifier.weight(1f), style = if (s.phase == SwitchSender.Phase.DONE) PillStyle.Accent else PillStyle.Glass)
+                        PillButton(tr("Done"), onClose, Modifier.weight(1f), style = if (s.phase == SwitchSender.Phase.DONE) PillStyle.Accent else PillStyle.Glass)
                     SwitchSender.Phase.FAILED -> {
-                        PillButton("Close", onClose, Modifier.weight(1f), style = PillStyle.Glass)
-                        PillButton("Resume", onResume, Modifier.weight(1f))
+                        PillButton(tr("Close"), onClose, Modifier.weight(1f), style = PillStyle.Glass)
+                        PillButton(tr("Resume"), onResume, Modifier.weight(1f))
                     }
-                    else -> PillButton("Stop", onCancel, Modifier.weight(1f), style = PillStyle.Danger)
+                    else -> PillButton(tr("Stop"), onCancel, Modifier.weight(1f), style = PillStyle.Danger)
                 }
             }
         }
@@ -291,57 +293,60 @@ fun SwitchReceiveScreen(
         ) {
             Text(
                 when {
-                    done -> "Welcome to your new device"
-                    failed -> "Move paused"
-                    state.phase == SwitchImporter.Phase.IMPORTING -> "Adding to your library…"
-                    else -> "Moving from ${state.peerName}"
+                    done -> tr("Welcome to your new device")
+                    failed -> tr("Move paused")
+                    state.phase == SwitchImporter.Phase.IMPORTING -> tr("Adding to your library…")
+                    else -> tr("Moving from {0}", state.peerName)
                 },
                 style = displayStyle(22), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 24.dp),
             )
             Ring(fraction, done, failed)
             receiving?.takeIf { !done }?.let {
                 Text(
-                    "Batch ${state.batch + 1} of ${state.batches} · ${(it.fraction * 100).toInt()}%" +
+                    tr("Batch {0} of {1}", state.batch + 1, state.batches) + " · ${(it.fraction * 100).toInt()}%" +
                         (it.bytesPerSec.takeIf { b -> b > 0 }?.let { b -> " · ${formatBytes(b)}/s" } ?: ""),
                     style = monoStyle(13, TextDim),
                 )
             }
             GlassCard(Modifier.fillMaxWidth(), fill = Glass, border = Hairline, contentPadding = PaddingValues(6.dp)) {
                 if (state.photosTotal > 0 || state.photos > 0) {
-                    CountRow(CdIcons.Photo, "Photos", "%,d / %,d".format(state.photos, state.photosTotal))
+                    CountRow(CdIcons.Photo, tr("Photos"), "%,d / %,d".format(state.photos, state.photosTotal))
                 }
                 if (state.videosTotal > 0 || state.videos > 0) {
                     if (state.photosTotal > 0 || state.photos > 0) RowSeparator()
-                    CountRow(CdIcons.Video, "Videos", "%,d / %,d".format(state.videos, state.videosTotal))
+                    CountRow(CdIcons.Video, tr("Videos"), "%,d / %,d".format(state.videos, state.videosTotal))
                 }
                 if (state.contactsTotal > 0) {
                     if (state.photosTotal + state.photos + state.videosTotal + state.videos > 0) RowSeparator()
                     CountRow(
-                        CdIcons.Contacts, "Contacts",
-                        if (state.pendingContacts != null) "waiting for access"
-                        else "%,d added".format(state.contactsAdded) + if (state.contactsSkipped > 0) " · %,d already here".format(state.contactsSkipped) else "",
+                        CdIcons.Contacts, tr("Contacts"),
+                        when {
+                            state.pendingContacts != null -> tr("waiting for access")
+                            state.contactsSkipped > 0 -> tr("{0} added · {1} already here", "%,d".format(state.contactsAdded), "%,d".format(state.contactsSkipped))
+                            else -> tr("{0} added", "%,d".format(state.contactsAdded))
+                        },
                     )
                 }
-                if (state.files > 0) { RowSeparator(); CountRow(CdIcons.Doc, "Files", "%,d in inbox".format(state.files)) }
+                if (state.files > 0) { RowSeparator(); CountRow(CdIcons.Doc, tr("Files"), tr("{0} in inbox", "%,d".format(state.files))) }
             }
             if (state.pendingContacts != null) {
                 PillButton(
-                    "Allow contacts to add them", {
+                    tr("Allow contacts to add them"), {
                         contactsLauncher.launch(arrayOf(Manifest.permission.READ_CONTACTS, Manifest.permission.WRITE_CONTACTS))
                     }, Modifier.fillMaxWidth(), icon = CdIcons.Contacts,
                 )
             }
             state.error?.let { Text(it, color = DangerText, fontSize = 13.sp, textAlign = TextAlign.Center) }
             if (state.failedItems > 0) {
-                Text("${state.failedItems} item(s) couldn't be added to the gallery and were put in your inbox.", color = Amber, fontSize = 12.sp, textAlign = TextAlign.Center)
+                Text(tr("{0} item(s) couldn't be added to the gallery and were put in your inbox.", state.failedItems), color = Amber, fontSize = 12.sp, textAlign = TextAlign.Center)
             }
-            FootNote("Photos and videos keep their original dates. They're in your gallery under “${state.peerName}”.", icon = CdIcons.Shield)
+            FootNote(tr("Photos and videos keep their original dates. They're in your gallery under “{0}”.", state.peerName), icon = CdIcons.Shield)
             Spacer(Modifier.height(8.dp))
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (done || failed) PillButton("Done", { importer.close(); onClose() }, Modifier.weight(1f))
+                if (done || failed) PillButton(tr("Done"), { importer.close(); onClose() }, Modifier.weight(1f))
                 else {
-                    PillButton("Stop", { importer.stop(); onClose() }, Modifier.weight(1f), style = PillStyle.Danger)
-                    PillButton("Hide", onClose, Modifier.weight(1f), style = PillStyle.Glass)
+                    PillButton(tr("Stop"), { importer.stop(); onClose() }, Modifier.weight(1f), style = PillStyle.Danger)
+                    PillButton(tr("Hide"), onClose, Modifier.weight(1f), style = PillStyle.Glass)
                 }
             }
         }

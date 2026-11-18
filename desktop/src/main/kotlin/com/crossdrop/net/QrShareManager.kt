@@ -1,5 +1,6 @@
 package com.crossdrop.net
 
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.platform.Log
 import com.crossdrop.core.protocol.FileMeta
 import com.crossdrop.core.share.HttpShareServer
@@ -98,7 +99,7 @@ class QrShareManager(
                 ts = System.currentTimeMillis(),
                 direction = "SENDING",
                 peerName = "browser share",
-                summary = if (s.files.size == 1) s.files.first().name else "${s.files.size} files",
+                summary = if (s.files.size == 1) s.files.first().name else trPlural(s.files.size, "1 file", "{n} files"),
                 files = s.files.size,
                 bytes = if (s.bytesServed > 0) s.bytesServed else s.files.sumOf { it.size },
                 status = if (s.downloadsDone > 0) "COMPLETED" else "CANCELLED",

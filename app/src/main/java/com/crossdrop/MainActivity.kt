@@ -14,8 +14,15 @@ class MainActivity : ComponentActivity() {
         val container = (application as CrossDropApp).container
         handleDevPeer(intent, container)
         setContent {
-            CrossDropTheme {
-                Root(container)
+            // Arabic and Persian read right to left, whatever the phone's own language is.
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalLayoutDirection provides
+                    if (com.crossdrop.core.i18n.I18n.isRtl()) androidx.compose.ui.unit.LayoutDirection.Rtl
+                    else androidx.compose.ui.unit.LayoutDirection.Ltr,
+            ) {
+                CrossDropTheme {
+                    Root(container)
+                }
             }
         }
     }
@@ -44,6 +51,15 @@ class MainActivity : ComponentActivity() {
     /** Dev hook: -e dev_peer 10.0.2.17:44885 fires a self-test at that endpoint. */
     private fun handleDevPeer(intent: android.content.Intent?, container: com.crossdrop.di.AppContainer) {
         if (!BuildConfig.DEBUG) return
+        // -e dev_skip_welcome 1 — a fresh install goes straight to the radar (the first-run tour would cover it).
+        if (intent?.hasExtra("dev_skip_welcome") == true) container.welcomeSeen = true
+        // -e dev_directlink on|fail — shows the "Connect directly" states without a hotspot (emulators can't make one).
+        intent?.getStringExtra("dev_directlink")?.let {
+            container.directLink.forceStateForDebug(
+                if (it == "on") com.crossdrop.core.connect.DirectLinkState.On("AndroidShare_4821", "k9Qm-x2Lp", "WPA")
+                else com.crossdrop.core.connect.DirectLinkState.Failed(com.crossdrop.core.connect.DirectLinkFailure.BUSY),
+            )
+        }
         android.util.Log.i("DevPeer", "extras=${intent?.extras?.keySet()?.joinToString()} dev_peer=${intent?.getStringExtra("dev_peer")}")
         // Comma-separated for several peers: -e dev_peer 10.0.2.2:5001,10.0.2.2:5002
         intent?.getStringExtra("dev_peer")?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }?.forEach { peer ->

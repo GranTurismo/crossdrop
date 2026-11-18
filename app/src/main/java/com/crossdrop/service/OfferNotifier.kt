@@ -11,6 +11,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.crossdrop.MainActivity
 import com.crossdrop.R
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.core.protocol.OfferKind
 import com.crossdrop.net.IncomingOffer
 import com.crossdrop.ui.isLinkText
@@ -26,19 +28,20 @@ object OfferNotifier {
     fun show(context: Context, offer: IncomingOffer) {
         if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val nm = context.getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Incoming offers", NotificationManager.IMPORTANCE_HIGH))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Incoming offers"), NotificationManager.IMPORTANCE_HIGH))
         val n = offer.offer.files.size
         val text = offer.text
         val (title, body) = when {
-            text != null -> "${offer.peerName} sent you " + (if (isLinkText(text)) "a link" else "some text") to text.take(120)
+            text != null -> (if (isLinkText(text)) tr("{0} sent you a link", offer.peerName) else tr("{0} sent you some text", offer.peerName)) to text.take(120)
             offer.kind == OfferKind.CONTACT -> {
                 val cards = offer.contacts
-                "${offer.peerName} sent you " + (if (cards.size > 1) "${cards.size} contacts" else "a contact") to
-                    (cards.takeIf { it.isNotEmpty() }?.let { com.crossdrop.core.contacts.ContactShare.title(it) } ?: "Open CrossDrop to add it")
+                val count = cards.size.coerceAtLeast(1)
+                trPlural(count, "{0} sent you a contact", "{0} sent you {n} contacts", offer.peerName) to
+                    (cards.takeIf { it.isNotEmpty() }?.let { com.crossdrop.core.contacts.ContactShare.title(it) } ?: tr("Open CrossDrop to add it"))
             }
-            offer.kind == OfferKind.CAMERA -> "${offer.peerName} wants to share their camera" to "Open CrossDrop to watch their photos arrive live"
-            offer.kind == OfferKind.SWITCH -> "${offer.peerName} wants to move to this phone" to "Open CrossDrop to start"
-            else -> "${offer.peerName} wants to send you " + (if (n == 1) "a file" else "$n files") to
+            offer.kind == OfferKind.CAMERA -> tr("{0} wants to share their camera", offer.peerName) to tr("Open CrossDrop to watch their photos arrive live")
+            offer.kind == OfferKind.SWITCH -> tr("{0} wants to move to this phone", offer.peerName) to tr("Open CrossDrop to start")
+            else -> trPlural(n, "{0} wants to send you a file", "{0} wants to send you {n} files", offer.peerName) to
                 (offer.offer.files.firstOrNull()?.name ?: "")
         }
         val open = PendingIntent.getActivity(

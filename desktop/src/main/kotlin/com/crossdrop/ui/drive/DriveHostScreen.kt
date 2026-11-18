@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.VaultHostManager
 import com.crossdrop.platform.Platform
 import com.crossdrop.platform.SystemActions
@@ -108,7 +109,7 @@ fun DriveHostScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                BackHeader("Wireless Drive", onClose, Modifier.padding(bottom = 4.dp))
+                BackHeader(tr("Wireless Drive"), onClose, Modifier.padding(bottom = 4.dp))
                 if (state == null) StartContent(onStart) else LiveContent(state, onStop) { showGuide = true }
             }
         }
@@ -127,40 +128,40 @@ private fun ColumnScope.StartContent(onStart: (Boolean, Boolean, File?) -> Boole
             Modifier.size(52.dp).clip(RoundedCornerShape(17.dp)).background(Accent.copy(alpha = 0.14f)),
             contentAlignment = Alignment.Center,
         ) { CdIcon(CdIcons.Drive, Accent, size = 26.dp) }
-        Text("Turn this ${Platform.current.computerNoun} into a drive", style = displayStyle(24, tracking = -0.035f).copy(lineHeight = 27.sp))
+        Text(tr("Turn this {0} into a drive", Platform.current.computerNoun), style = displayStyle(24, tracking = -0.035f).copy(lineHeight = 27.sp))
         Text(
-            "Other computers, tablets and phones on this network can browse, stream and download — like plugging in a USB drive.",
+            tr("Other computers, tablets and phones on this network can browse, stream and download — like plugging in a USB drive."),
             color = TextDim, fontSize = 13.sp, lineHeight = 19.sp,
         )
     }
 
-    SectionLabel("Guest access", Modifier.padding(top = 6.dp))
+    SectionLabel(tr("Guest access"), Modifier.padding(top = 6.dp))
     GlassCard(
         Modifier.fillMaxWidth(), radius = 26.dp, fill = GlassLow,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        ToggleRow("Let guests add & edit files", "Off: guests can only view and download", writable, { writable = it })
+        ToggleRow(tr("Let guests add & edit files"), tr("Off: guests can only view and download"), writable, { writable = it })
         RowSeparator()
-        ToggleRow("4-digit passcode", "Recommended on shared Wi-Fi", usePin, { usePin = it })
+        ToggleRow(tr("4-digit passcode"), tr("Recommended on shared Wi-Fi"), usePin, { usePin = it })
     }
 
-    SectionLabel("What to share", Modifier.padding(top = 6.dp))
+    SectionLabel(tr("What to share"), Modifier.padding(top = 6.dp))
     ShareChoice(
-        CdIcons.Folder, "Pick a folder", "Photos, movies, work files — any folder you choose",
+        CdIcons.Folder, tr("Pick a folder"), tr("Photos, movies, work files — any folder you choose"),
         primary = true,
     ) { SystemActions.pickFolder()?.let { startFailed = !onStart(writable, usePin, it) } }
     ShareChoice(
-        CdIcons.Drive, "Share the CrossDrop vault", "Files saved inside this app",
+        CdIcons.Drive, tr("Share the CrossDrop vault"), tr("Files saved inside this app"),
         primary = false,
     ) { startFailed = !onStart(writable, usePin, null) }
 
     if (startFailed) {
         Text(
-            "Couldn't turn on the drive — that folder can't be shared (try Documents, Movies or a project folder).",
+            tr("Couldn't turn on the drive — that folder can't be shared (try Documents, Movies or a project folder)."),
             color = DangerText, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp),
         )
     }
-    FootNote("Everything stays on this network — nothing touches the internet.", Modifier.padding(top = 2.dp), icon = CdIcons.Shield)
+    FootNote(tr("Everything stays on this network — nothing touches the internet."), Modifier.padding(top = 2.dp), icon = CdIcons.Shield)
 }
 
 @Composable
@@ -200,10 +201,10 @@ private fun ColumnScope.LiveContent(state: VaultHostManager.State, onStop: () ->
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PulseDot()
-            Text("Drive is on", style = displayStyle(28, tracking = -0.04f), modifier = Modifier.weight(1f))
+            Text(tr("Drive is on"), style = displayStyle(28, tracking = -0.04f), modifier = Modifier.weight(1f))
             val n = state.clients.size
             Text(
-                if (n == 0) "No one connected" else "$n connected",
+                if (n == 0) tr("No one connected") else tr("{0} connected", n),
                 color = if (n == 0) TextDim else Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
             )
         }
@@ -215,13 +216,13 @@ private fun ColumnScope.LiveContent(state: VaultHostManager.State, onStop: () ->
         ) {
             CdIcon(CdIcons.Folder, Amber, size = 22.dp)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text("Sharing", color = TextDim, fontSize = 11.sp)
+                Text(tr("Sharing"), color = TextDim, fontSize = 11.sp)
                 Text(state.rootLabel, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Stat("↑ Uploaded by guests", formatBytes(state.bytesIn), Modifier.weight(1f))
-            Stat("↓ Downloaded", formatBytes(state.bytesOut), Modifier.weight(1f))
+            Stat(tr("↑ Uploaded by guests"), formatBytes(state.bytesIn), Modifier.weight(1f))
+            Stat(tr("↓ Downloaded"), formatBytes(state.bytesOut), Modifier.weight(1f))
         }
     }
 
@@ -234,16 +235,16 @@ private fun ColumnScope.LiveContent(state: VaultHostManager.State, onStop: () ->
             QrCard(state.url, size = 128.dp, halo = false)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("Address", color = TextDim, fontSize = 11.sp)
+                    Text(tr("Address"), color = TextDim, fontSize = 11.sp)
                     Text(state.url, style = monoStyle(13), maxLines = 2)
                 }
                 state.pin?.let { pin ->
                     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text("Passcode", color = TextDim, fontSize = 11.sp)
+                        Text(tr("Passcode"), color = TextDim, fontSize = 11.sp)
                         Text(pin, style = monoStyle(20, Accent).copy(letterSpacing = 0.3.em))
                     }
                 }
-                CopyButton(state.url, label = "Copy address")
+                CopyButton(state.url, label = tr("Copy address"))
             }
         }
     }
@@ -253,9 +254,9 @@ private fun ColumnScope.LiveContent(state: VaultHostManager.State, onStop: () ->
         Modifier.fillMaxWidth(), radius = 26.dp, fill = GlassLow,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
     ) {
-        ModeRow("Guests can add & edit files", if (state.writable) "Guests can upload, rename and delete" else "Guests can only view and download", state.writable)
+        ModeRow(tr("Guests can add & edit files"), if (state.writable) tr("Guests can upload, rename and delete") else tr("Guests can only view and download"), state.writable)
         RowSeparator()
-        ModeRow("4-digit passcode", if (state.pin != null) "Needed to open the drive" else "Anyone on this Wi-Fi can open it", state.pin != null)
+        ModeRow(tr("4-digit passcode"), if (state.pin != null) tr("Needed to open the drive") else tr("Anyone on this Wi-Fi can open it"), state.pin != null)
     }
 
     // how to connect
@@ -263,8 +264,8 @@ private fun ColumnScope.LiveContent(state: VaultHostManager.State, onStop: () ->
         Modifier.fillMaxWidth(), radius = 28.dp, fill = GlassLow,
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Connect from another device", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-        SegmentedTabs(GUIDE_TABS, tab, { tab = it })
+        Text(tr("Connect from another device"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        SegmentedTabs(guideTabs(), tab, { tab = it })
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { ConnectSteps(state, tab, withCopy = false) }
     }
 
@@ -274,17 +275,17 @@ private fun ColumnScope.LiveContent(state: VaultHostManager.State, onStop: () ->
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             CdIcon(CdIcons.Help, Amber, size = 20.dp)
-            Text("Can't connect? Guest Wi-Fi, VPNs, hotels…", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
+            Text(tr("Can't connect? Guest Wi-Fi, VPNs, hotels…"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             CdIcon(CdIcons.ChevronRight, TextDim, size = 18.dp)
         }
     }
 
     FootNote(
-        "Keeps serving while the window is closed — CrossDrop stays in the ${Platform.current.trayName}." +
-            if (state.pin != null) " Five wrong passcodes lock a device out for 60 seconds." else "",
+        tr("Keeps serving while the window is closed — CrossDrop stays in the {0}.", Platform.current.trayName) +
+            if (state.pin != null) " " + tr("Five wrong passcodes lock a device out for 60 seconds.") else "",
     )
     Spacer(Modifier.height(4.dp))
-    PillButton("Stop sharing drive", onStop, Modifier.fillMaxWidth(), style = PillStyle.Danger, height = 56.dp)
+    PillButton(tr("Stop sharing drive"), onStop, Modifier.fillMaxWidth(), style = PillStyle.Danger, height = 56.dp)
 }
 
 @Composable
@@ -303,7 +304,7 @@ private fun ModeRow(title: String, subtitle: String, on: Boolean) {
             Text(subtitle, color = TextDim, fontSize = 12.sp)
         }
         Text(
-            if (on) "On" else "Off", color = if (on) OnAccent else TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            if (on) tr("On") else tr("Off"), color = if (on) OnAccent else TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.clip(RoundedCornerShape(50)).background(if (on) Accent else GlassHigh).padding(horizontal = 12.dp, vertical = 5.dp),
         )
     }

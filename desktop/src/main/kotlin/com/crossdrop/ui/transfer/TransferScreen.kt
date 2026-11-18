@@ -61,6 +61,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.Direction
 import com.crossdrop.net.SessionState
 import com.crossdrop.net.SessionStatus
@@ -99,7 +100,7 @@ fun TransferScreen(
     session: SessionState,
     onCancel: () -> Unit,
     onClose: () -> Unit,
-    selfName: String = "This device",
+    selfName: String = tr("This device"),
     onHide: (() -> Unit)? = null,
     onOpenInbox: (() -> Unit)? = null,
 ) {
@@ -117,7 +118,7 @@ fun TransferScreen(
             // header
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (onHide != null && !status.isTerminal) {
-                    CircleButton(CdIcons.ChevronLeft, "Back to transfers", onHide)
+                    CircleButton(CdIcons.ChevronLeft, tr("Back to transfers"), onHide)
                 } else {
                     Spacer(Modifier.size(44.dp))
                 }
@@ -149,18 +150,18 @@ fun TransferScreen(
                     val fileCount = session.offer?.files?.size
                     if (session.bytesPerSec > 0 || fileCount == null) {
                         StatTile(
-                            "Speed",
+                            tr("Speed"),
                             if (session.bytesPerSec > 0) "${formatBytes(session.bytesPerSec)}/s" else "—",
                             Modifier.weight(1f),
                         )
                     } else {
-                        StatTile("Files", "$fileCount", Modifier.weight(1f))
+                        StatTile(tr("Files"), "$fileCount", Modifier.weight(1f))
                     }
                     if (session.bytesSkipped > 0) {
-                        StatTile("Already local", "Δ ${formatBytes(session.bytesSkipped)}", Modifier.weight(1f), Accent)
+                        StatTile(tr("Already local"), "Δ ${formatBytes(session.bytesSkipped)}", Modifier.weight(1f), Accent)
                     } else {
                         StatTile(
-                            if (sending) "Sent" else "Received",
+                            if (sending) tr("Sent") else tr("Received"),
                             "${formatBytes(session.bytesDone)} / ${formatBytes(session.bytesTotal)}",
                             Modifier.weight(1f),
                         )
@@ -182,13 +183,13 @@ fun TransferScreen(
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 when {
                     status.isTerminal && completed && !sending && onOpenInbox != null -> {
-                        PillButton("Done", onClose, Modifier.weight(1f), style = PillStyle.Glass)
-                        PillButton("Open inbox", onOpenInbox, Modifier.weight(1f), icon = CdIcons.Inbox)
+                        PillButton(tr("Done"), onClose, Modifier.weight(1f), style = PillStyle.Glass)
+                        PillButton(tr("Open inbox"), onOpenInbox, Modifier.weight(1f), icon = CdIcons.Inbox)
                     }
-                    status.isTerminal -> PillButton("Done", onClose, Modifier.weight(1f), style = if (completed) PillStyle.Accent else PillStyle.Glass)
+                    status.isTerminal -> PillButton(tr("Done"), onClose, Modifier.weight(1f), style = if (completed) PillStyle.Accent else PillStyle.Glass)
                     else -> {
-                        PillButton("Cancel transfer", onCancel, Modifier.weight(1f), style = PillStyle.Danger)
-                        if (onHide != null) PillButton("Hide", onHide, Modifier.weight(1f), style = PillStyle.Glass)
+                        PillButton(tr("Cancel transfer"), onCancel, Modifier.weight(1f), style = PillStyle.Danger)
+                        if (onHide != null) PillButton(tr("Hide"), onHide, Modifier.weight(1f), style = PillStyle.Glass)
                     }
                 }
             }
@@ -199,13 +200,13 @@ fun TransferScreen(
 @Composable
 private fun StatusChip(s: SessionState) {
     val (label, color) = when (s.status) {
-        SessionStatus.CONNECTING -> "Connecting" to Accent
-        SessionStatus.AWAITING_ACCEPT -> "Waiting for ${s.peerName}" to Accent
-        SessionStatus.TRANSFERRING -> (if (s.direction == Direction.SENDING) "Sending" else "Receiving") to Accent
-        SessionStatus.COMPLETED -> "Complete" to Accent
-        SessionStatus.FAILED -> "Failed" to DangerText
-        SessionStatus.DECLINED -> "Declined" to DangerText
-        SessionStatus.CANCELLED -> "Cancelled" to TextSecondary
+        SessionStatus.CONNECTING -> tr("Connecting") to Accent
+        SessionStatus.AWAITING_ACCEPT -> tr("Waiting for {0}", s.peerName) to Accent
+        SessionStatus.TRANSFERRING -> (if (s.direction == Direction.SENDING) tr("Sending") else tr("Receiving")) to Accent
+        SessionStatus.COMPLETED -> tr("Complete") to Accent
+        SessionStatus.FAILED -> tr("Failed") to DangerText
+        SessionStatus.DECLINED -> tr("Declined") to DangerText
+        SessionStatus.CANCELLED -> tr("Cancelled") to TextSecondary
     }
     Row(
         Modifier.height(32.dp).clip(RoundedCornerShape(50)).background(color.copy(alpha = 0.14f)).padding(horizontal = 12.dp),
@@ -267,7 +268,7 @@ private fun ProgressRing(s: SessionState, completed: Boolean, failed: Boolean) {
         val d = minOf(216.dp, maxWidth * 0.62f)
         Box(
             Modifier.size(d).semantics {
-                contentDescription = "Transfer progress"
+                contentDescription = tr("Transfer progress")
                 progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
             },
             contentAlignment = Alignment.Center,
@@ -307,7 +308,7 @@ private fun ProgressRing(s: SessionState, completed: Boolean, failed: Boolean) {
                         contentAlignment = Alignment.Center,
                     ) { CdIcon(CdIcons.Check, OnAccent, size = 32.dp) }
                     Spacer(Modifier.height(4.dp))
-                    Text("Delivered", style = displayStyle(17))
+                    Text(tr("Delivered"), style = displayStyle(17))
                 } else {
                     Text(
                         buildAnnotatedString {
@@ -318,8 +319,8 @@ private fun ProgressRing(s: SessionState, completed: Boolean, failed: Boolean) {
                     )
                     Text(
                         s.currentFileName ?: when (s.status) {
-                            SessionStatus.CONNECTING -> "Securing the channel…"
-                            SessionStatus.AWAITING_ACCEPT -> "Waiting for them to accept"
+                            SessionStatus.CONNECTING -> tr("Securing the channel…")
+                            SessionStatus.AWAITING_ACCEPT -> tr("Waiting for them to accept")
                             else -> ""
                         },
                         color = TextSecondary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -354,16 +355,16 @@ private fun VerificationCode(sas: String, peerName: String) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CdIcon(CdIcons.Shield, Accent, size = 18.dp)
-            Text("Verification code", color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("Verification code"), color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.weight(1f))
             Text(
-                "match it on $peerName", color = TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                tr("match it on {0}", peerName), color = TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
             )
         }
         Row(
             Modifier.fillMaxWidth().semantics(mergeDescendants = true) {
-                contentDescription = "Code " + sas.toList().joinToString(" ")
+                contentDescription = tr("Code {0}", sas.toList().joinToString(" "))
             },
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
@@ -378,8 +379,8 @@ private fun VerificationCode(sas: String, peerName: String) {
 }
 
 internal fun formatBytes(b: Long): String = when {
-    b >= 1L shl 30 -> "%.2f GB".format(b / (1L shl 30).toDouble())
-    b >= 1L shl 20 -> "%.1f MB".format(b / (1L shl 20).toDouble())
-    b >= 1L shl 10 -> "%.0f KB".format(b / (1L shl 10).toDouble())
+    b >= 1L shl 30 -> "%.2f GB".format(com.crossdrop.core.i18n.I18n.locale(), b / (1L shl 30).toDouble())
+    b >= 1L shl 20 -> "%.1f MB".format(com.crossdrop.core.i18n.I18n.locale(), b / (1L shl 20).toDouble())
+    b >= 1L shl 10 -> "%.0f KB".format(com.crossdrop.core.i18n.I18n.locale(), b / (1L shl 10).toDouble())
     else -> "$b B"
 }

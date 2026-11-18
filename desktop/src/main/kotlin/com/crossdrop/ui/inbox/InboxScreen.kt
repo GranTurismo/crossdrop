@@ -40,6 +40,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.I18n
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.platform.Platform
 import com.crossdrop.platform.SystemActions
 import com.crossdrop.storage.InboxStore
@@ -72,12 +75,22 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private enum class InboxFilter(val label: String, val kinds: Set<FileKind>?) {
-    ALL("All", null),
-    PHOTOS("Photos", setOf(FileKind.PHOTO)),
-    VIDEOS("Videos", setOf(FileKind.VIDEO)),
-    DOCS("Docs", setOf(FileKind.DOC)),
-    OTHER("Other", setOf(FileKind.AUDIO, FileKind.ARCHIVE, FileKind.APP, FileKind.OTHER)),
+private enum class InboxFilter(val kinds: Set<FileKind>?) {
+    ALL(null),
+    PHOTOS(setOf(FileKind.PHOTO)),
+    VIDEOS(setOf(FileKind.VIDEO)),
+    DOCS(setOf(FileKind.DOC)),
+    OTHER(setOf(FileKind.AUDIO, FileKind.ARCHIVE, FileKind.APP, FileKind.OTHER));
+
+    // A getter, not a constructor argument: the language is read when the label is drawn.
+    val label: String
+        get() = when (this) {
+            ALL -> tr("All")
+            PHOTOS -> tr("Photos")
+            VIDEOS -> tr("Videos")
+            DOCS -> tr("Docs")
+            OTHER -> tr("Other")
+        }
 }
 
 /**
@@ -110,10 +123,10 @@ fun InboxScreen(
         ) {
             item {
                 Row(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    ScreenTitle("Inbox", Modifier.weight(1f))
+                    ScreenTitle(tr("Inbox"), Modifier.weight(1f))
                     if (files.isNotEmpty()) {
                         ChipButton(
-                            "Wipe all", { confirmWipe = true }, icon = CdIcons.Trash, height = 40.dp,
+                            tr("Wipe all"), { confirmWipe = true }, icon = CdIcons.Trash, height = 40.dp,
                             fg = DangerText, bg = Danger.copy(alpha = 0.1f), border = Danger.copy(alpha = 0.3f),
                         )
                     }
@@ -140,7 +153,7 @@ fun InboxScreen(
                 item {
                     if (shown.isEmpty()) {
                         Text(
-                            "Nothing here in ${filter.label.lowercase()}.", color = TextDim, fontSize = 13.sp,
+                            tr("Nothing here in {0}.", filter.label.lowercase(com.crossdrop.core.i18n.I18n.locale())), color = TextDim, fontSize = 13.sp,
                             modifier = Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(8.dp),
                         )
                     } else {
@@ -160,7 +173,7 @@ fun InboxScreen(
             }
             item {
                 FootNote(
-                    "Kept in CrossDrop's own folder on this ${Platform.current.computerNoun}. Wiping overwrites each file with zeros first.",
+                    tr("Kept in CrossDrop's own folder on this {0}. Wiping overwrites each file with zeros first.", Platform.current.computerNoun),
                     Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     icon = CdIcons.Lock,
                 )
@@ -170,9 +183,9 @@ fun InboxScreen(
 
     if (confirmWipe) {
         ConfirmDialog(
-            title = "Wipe the inbox?",
-            text = "All ${files.size} received files are overwritten with zeros and deleted. This can't be undone.",
-            confirmLabel = "Wipe all",
+            title = tr("Wipe the inbox?"),
+            text = tr("All {0} received files are overwritten with zeros and deleted. This can't be undone.", files.size),
+            confirmLabel = tr("Wipe all"),
             onConfirm = {
                 confirmWipe = false
                 inbox.shredAll(); tick++; onChanged()
@@ -182,9 +195,9 @@ fun InboxScreen(
     }
     confirmDelete?.let { item ->
         ConfirmDialog(
-            title = "Delete ${item.name}?",
-            text = "The file is overwritten with zeros and removed from this device.",
-            confirmLabel = "Delete",
+            title = tr("Delete {0}?", item.name),
+            text = tr("The file is overwritten with zeros and removed from this device."),
+            confirmLabel = tr("Delete"),
             onConfirm = {
                 confirmDelete = null
                 inbox.shred(item.file); tick++; onChanged()
@@ -212,7 +225,8 @@ private fun StorageCard(
     GlassCard(modifier.fillMaxWidth(), radius = 26.dp, contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(formatBytes(total), style = displayStyle(26), modifier = Modifier.weight(1f))
-            Text("${files.size} file${if (files.size == 1) "" else "s"}", color = TextDim, fontSize = 13.sp)
+            val fileCount = files.size
+            Text(trPlural(fileCount, "1 file", "{n} files"), color = TextDim, fontSize = 13.sp)
         }
         Row(
             Modifier.fillMaxWidth().height(10.dp).semantics {
@@ -242,7 +256,7 @@ private val MAIN_KINDS = setOf(FileKind.VIDEO, FileKind.PHOTO, FileKind.DOC)
 private fun FileRow(item: InboxStore.ReceivedFile, onOpen: () -> Unit, onReveal: () -> Unit, onDelete: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .clickable(role = Role.Button, onClickLabel = "Open", onClick = onOpen)
+            .clickable(role = Role.Button, onClickLabel = tr("Open"), onClick = onOpen)
             .padding(start = 10.dp, end = 4.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -255,9 +269,9 @@ private fun FileRow(item: InboxStore.ReceivedFile, onOpen: () -> Unit, onReveal:
             )
             Text("${formatBytes(item.size)} · ${whenLabel(item.file.lastModified())}", color = TextDim, fontSize = 12.sp)
         }
-        ChipButton("Open", onOpen)
-        CircleButton(CdIcons.Folder, "Show ${item.name} in ${Platform.current.fileManager}", onReveal, size = 40.dp, iconSize = 18.dp, fill = androidx.compose.ui.graphics.Color.Transparent, tint = TextDim)
-        CircleButton(CdIcons.Trash, "Delete ${item.name}", onDelete, size = 40.dp, iconSize = 17.dp, fill = androidx.compose.ui.graphics.Color.Transparent, tint = TextDim)
+        ChipButton(tr("Open"), onOpen)
+        CircleButton(CdIcons.Folder, tr("Show {0} in {1}", item.name, Platform.current.fileManager), onReveal, size = 40.dp, iconSize = 18.dp, fill = androidx.compose.ui.graphics.Color.Transparent, tint = TextDim)
+        CircleButton(CdIcons.Trash, tr("Delete {0}", item.name), onDelete, size = 40.dp, iconSize = 17.dp, fill = androidx.compose.ui.graphics.Color.Transparent, tint = TextDim)
     }
 }
 
@@ -269,9 +283,9 @@ private fun EmptyInbox(modifier: Modifier = Modifier) {
                 CdIcon(CdIcons.Inbox, TextSecondary, size = 26.dp)
             }
             Spacer(Modifier.height(14.dp))
-            Text("Nothing received yet", style = displayStyle(17))
+            Text(tr("Nothing received yet"), style = displayStyle(17))
             Spacer(Modifier.height(4.dp))
-            Text("Files you accept land here.", color = TextDim, fontSize = 13.sp)
+            Text(tr("Files you accept land here."), color = TextDim, fontSize = 13.sp)
         }
     }
 }
@@ -283,9 +297,9 @@ private fun whenLabel(ts: Long): String {
     }.timeInMillis
     val pattern = when {
         ts >= dayStart(0) -> "HH:mm"
-        ts >= dayStart(1) -> return "Yesterday"
+        ts >= dayStart(1) -> return tr("Yesterday")
         ts >= dayStart(6) -> "EEE"
         else -> "MMM d"
     }
-    return SimpleDateFormat(pattern, Locale.getDefault()).format(Date(ts))
+    return SimpleDateFormat(pattern, com.crossdrop.core.i18n.I18n.locale()).format(Date(ts))
 }

@@ -1,5 +1,7 @@
 package com.crossdrop.net
 
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.core.Peer
 import com.crossdrop.core.contacts.ContactShare
 import com.crossdrop.core.delta.DeltaReceiver
@@ -93,10 +95,10 @@ class TransferCoordinator(
                     direction = direction.name,
                     peerName = s.peerName,
                     summary = when {
-                        text -> if (isLink(s.offer?.text)) "Link" else "Text"
-                        cards -> files.firstOrNull()?.name?.removeSuffix(".vcf") ?: "Contact"
+                        text -> if (isLink(s.offer?.text)) tr("Link") else tr("Text")
+                        cards -> files.firstOrNull()?.name?.removeSuffix(".vcf") ?: tr("Contact")
                         files.size == 1 -> files.first().name
-                        files.size > 1 -> "${files.size} files"
+                        files.size > 1 -> trPlural(files.size, "1 file", "{n} files")
                         s.currentFileName != null -> s.currentFileName
                         else -> "—"
                     },

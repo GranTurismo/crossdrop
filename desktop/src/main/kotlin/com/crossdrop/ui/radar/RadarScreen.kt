@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.platform.Platform
 import com.crossdrop.platform.SystemActions
 import com.crossdrop.ui.CdIcon
@@ -104,7 +106,12 @@ fun RadarScreen(
     onRename: (String) -> Unit,
     selfPort: Int = 0,
     nsdEnabled: Boolean = true,
+    hasNetwork: Boolean = true,
+    onShowConnectGuide: () -> Unit = {},
 ) {
+    var pickingLanguage by remember { mutableStateOf(false) }
+    if (pickingLanguage) com.crossdrop.ui.language.LanguageDialog { pickingLanguage = false }
+    val connectHint = com.crossdrop.ui.connect.rememberConnectHint(hasNetwork, peers.count { it.vault == null })
     var vaultPeer by remember { mutableStateOf<Peer?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var picked by remember(pending) { mutableStateOf(emptySet<String>()) }
@@ -117,17 +124,18 @@ fun RadarScreen(
             picked = if (peer.instanceId in picked) picked - peer.instanceId else picked + peer.instanceId
             return
         }
-        val picked = SystemActions.pickFiles(title = "Send to ${peer.name}")
+        val picked = SystemActions.pickFiles(title = tr("Send to {0}", peer.name))
         if (picked.isNotEmpty()) onSendTo(peer, picked)
     }
 
     fun startAnyoneFlow() {
-        val picked = SystemActions.pickFiles(title = "Share via QR — anyone with a browser can download")
+        val picked = SystemActions.pickFiles(title = tr("Share via QR — anyone with a browser can download"))
         if (picked.isNotEmpty()) onShareToAnyone(picked)
     }
 
     val devices = peers.filter { it.vault == null }
     val drives = peers.filter { it.vault != null && it.endpoint != null }
+    val deviceCount = devices.size
 
     Column(Modifier.fillMaxSize()) {
         // ---- header
@@ -138,23 +146,22 @@ fun RadarScreen(
             Row(verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        "Radar", style = displayStyle(36, tracking = -0.04f).copy(lineHeight = 36.sp),
+                        tr("Radar"), style = displayStyle(36, tracking = -0.04f).copy(lineHeight = 36.sp),
                         modifier = Modifier.semantics { heading() },
                     )
                     Text(
-                        when (devices.size) {
-                            0 -> "Looking for devices…"
-                            1 -> "1 device nearby"
-                            else -> "${devices.size} devices nearby"
-                        },
+                        if (deviceCount == 0) tr("Looking for devices…")
+                        else trPlural(deviceCount, "1 device nearby", "{n} devices nearby"),
                         color = TextDim, fontSize = 14.sp,
                     )
                 }
                 GlassChip(
-                    if (nsdEnabled) "Local network only" + (if (selfPort > 0) " · :$selfPort" else "")
-                    else "Discovery off",
+                    if (nsdEnabled) tr("Local network only") + (if (selfPort > 0) " · :$selfPort" else "")
+                    else tr("Discovery off"),
                     dot = if (nsdEnabled) Accent else TextDim,
                 )
+                Spacer(Modifier.width(8.dp))
+                com.crossdrop.ui.language.LanguageButton({ pickingLanguage = true })
             }
         }
 
@@ -174,9 +181,9 @@ fun RadarScreen(
                 onSelfTap = { renaming = true },
                 selfIcon = selfDeviceIcon,
             )
-            if (devices.isEmpty()) {
+            if (devices.isEmpty() && connectHint == com.crossdrop.core.connect.ConnectHint.NONE) {
                 Text(
-                    "Open CrossDrop on a phone or another ${Platform.current.computerNoun} on this network",
+                    tr("Open CrossDrop on a phone or another {0} on this network", Platform.current.computerNoun),
                     color = TextDim, fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
                 )
@@ -198,10 +205,11 @@ fun RadarScreen(
                     modifier = Modifier.widthIn(max = 560.dp),
                 )
             } else {
+                com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, modifier = Modifier.widthIn(max = 560.dp))
                 SendToAnyoneCard(::startAnyoneFlow, Modifier.widthIn(max = 560.dp))
                 Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    QuickAction("Send text or a link", CdIcons.Note, Modifier.weight(1f), onComposeText)
-                    QuickAction("Send to several devices", CdIcons.Transfers, Modifier.weight(1f), onPickForSeveral)
+                    QuickAction(tr("Send text or a link"), CdIcons.Note, Modifier.weight(1f), onComposeText)
+                    QuickAction(tr("Send to several devices"), CdIcons.Transfers, Modifier.weight(1f), onPickForSeveral)
                 }
             }
             drives.take(2).forEach { d -> DriveRow(d, Modifier.widthIn(max = 560.dp)) { startSendFlow(d) } }
@@ -235,8 +243,8 @@ private fun SendToAnyoneCard(onClick: () -> Unit, modifier: Modifier = Modifier)
             contentAlignment = Alignment.Center,
         ) { CdIcon(CdIcons.Qr, Accent, size = 24.dp) }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("Send to anyone", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text("No app needed. They scan a QR code.", color = TextDim, fontSize = 12.sp)
+            Text(tr("Send to anyone"), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("No app needed. They scan a QR code."), color = TextDim, fontSize = 12.sp)
         }
         Box(
             Modifier.size(40.dp).clip(CircleShape).background(Accent),
@@ -252,7 +260,7 @@ private fun DriveRow(peer: Peer, modifier: Modifier = Modifier, onClick: () -> U
         modifier.fillMaxWidth().heightIn(min = 58.dp)
             .clip(RoundedCornerShape(22.dp)).background(GlassLow)
             .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp))
-            .clickable(role = Role.Button, onClickLabel = "Open drive", onClick = onClick)
+            .clickable(role = Role.Button, onClickLabel = tr("Open drive"), onClick = onClick)
             .padding(start = 16.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -265,10 +273,10 @@ private fun DriveRow(peer: Peer, modifier: Modifier = Modifier, onClick: () -> U
         when {
             vault.needsPin -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 CdIcon(CdIcons.Lock, Amber, size = 12.dp)
-                Text("PIN protected", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("PIN protected"), color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-            vault.writable -> Text("Editable", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            else -> Text("Read-only", color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            vault.writable -> Text(tr("Editable"), color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            else -> Text(tr("Read-only"), color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -317,19 +325,21 @@ private fun VaultMountSheet(peer: Peer, onDismiss: () -> Unit, onMount: () -> Un
                     contentAlignment = Alignment.Center,
                 ) { CdIcon(CdIcons.Drive, Amber, size = 26.dp) }
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                    Text("Wireless drive", color = TextDim, fontSize = 13.sp)
+                    Text(tr("Wireless drive"), color = TextDim, fontSize = 13.sp)
                     Text(vault.vaultName, style = displayStyle(26).copy(lineHeight = 28.sp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(
-                        (if (vault.needsPin) "PIN protected · " else "") +
-                            if (vault.writable) "you can add & edit" else "view & download",
+                        listOfNotNull(
+                            if (vault.needsPin) tr("PIN protected") else null,
+                            if (vault.writable) tr("you can add & edit") else tr("view & download"),
+                        ).joinToString(" · "),
                         color = TextSecondary, fontSize = 12.sp,
                     )
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BigTile("Open here", "Browse, stream and save — encrypted", CdIcons.Drive, true, onMount, Modifier.weight(1f))
+                BigTile(tr("Open here"), tr("Browse, stream and save — encrypted"), CdIcons.Drive, true, onMount, Modifier.weight(1f))
                 BigTile(
-                    "Open in browser", if (showQr) "Link copied — or scan below" else "Copy the link, show a QR",
+                    tr("Open in browser"), if (showQr) tr("Link copied — or scan below") else tr("Copy the link, show a QR"),
                     CdIcons.Globe, false,
                     {
                         if (url.isNotEmpty()) SystemActions.copyToClipboard(url)
@@ -345,7 +355,7 @@ private fun VaultMountSheet(peer: Peer, onDismiss: () -> Unit, onMount: () -> Un
                     Text(url, style = monoStyle(13, TextSecondary))
                 }
             }
-            PillButton("Cancel", onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
+            PillButton(tr("Cancel"), onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
         }
     }
 }
@@ -418,17 +428,17 @@ private fun PendingCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     when (pending) {
-                        is Pending.Files -> if (pending.files.size == 1) pending.files.first().name else "${pending.files.size} files"
+                        is Pending.Files -> if (pending.files.size == 1) pending.files.first().name else trPlural(pending.files.size, "1 file", "{n} files")
                         is Pending.Text -> pending.text.replace('\n', ' ')
                     },
                     color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    if (devices.isEmpty()) "Waiting for devices on this network…" else "Pick where it goes — on the radar or here",
+                    if (devices.isEmpty()) tr("Waiting for devices on this network…") else tr("Pick where it goes — on the radar or here"),
                     color = TextDim, fontSize = 12.sp,
                 )
             }
-            com.crossdrop.ui.ChipButton("Clear", onClear, height = 34.dp)
+            com.crossdrop.ui.ChipButton(tr("Clear"), onClear, height = 34.dp)
         }
         if (devices.isNotEmpty()) {
             androidx.compose.foundation.layout.FlowRow(
@@ -451,10 +461,10 @@ private fun PendingCard(
             }
         }
         PillButton(
-            when (picked.size) {
-                0 -> "Pick a device"
-                1 -> "Send to " + (devices.firstOrNull { it.instanceId in picked }?.name ?: "1 device")
-                else -> "Send to ${picked.size} devices"
+            when (val pickedCount = picked.size) {
+                0 -> tr("Pick a device")
+                1 -> tr("Send to {0}", devices.firstOrNull { it.instanceId in picked }?.name ?: tr("1 device"))
+                else -> trPlural(pickedCount, "Send to 1 device", "Send to {n} devices")
             },
             onSend, Modifier.fillMaxWidth(), enabled = picked.isNotEmpty(), icon = CdIcons.ArrowUp, glow = true,
         )

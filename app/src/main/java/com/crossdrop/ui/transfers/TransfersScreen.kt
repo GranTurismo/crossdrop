@@ -37,6 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.net.Direction
 import com.crossdrop.net.SessionState
 import com.crossdrop.net.TransferGroup
@@ -105,10 +107,10 @@ fun TransfersScreen(
                     Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ScreenTitle("Transfers", Modifier.weight(1f))
+                    ScreenTitle(tr("Transfers"), Modifier.weight(1f))
                     if (entries.isNotEmpty()) {
                         ChipButton(
-                            "Clear", { confirmClear = true }, height = 40.dp,
+                            tr("Clear"), { confirmClear = true }, height = 40.dp,
                             bg = GlassMid, border = HairlineStrong,
                         )
                     }
@@ -123,17 +125,17 @@ fun TransfersScreen(
                 item { EmptyState(Modifier.widthIn(max = 640.dp)) }
             }
             if (today.isNotEmpty()) {
-                item { SectionLabel("Today", Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(top = 6.dp)) }
+                item { SectionLabel(tr("Today"), Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(top = 6.dp)) }
                 item { HistoryGroup(today, Modifier.widthIn(max = 640.dp)) }
             }
             if (earlier.isNotEmpty()) {
-                item { SectionLabel("Earlier", Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(top = 6.dp)) }
+                item { SectionLabel(tr("Earlier"), Modifier.widthIn(max = 640.dp).fillMaxWidth().padding(top = 6.dp)) }
                 item { HistoryGroup(earlier, Modifier.widthIn(max = 640.dp)) }
             }
             if (entries.isNotEmpty()) {
                 item {
                     FootNote(
-                        "Stored on this device only. Keeps your last ${HistoryStore.MAX_ENTRIES} sessions.",
+                        tr("Stored on this device only. Keeps your last {0} sessions.", HistoryStore.MAX_ENTRIES),
                         Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     )
                 }
@@ -143,9 +145,9 @@ fun TransfersScreen(
 
     if (confirmClear) {
         ConfirmDialog(
-            title = "Clear transfer history?",
-            text = "This forgets the log of past transfers. Received files stay in your inbox.",
-            confirmLabel = "Clear",
+            title = tr("Clear transfer history?"),
+            text = tr("This forgets the log of past transfers. Received files stay in your inbox."),
+            confirmLabel = tr("Clear"),
             onConfirm = { confirmClear = false; onClearHistory() },
             onDismiss = { confirmClear = false },
         )
@@ -162,15 +164,15 @@ private fun ActiveCard(g: TransferGroup, onOpen: (() -> Unit)?, modifier: Modifi
         glow = Accent.copy(alpha = 0.13f), glowRadius = 40.dp,
         contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        onClick = onOpen, onClickLabel = "Open transfer",
+        onClick = onOpen, onClickLabel = tr("Open transfer"),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Dot(Accent, size = 8.dp)
             Text(
                 when {
-                    g.multi -> "Sending to ${g.sessions.size} devices"
-                    s.direction == Direction.SENDING -> "Sending to ${s.peerName}"
-                    else -> "Receiving from ${s.peerName}"
+                    g.multi -> tr("Sending to {0} devices", g.sessions.size)
+                    s.direction == Direction.SENDING -> tr("Sending to {0}", s.peerName)
+                    else -> tr("Receiving from {0}", s.peerName)
                 },
                 color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -187,10 +189,10 @@ private fun ActiveCard(g: TransferGroup, onOpen: (() -> Unit)?, modifier: Modifi
         }
         Text(
             (if (g.multi) listOfNotNull(
-                "${g.completed} of ${g.sessions.size} delivered",
+                tr("{0} of {1} delivered", g.completed, g.sessions.size),
                 g.bytesPerSec.takeIf { it > 0 }?.let { "${formatBytes(it)}/s" },
             ) else listOfNotNull(
-                s.currentFileName ?: "Establishing a secure channel…",
+                s.currentFileName ?: tr("Establishing a secure channel…"),
                 s.fileProgressLabel(),
                 s.bytesPerSec.takeIf { it > 0 }?.let { "${formatBytes(it)}/s" },
             )).joinToString(" · "),
@@ -204,7 +206,8 @@ fun SessionState.fileProgressLabel(): String? {
     val files = offer?.files ?: return null
     if (files.size < 2) return null
     val idx = files.indexOfFirst { it.name == currentFileName }
-    return if (idx >= 0) "file ${idx + 1} of ${files.size}" else "${files.size} files"
+    val count = files.size
+    return if (idx >= 0) tr("file {0} of {1}", idx + 1, count) else trPlural(count, "1 file", "{n} files")
 }
 
 @Composable
@@ -221,6 +224,8 @@ private fun HistoryGroup(entries: List<HistoryStore.Entry>, modifier: Modifier =
 private fun HistoryRow(e: HistoryStore.Entry) {
     val browser = e.peerName == "browser share"
     val received = !e.isSend
+    val fileCount = e.files
+    val summary = if (e.summary == "Switch phones") tr("Switch phones") else e.summary
     val (pillFg, pillBg) = when (e.status) {
         "COMPLETED" -> AccentText to Accent.copy(alpha = 0.14f)
         "FAILED" -> DangerText to Color(0x24FF6B6B)
@@ -235,7 +240,7 @@ private fun HistoryRow(e: HistoryStore.Entry) {
         Box(
             Modifier.size(40.dp).clip(CircleShape)
                 .background(if (received) Accent.copy(alpha = 0.14f) else GlassHigh)
-                .semantics { contentDescription = if (browser) "Browser share" else if (received) "Received" else "Sent" },
+                .semantics { contentDescription = if (browser) tr("Browser share") else if (received) tr("Received") else tr("Sent") },
             contentAlignment = Alignment.Center,
         ) {
             CdIcon(
@@ -249,12 +254,12 @@ private fun HistoryRow(e: HistoryStore.Entry) {
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(
-                if (browser) "Browser share" else e.peerName,
+                if (browser) tr("Browser share") else e.peerName,
                 color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text(
-                (if (e.files > 1) "${e.files} files" else e.summary) + " · " + formatBytes(e.bytes),
+                (if (e.files > 1) trPlural(fileCount, "1 file", "{n} files") else summary) + " · " + formatBytes(e.bytes),
                 color = TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -278,18 +283,18 @@ private fun EmptyState(modifier: Modifier = Modifier) {
                 contentAlignment = Alignment.Center,
             ) { CdIcon(CdIcons.Transfers, TextSecondary, size = 26.dp) }
             Spacer(Modifier.height(14.dp))
-            Text("No transfers yet", style = displayStyle(17))
+            Text(tr("No transfers yet"), style = displayStyle(17))
             Spacer(Modifier.height(4.dp))
-            Text("Tap a device on the radar to send something.", color = TextDim, fontSize = 13.sp)
+            Text(tr("Tap a device on the radar to send something."), color = TextDim, fontSize = 13.sp)
         }
     }
 }
 
 private fun statusLabel(status: String) = when (status) {
-    "COMPLETED" -> "Completed"
-    "FAILED" -> "Failed"
-    "DECLINED" -> "Declined"
-    "CANCELLED" -> "Cancelled"
+    "COMPLETED" -> tr("Completed")
+    "FAILED" -> tr("Failed")
+    "DECLINED" -> tr("Declined")
+    "CANCELLED" -> tr("Cancelled")
     else -> status.lowercase().replaceFirstChar { it.uppercase() }
 }
 
@@ -301,8 +306,8 @@ private fun startOfDay(daysAgo: Int): Long = Calendar.getInstance().apply {
 
 /** Clock time today (monospaced), else "Yesterday" / weekday / date. */
 private fun formatWhen(ts: Long): Pair<String, Boolean> = when {
-    ts >= startOfDay(0) -> SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(ts)) to true
-    ts >= startOfDay(1) -> "Yesterday" to false
-    ts >= startOfDay(6) -> SimpleDateFormat("EEE", Locale.getDefault()).format(Date(ts)) to false
-    else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(Date(ts)) to false
+    ts >= startOfDay(0) -> SimpleDateFormat("HH:mm", com.crossdrop.core.i18n.I18n.locale()).format(Date(ts)) to true
+    ts >= startOfDay(1) -> tr("Yesterday") to false
+    ts >= startOfDay(6) -> SimpleDateFormat("EEE", com.crossdrop.core.i18n.I18n.locale()).format(Date(ts)) to false
+    else -> SimpleDateFormat("MMM d", com.crossdrop.core.i18n.I18n.locale()).format(Date(ts)) to false
 }

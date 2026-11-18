@@ -7,6 +7,7 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 import com.crossdrop.MainActivity
 import com.crossdrop.R
+import com.crossdrop.core.i18n.tr
 
 /**
  * Devices the user sends to become Direct Share targets, so "Share → <their laptop>" is one tap.
@@ -26,7 +27,7 @@ object DirectShare {
         runCatching {
             val shortcut = ShortcutInfoCompat.Builder(context, shortcutId(deviceName))
                 .setShortLabel(deviceName.take(24))
-                .setLongLabel("Send to $deviceName")
+                .setLongLabel(tr("Send to {0}", deviceName))
                 .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
                 .setIntent(Intent(context, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
                 .setCategories(setOf(CATEGORY))

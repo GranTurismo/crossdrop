@@ -1,5 +1,6 @@
 package com.crossdrop.discovery
 
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.CrossDrop
 import com.crossdrop.core.DiscoverySource
 import com.crossdrop.core.Endpoint
@@ -180,7 +181,7 @@ class VaultDiscovery(
         if (id == selfVaultId()) return                       // our own beacon
         val host = info.inet4Addresses.firstOrNull()?.hostAddress
             ?: info.hostAddresses.firstOrNull() ?: return
-        val name = info.getPropertyString("name")?.takeIf { it.isNotBlank() } ?: "Vault"
+        val name = info.getPropertyString("name")?.takeIf { it.isNotBlank() } ?: tr("Vault")
         names.add(info.name, id)
         _peers.update { it + (id to Peer(
             instanceId = id,

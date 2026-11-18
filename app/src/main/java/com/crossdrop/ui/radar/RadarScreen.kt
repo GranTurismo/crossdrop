@@ -82,6 +82,9 @@ import com.crossdrop.ui.theme.GlassRaised
 import com.crossdrop.ui.theme.HairlineStrong
 import com.crossdrop.ui.theme.InkSheet
 import com.crossdrop.ui.theme.OnAccent
+import com.crossdrop.core.connect.ConnectHint
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.ui.theme.OnAccentMuted
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
@@ -130,6 +133,12 @@ fun RadarScreen(
     onPermissionsGranted: () -> Unit = {},
     selfPort: Int = 0,
     nsdEnabled: Boolean = true,
+    /** Wi-Fi/Ethernet (or our own hotspot) is up; drives the "can't see the other device?" help. */
+    hasNetwork: Boolean = true,
+    directLinkOn: Boolean = false,
+    onConnectDirectly: () -> Unit = {},
+    onShowConnectGuide: () -> Unit = {},
+    onOpenDirectLink: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -187,7 +196,10 @@ fun RadarScreen(
         if (!permsGranted) permLauncher.launch(requiredPermissions().toTypedArray())
     }
 
+    var pickingLanguage by remember { mutableStateOf(false) }
+    if (pickingLanguage) com.crossdrop.ui.language.LanguageDialog { pickingLanguage = false }
     val devices = peers.filter { it.vault == null }
+    val connectHint = com.crossdrop.ui.connect.rememberConnectHint(hasNetwork, devices.size, directLinkOn)
     val drives = peers.filter { it.vault != null && it.endpoint != null }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
@@ -202,24 +214,29 @@ fun RadarScreen(
                 Text("CrossDrop", style = displayStyle(16, tracking = -0.01f), modifier = Modifier.weight(1f))
                 GlassChip(
                     buildString {
-                        append(if (nsdEnabled) "Wi-Fi · local only" else "Wi-Fi discovery off")
+                        append(
+                            when {
+                                directLinkOn -> tr("Direct link · local only")
+                                !hasNetwork -> tr("No Wi-Fi")
+                                nsdEnabled -> tr("Wi-Fi · local only")
+                                else -> tr("Wi-Fi discovery off")
+                            },
+                        )
                         if (BuildConfig.DEBUG && selfPort > 0) append(" · :$selfPort")
                     },
-                    dot = if (nsdEnabled) Accent else TextDim,
+                    dot = when { directLinkOn -> Accent; !hasNetwork -> Amber; nsdEnabled -> Accent; else -> TextDim },
                 )
             }
             Row(verticalAlignment = Alignment.Bottom) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        "Radar", style = displayStyle(36, tracking = -0.04f).copy(lineHeight = 36.sp),
+                        tr("Radar"), style = displayStyle(36, tracking = -0.04f).copy(lineHeight = 36.sp),
                         modifier = Modifier.semantics { heading() },
                     )
+                    val deviceCount = devices.size
                     Text(
-                        when (devices.size) {
-                            0 -> "Looking for devices…"
-                            1 -> "1 device nearby"
-                            else -> "${devices.size} devices nearby"
-                        },
+                        if (deviceCount == 0) tr("Looking for devices…")
+                        else trPlural(deviceCount, "1 device nearby", "{n} devices nearby"),
                         color = TextDim, fontSize = 14.sp,
                     )
                 }
@@ -236,14 +253,17 @@ fun RadarScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         CdIcon(CdIcons.Bluetooth, Amber, size = 13.dp)
-                        Text("Allow nearby", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr("Allow nearby"), color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
+                    Spacer(Modifier.width(8.dp))
                 }
+                com.crossdrop.ui.language.LanguageButton({ pickingLanguage = true })
             }
         }
 
         // ---- sonar
-        Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp).heightIn(min = 220.dp)) {
+        // The help card needs room; the sonar gives some back while it is showing.
+        Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp).heightIn(min = if (connectHint == ConnectHint.NONE) 220.dp else 120.dp)) {
             // ambient glow centred on the radar; not clipped, so it bleeds softly past the box
             Canvas(Modifier.fillMaxSize()) {
                 val r = minOf(size.width, size.height) * 0.69f
@@ -258,9 +278,10 @@ fun RadarScreen(
                 onPeerTap = ::startSendFlow,
                 onSelfTap = { renaming = true },
             )
-            if (devices.isEmpty()) {
+            // The help card says this (and more) once it appears.
+            if (devices.isEmpty() && connectHint == ConnectHint.NONE) {
                 Text(
-                    "Open CrossDrop on another device on this Wi-Fi",
+                    tr("Open CrossDrop on another device on this Wi-Fi"),
                     color = TextDim, fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
                 )
@@ -272,6 +293,8 @@ fun RadarScreen(
             Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, onPrimary = onConnectDirectly)
+            if (directLinkOn) DirectLinkRow(onOpenDirectLink)
             SendToAnyoneCard(::startAnyoneFlow)
             drives.take(2).forEach { d -> DriveRow(d) { startSendFlow(d) } }
         }
@@ -292,7 +315,7 @@ fun RadarScreen(
         var also by remember(peer.instanceId) { mutableStateOf(emptySet<String>()) }
         fun targets() = listOf(peer) + others.filter { it.instanceId in also }
         SendSheet(
-            kicker = "Send to",
+            kicker = tr("Send to"),
             title = peer.name,
             icon = deviceIconFor(peer.name),
             meta = {
@@ -303,8 +326,7 @@ fun RadarScreen(
                     },
                 )
             },
-            note = "Straight to this device, end-to-end encrypted, never through a server. " +
-                "You'll both see a 6-digit code to compare.",
+            note = tr("Straight to this device, end-to-end encrypted, never through a server. You'll both see a 6-digit code to compare."),
             onDismiss = { pickingForPeer = null; pendingPeers = emptyList() },
             onPickMedia = {
                 pendingPeers = targets()
@@ -317,18 +339,18 @@ fun RadarScreen(
                     also = if (id in also) also - id else also + id
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SmallTile("Camera", "Live to them", CdIcons.Camera, Modifier.weight(1f)) {
+                    SmallTile(tr("Camera"), tr("Live to them"), CdIcons.Camera, Modifier.weight(1f)) {
                         val t = targets(); pickingForPeer = null; pendingPeers = emptyList(); onCamera(t)
                     }
-                    SmallTile("Text", "Note or link", CdIcons.Note, Modifier.weight(1f)) {
+                    SmallTile(tr("Text"), tr("Note or link"), CdIcons.Note, Modifier.weight(1f)) {
                         textFor = targets(); pickingForPeer = null; pendingPeers = emptyList()
                     }
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SmallTile("Contact", "Share a card", CdIcons.Contacts, Modifier.weight(1f)) {
+                    SmallTile(tr("Contact"), tr("Share a card"), CdIcons.Contacts, Modifier.weight(1f)) {
                         val t = targets(); pickingForPeer = null; pendingPeers = emptyList(); onContacts(t)
                     }
-                    SmallTile("Switch", "Move phone", CdIcons.Swap, Modifier.weight(1f)) {
+                    SmallTile(tr("Switch"), tr("Move phone"), CdIcons.Swap, Modifier.weight(1f)) {
                         pickingForPeer = null; pendingPeers = emptyList(); onSwitchPhones(peer)
                     }
                 }
@@ -340,7 +362,7 @@ fun RadarScreen(
         val clip = LocalClipboardManager.current.getText()?.text.orEmpty().take(4000)
         com.crossdrop.ui.SendTextDialog(
             initial = clip,
-            target = if (targets.size == 1) targets.first().name else "${targets.size} devices",
+            target = if (targets.size == 1) targets.first().name else trPlural(targets.size, "1 device", "{n} devices"),
         ) { text ->
             textFor = null
             if (!text.isNullOrBlank()) onSendText(targets, text)
@@ -348,12 +370,11 @@ fun RadarScreen(
     }
     if (pickingAnyone) {
         SendSheet(
-            kicker = "Share with",
-            title = "Anyone nearby",
+            kicker = tr("Share with"),
+            title = tr("Anyone nearby"),
             icon = CdIcons.Qr,
-            meta = { MetaLine(lead = null, rest = "No app needed — they scan a QR code") },
-            note = "They need to be on this Wi-Fi. The link is secret, and it stops working " +
-                "the moment you close the share screen.",
+            meta = { MetaLine(lead = null, rest = tr("No app needed — they scan a QR code")) },
+            note = tr("They need to be on this Wi-Fi. The link is secret, and it stops working the moment you close the share screen."),
             onDismiss = { pickingAnyone = false; pendingAnyone = false },
             onPickMedia = {
                 pickingAnyone = false
@@ -370,6 +391,23 @@ fun RadarScreen(
             onDismiss = { vaultPeer = null },
             onMount = { vaultPeer = null; onMountVault(peer) },
         )
+    }
+}
+
+/** Shown while this phone's private link is up, so it never runs without being visible. */
+@Composable
+private fun DirectLinkRow(onOpen: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Accent.copy(alpha = 0.08f))
+            .border(1.dp, Accent.copy(alpha = 0.3f), RoundedCornerShape(22.dp))
+            .clickable(role = Role.Button, onClickLabel = tr("Show the code"), onClick = onOpen)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CdIcon(CdIcons.Wifi, Accent, size = 18.dp)
+        Text(tr("Direct connection is on"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(tr("Show code"), color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 
@@ -397,8 +435,8 @@ private fun SendToAnyoneCard(onClick: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) { CdIcon(CdIcons.Qr, Accent, size = 24.dp) }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text("Send to anyone", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-            Text("No app needed. They scan a QR code.", color = TextDim, fontSize = 12.sp)
+            Text(tr("Send to anyone"), color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("No app needed. They scan a QR code."), color = TextDim, fontSize = 12.sp)
         }
         Box(
             Modifier.size(40.dp).clip(CircleShape).background(Accent),
@@ -414,7 +452,7 @@ private fun DriveRow(peer: Peer, onClick: () -> Unit) {
         Modifier.fillMaxWidth().heightIn(min = 58.dp)
             .clip(RoundedCornerShape(22.dp)).background(GlassLow)
             .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(22.dp))
-            .clickable(role = Role.Button, onClickLabel = "Open drive", onClick = onClick)
+            .clickable(role = Role.Button, onClickLabel = tr("Open drive"), onClick = onClick)
             .padding(start = 16.dp, end = 14.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -427,10 +465,10 @@ private fun DriveRow(peer: Peer, onClick: () -> Unit) {
         when {
             vault.needsPin -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                 CdIcon(CdIcons.Lock, Amber, size = 12.dp)
-                Text("PIN protected", color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(tr("PIN protected"), color = Amber, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             }
-            vault.writable -> Text("Editable", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            else -> Text("Read-only", color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            vault.writable -> Text(tr("Editable"), color = Accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            else -> Text(tr("Read-only"), color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -559,12 +597,12 @@ private fun SendSheet(
     CdSheet(onDismiss) {
         SheetHeader(kicker, title, icon, meta = meta)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BigTile("Photos & videos", "Gallery, albums, Google Photos", CdIcons.Photo, true, onPickMedia, Modifier.weight(1f))
-            BigTile("Files", "Any type, pick several", CdIcons.Doc, false, onPickFiles, Modifier.weight(1f))
+            BigTile(tr("Photos & videos"), tr("Gallery, albums, Google Photos"), CdIcons.Photo, true, onPickMedia, Modifier.weight(1f))
+            BigTile(tr("Files"), tr("Any type, pick several"), CdIcons.Doc, false, onPickFiles, Modifier.weight(1f))
         }
         extras()
         NoteCard(note)
-        PillButton("Cancel", onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
+        PillButton(tr("Cancel"), onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
     }
 }
 
@@ -580,18 +618,18 @@ private fun VaultMountSheet(peer: Peer, onDismiss: () -> Unit, onMount: () -> Un
     var showQr by remember { mutableStateOf(false) }
     CdSheet(onDismiss) {
         SheetHeader(
-            "Wireless drive", vault.vaultName, CdIcons.Drive, iconTint = Amber,
+            tr("Wireless drive"), vault.vaultName, CdIcons.Drive, iconTint = Amber,
             meta = {
                 MetaLine(
-                    lead = if (vault.needsPin) "PIN protected" else null,
-                    rest = if (vault.writable) "you can add & edit" else "view & download",
+                    lead = if (vault.needsPin) tr("PIN protected") else null,
+                    rest = if (vault.writable) tr("you can add & edit") else tr("view & download"),
                 )
             },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BigTile("Open here", "Browse, stream and save — encrypted", CdIcons.Drive, true, onMount, Modifier.weight(1f))
+            BigTile(tr("Open here"), tr("Browse, stream and save — encrypted"), CdIcons.Drive, true, onMount, Modifier.weight(1f))
             BigTile(
-                "Open in browser", if (showQr) "Link copied — or scan below" else "Copy the link, show a QR",
+                tr("Open in browser"), if (showQr) tr("Link copied — or scan below") else tr("Copy the link, show a QR"),
                 CdIcons.Globe, false,
                 {
                     if (url.isNotEmpty()) clipboard.setText(AnnotatedString(url))
@@ -607,8 +645,8 @@ private fun VaultMountSheet(peer: Peer, onDismiss: () -> Unit, onMount: () -> Un
                 Text(url, style = com.crossdrop.ui.theme.monoStyle(13, TextSecondary))
             }
         }
-        NoteCard("Files come straight from this drive over your Wi-Fi. Nothing is uploaded anywhere.")
-        PillButton("Cancel", onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
+        NoteCard(tr("Files come straight from this drive over your Wi-Fi. Nothing is uploaded anywhere."))
+        PillButton(tr("Cancel"), onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
     }
 }
 
@@ -636,7 +674,7 @@ private fun SmallTile(title: String, subtitle: String, icon: ImageVector, modifi
 @Composable
 private fun AlsoSendTo(others: List<Peer>, selected: Set<String>, onToggle: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Also send to", color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(tr("Also send to"), color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
         androidx.compose.foundation.layout.FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -647,7 +685,7 @@ private fun AlsoSendTo(others: List<Peer>, selected: Set<String>, onToggle: (Str
                     Modifier.height(38.dp).clip(RoundedCornerShape(50))
                         .background(if (on) Accent else GlassMid)
                         .border(1.dp, if (on) Accent else Color.White.copy(alpha = 0.1f), RoundedCornerShape(50))
-                        .clickable(role = Role.Checkbox, onClickLabel = if (on) "Remove" else "Add") { onToggle(p.instanceId) }
+                        .clickable(role = Role.Checkbox, onClickLabel = if (on) tr("Remove") else tr("Add")) { onToggle(p.instanceId) }
                         .padding(horizontal = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),

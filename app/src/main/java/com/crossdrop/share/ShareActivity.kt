@@ -59,6 +59,8 @@ import androidx.compose.ui.unit.sp
 import com.crossdrop.CrossDropApp
 import com.crossdrop.MainActivity
 import com.crossdrop.core.Peer
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.di.AppContainer
 import com.crossdrop.net.SessionStatus
 import com.crossdrop.net.TransferGroup
@@ -164,8 +166,8 @@ class ShareActivity : ComponentActivity() {
     private fun label(uris: List<Uri>): String {
         val first = runCatching { outgoingFileFor(uris.first())?.meta?.name }.getOrNull()
         return when {
-            uris.size == 1 -> first ?: "1 item"
-            else -> "${uris.size} items"
+            uris.size == 1 -> first ?: tr("1 item")
+            else -> trPlural(uris.size, "1 item", "{n} items")
         }
     }
 
@@ -262,15 +264,15 @@ private fun ShareSheet(
                     Progress(group)
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (group.isTerminal && group.problems > 0) {
-                            PillButton("Close", onClose, Modifier.weight(1f), style = PillStyle.Glass)
-                            PillButton("Retry", { container.coordinator.retryFailed(group.id) }, Modifier.weight(1f))
+                            PillButton(tr("Close"), onClose, Modifier.weight(1f), style = PillStyle.Glass)
+                            PillButton(tr("Retry"), { container.coordinator.retryFailed(group.id) }, Modifier.weight(1f))
                         } else {
-                            PillButton(if (group.isTerminal) "Done" else "Hide", onClose, Modifier.weight(1f), style = PillStyle.Glass)
+                            PillButton(if (group.isTerminal) tr("Done") else tr("Hide"), onClose, Modifier.weight(1f), style = PillStyle.Glass)
                         }
                     }
                 } else {
                     if (preferred != null && !autoSent) {
-                        Text("Looking for $preferred…", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text(tr("Looking for {0}…", preferred), color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Column(
                         Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState()),
@@ -290,7 +292,7 @@ private fun ShareSheet(
                     }
                     if (selected.isNotEmpty()) {
                         PillButton(
-                            "Send to ${selected.size} device${if (selected.size == 1) "" else "s"}",
+                            trPlural(selected.size, "Send to 1 device", "Send to {n} devices"),
                             { go(devices.filter { it.instanceId in selected }) },
                             Modifier.fillMaxWidth(), icon = CdIcons.ArrowUp, glow = true,
                         )
@@ -303,8 +305,8 @@ private fun ShareSheet(
                         ) {
                             CdIcon(CdIcons.Qr, Accent, size = 22.dp)
                             Column(Modifier.weight(1f)) {
-                                Text("Send to anyone", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                Text("No app needed — they scan a QR code", color = TextDim, fontSize = 12.sp)
+                                Text(tr("Send to anyone"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(tr("No app needed — they scan a QR code"), color = TextDim, fontSize = 12.sp)
                             }
                             CdIcon(CdIcons.ChevronRight, TextDim, size = 18.dp)
                         }
@@ -329,7 +331,7 @@ private fun Header(payload: ShareActivity.Payload) {
             )
         }
         Column(Modifier.weight(1f)) {
-            Text("Send with CrossDrop", style = displayStyle(18))
+            Text(tr("Send with CrossDrop"), style = displayStyle(18))
             Text(
                 when (payload) {
                     is ShareActivity.Payload.Text -> payload.text.replace('\n', ' ')
@@ -346,7 +348,7 @@ private fun DeviceRow(peer: Peer, selected: Boolean, onTap: () -> Unit, onToggle
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(if (selected) Accent.copy(alpha = 0.14f) else GlassMid)
             .border(1.dp, if (selected) Accent else Color.White.copy(alpha = 0.08f), RoundedCornerShape(22.dp))
-            .clickable(role = Role.Button, onClickLabel = "Send", onClick = onTap)
+            .clickable(role = Role.Button, onClickLabel = tr("Send"), onClick = onTap)
             .padding(start = 14.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -356,7 +358,7 @@ private fun DeviceRow(peer: Peer, selected: Boolean, onTap: () -> Unit, onToggle
         }
         Text(peer.name, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
         Box(
-            Modifier.size(40.dp).clip(CircleShape).clickable(role = Role.Checkbox, onClickLabel = "Select", onClick = onToggle),
+            Modifier.size(40.dp).clip(CircleShape).clickable(role = Role.Checkbox, onClickLabel = tr("Select"), onClick = onToggle),
             contentAlignment = Alignment.Center,
         ) {
             Box(
@@ -377,8 +379,8 @@ private fun Scanning() {
             Box(Modifier.size(10.dp).clip(CircleShape).background(Accent))
         }
         Column {
-            Text("Looking for devices…", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text("Open CrossDrop on the other device, on this Wi-Fi", color = TextDim, fontSize = 12.sp)
+            Text(tr("Looking for devices…"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(tr("Open CrossDrop on the other device, on this Wi-Fi"), color = TextDim, fontSize = 12.sp)
         }
     }
 }
@@ -393,13 +395,13 @@ private fun Progress(g: TransferGroup) {
                 Text(s.peerName, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     when (s.status) {
-                        SessionStatus.CONNECTING -> "Connecting…"
-                        SessionStatus.AWAITING_ACCEPT -> "Waiting to accept"
+                        SessionStatus.CONNECTING -> tr("Connecting…")
+                        SessionStatus.AWAITING_ACCEPT -> tr("Waiting to accept")
                         SessionStatus.TRANSFERRING -> "${(s.fraction * 100).toInt()}%"
-                        SessionStatus.COMPLETED -> "Sent"
-                        SessionStatus.DECLINED -> "Declined"
-                        SessionStatus.CANCELLED -> "Cancelled"
-                        SessionStatus.FAILED -> "Failed"
+                        SessionStatus.COMPLETED -> tr("Sent")
+                        SessionStatus.DECLINED -> tr("Declined")
+                        SessionStatus.CANCELLED -> tr("Cancelled")
+                        SessionStatus.FAILED -> tr("Failed")
                     },
                     color = when (s.status) {
                         SessionStatus.COMPLETED, SessionStatus.TRANSFERRING -> Accent

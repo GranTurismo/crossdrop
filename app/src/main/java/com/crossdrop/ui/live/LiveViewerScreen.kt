@@ -47,6 +47,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.net.LiveFeed
 import com.crossdrop.net.LiveShot
 import com.crossdrop.ui.CdIcon
@@ -61,6 +63,7 @@ import com.crossdrop.ui.theme.ScreenGlow
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
 import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.caps
 import com.crossdrop.ui.theme.displayStyle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -102,21 +105,18 @@ fun LiveViewerScreen(
                     horizontalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
                     Dot(Accent)
-                    Text("LIVE", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(tr("Live").caps(), color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(Modifier.weight(1f)) {
                     Text(feed.peerName, style = displayStyle(17), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        when (val n = feed.shots.size) {
-                            0 -> "Waiting for the first shot…"
-                            1 -> "1 shot"
-                            else -> "$n shots"
-                        },
+                        if (feed.shots.isEmpty()) tr("Waiting for the first shot…")
+                        else trPlural(feed.shots.size, "1 shot", "{n} shots"),
                         color = TextDim, fontSize = 12.sp,
                     )
                 }
-                if (onHide != null) ChipButton("Hide", onHide, bg = GlassMid, border = HairlineStrong, height = 38.dp)
-                ChipButton("Stop", onStop, icon = CdIcons.Close, bg = GlassMid, border = HairlineStrong, height = 38.dp)
+                if (onHide != null) ChipButton(tr("Hide"), onHide, bg = GlassMid, border = HairlineStrong, height = 38.dp)
+                ChipButton(tr("Stop"), onStop, icon = CdIcons.Close, bg = GlassMid, border = HairlineStrong, height = 38.dp)
             }
 
             Box(
@@ -129,7 +129,7 @@ fun LiveViewerScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             CdIcon(CdIcons.Camera, TextSecondary, size = 40.dp)
                             Text(
-                                "Shots from ${feed.peerName} appear here\nthe moment they're taken.",
+                                tr("Shots from {0} appear here\nthe moment they're taken.", feed.peerName),
                                 color = TextDim, fontSize = 14.sp, textAlign = TextAlign.Center,
                             )
                         }
@@ -145,7 +145,7 @@ fun LiveViewerScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Dot(Accent, size = 6.dp)
-                        Text("Arriving… ${(s.fraction * 100).toInt()}%", color = TextPrimary, fontSize = 12.sp)
+                        Text(tr("Arriving… {0}%", (s.fraction * 100).toInt()), color = TextPrimary, fontSize = 12.sp)
                     }
                 }
             }
@@ -169,7 +169,7 @@ fun LiveViewerScreen(
                 }
             }
             Text(
-                "Saved to your inbox as they arrive. Tap a shot to open it.",
+                tr("Saved to your inbox as they arrive. Tap a shot to open it."),
                 color = TextDim, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 4.dp),
             )
         }

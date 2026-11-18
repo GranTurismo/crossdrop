@@ -21,6 +21,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.share.QrCode
 import com.crossdrop.ui.theme.Accent
 import com.crossdrop.ui.theme.Ink
@@ -30,7 +31,13 @@ import com.crossdrop.ui.theme.Ink
  * so this is the one bright surface in the dark UI. [size] is the outer card.
  */
 @Composable
-fun QrCard(url: String, size: Dp = 236.dp, modifier: Modifier = Modifier, halo: Boolean = true) {
+fun QrCard(
+    url: String,
+    size: Dp = 236.dp,
+    modifier: Modifier = Modifier,
+    halo: Boolean = true,
+    description: String = tr("QR code for {0}", url),
+) {
     val qr = remember(url) { runCatching { QrCode.encode(url) }.getOrNull() }
     val radius = if (size >= 160.dp) 32.dp else 18.dp
     val pad = if (size >= 160.dp) 20.dp else 10.dp
@@ -46,7 +53,7 @@ fun QrCard(url: String, size: Dp = 236.dp, modifier: Modifier = Modifier, halo: 
             .clip(shape)
             .background(Color.White)
             .padding(pad)
-            .semantics { contentDescription = "QR code for $url" },
+            .semantics { contentDescription = description },
     ) {
         Canvas(Modifier.fillMaxSize()) {
             if (qr == null) return@Canvas

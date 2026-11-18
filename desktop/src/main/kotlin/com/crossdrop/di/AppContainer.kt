@@ -25,6 +25,8 @@ import com.crossdrop.storage.InboxStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -50,7 +52,23 @@ class AppContainer {
         bytes.joinToString("") { "%02x".format(it) }
     }
 
-    private val prefs = Prefs()
+    private val prefs = Prefs().also { p ->
+        // Where the in-app language pick is stored ("auto" = follow the OS).
+        com.crossdrop.core.i18n.I18n.setPersist { choice -> p.putString("language", choice ?: "auto") }
+    }
+
+    /** Is there a Wi-Fi/Ethernet address to find other devices on? Drives the radar's "can't see it?" help. */
+    private val _hasNetwork = MutableStateFlow(com.crossdrop.net.LocalIp.wifiIpv4() != null)
+    val hasNetwork: StateFlow<Boolean> = _hasNetwork
+
+    init {
+        scope.launch {
+            while (true) {
+                delay(4_000)
+                _hasNetwork.value = runCatching { com.crossdrop.net.LocalIp.wifiIpv4() != null }.getOrDefault(true)
+            }
+        }
+    }
 
     private val _deviceName = MutableStateFlow(loadDeviceName())
     val deviceName: StateFlow<String> = _deviceName
@@ -72,6 +90,11 @@ class AppContainer {
     val engine = TransferEngine(identity, deviceName::value, instanceId)
     val inbox = InboxStore()
     val history = HistoryStore()
+
+    /** The first-run welcome is shown once; anyone who has already transferred something has seen enough. */
+    var welcomeSeen: Boolean
+        get() = prefs.getBoolean("welcome_seen", false) || history.list().isNotEmpty()
+        set(v) = prefs.putBoolean("welcome_seen", v)
 
     val server = TransferServer(scope, engine, onBound = ::onListenerBound)
     val coordinator = TransferCoordinator(scope, engine, server, inbox, history)

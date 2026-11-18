@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import com.crossdrop.core.contacts.VCard
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.delta.FileDeltaStore
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.protocol.BatchInfo
 import com.crossdrop.core.protocol.FileMeta
 import com.crossdrop.core.protocol.ItemCategory
@@ -154,7 +155,7 @@ class SwitchImporter(
             history.add(
                 HistoryStore.Entry(
                     ts = System.currentTimeMillis(), direction = "RECEIVING", peerName = peerName,
-                    summary = "Switch phones",
+                    summary = tr("Switch phones"),
                     files = (s?.photos ?: 0) + (s?.videos ?: 0) + (s?.contactsAdded ?: 0) + (s?.files ?: 0),
                     bytes = s?.bytesTotal ?: 0, status = "COMPLETED",
                 )
@@ -166,8 +167,11 @@ class SwitchImporter(
         _state.update {
             it?.copy(
                 phase = Phase.FAILED,
-                error = if (status == SessionStatus.CANCELLED) "The other phone stopped the move."
-                    else "Connection lost${error?.let { e -> " ($e)" } ?: ""}. Start again on the other phone — it picks up where it stopped.",
+                error = when {
+                    status == SessionStatus.CANCELLED -> tr("The other phone stopped the move.")
+                    error != null -> tr("Connection lost ({0}). Start again on the other phone — it picks up where it stopped.", error)
+                    else -> tr("Connection lost. Start again on the other phone — it picks up where it stopped.")
+                },
             )
         }
     }

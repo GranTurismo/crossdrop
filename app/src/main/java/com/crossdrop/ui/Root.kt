@@ -56,6 +56,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.di.AppContainer
 import com.crossdrop.net.isTerminal
 import kotlinx.coroutines.launch
@@ -72,11 +74,17 @@ import com.crossdrop.ui.theme.OnAccent
 import com.crossdrop.ui.transfer.TransferScreen
 import com.crossdrop.ui.transfers.TransfersScreen
 
-enum class Tab(val label: String) {
-    RADAR("Radar"),
-    TRANSFERS("Transfers"),
-    INBOX("Inbox"),
-    SETTINGS("Settings"),
+enum class Tab {
+    RADAR, TRANSFERS, INBOX, SETTINGS;
+
+    /** Read at call time so a language change shows up without restarting. */
+    val label: String
+        get() = when (this) {
+            RADAR -> tr("Radar")
+            TRANSFERS -> tr("Transfers")
+            INBOX -> tr("Inbox")
+            SETTINGS -> tr("Settings")
+        }
 }
 
 /**
@@ -103,8 +111,18 @@ fun Root(container: AppContainer) {
     val nsdEnabled by container.nsdEnabled.collectAsState()
     val bleEnabled by container.bleEnabled.collectAsState()
     val listenerPort by container.listenerPort.collectAsState()
+    val hasNetwork by container.localNetwork.hasNetwork.collectAsState()
+    val directLink by container.directLink.state.collectAsState()
+    val directLinkOn = directLink is com.crossdrop.core.connect.DirectLinkState.On
 
     var tabName by rememberSaveable { mutableStateOf(Tab.RADAR.name) }
+    // First run: a skippable welcome. The radar (and its permission prompts) waits until it is done.
+    var welcome by rememberSaveable { mutableStateOf(!container.welcomeSeen) }
+    val finishWelcome = { container.welcomeSeen = true; welcome = false }
+    // "Can't see the other device?" help: the one-tap private link and the plain how-to.
+    var connectOpen by rememberSaveable { mutableStateOf(false) }
+    var guideOpen by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(directLink) { container.localNetwork.refresh() }
     val tab = Tab.valueOf(tabName)
     var inboxCount by remember { mutableIntStateOf(container.inbox.list().size) }
     var historyTick by remember { mutableIntStateOf(0) }
@@ -150,7 +168,7 @@ fun Root(container: AppContainer) {
     CompositionLocalProvider(LocalNavInset provides navInset) {
         Box(Modifier.fillMaxSize().background(Ink)) {
             when (tab) {
-                Tab.RADAR -> RadarScreen(
+                Tab.RADAR -> if (!welcome) RadarScreen(
                     selfName = deviceName,
                     peers = peers.values.sortedBy { it.lastSeenMs },
                     onSendTo = { targets, uris ->
@@ -173,6 +191,11 @@ fun Root(container: AppContainer) {
                     onPermissionsGranted = container::restartDiscovery,
                     selfPort = listenerPort,
                     nsdEnabled = nsdEnabled,
+                    hasNetwork = hasNetwork,
+                    directLinkOn = directLinkOn,
+                    onConnectDirectly = { connectOpen = true },
+                    onShowConnectGuide = { guideOpen = true },
+                    onOpenDirectLink = { connectOpen = true },
                 )
                 Tab.TRANSFERS -> TransfersScreen(
                     groups = groups,
@@ -202,6 +225,7 @@ fun Root(container: AppContainer) {
                         inboxTick++
                     },
                     onClearHistory = { container.history.clear(); historyTick++ },
+                    onShowWelcome = { welcome = true },
                     vaultState = vaultHost,
                     onOpenDrive = { driveOpen = true },
                     onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
@@ -228,6 +252,33 @@ fun Root(container: AppContainer) {
                     .navigationBarsPadding()
                     .padding(start = 18.dp, end = 18.dp, bottom = 18.dp),
             )
+
+            // ---- first-run welcome (skippable; Settings can replay it)
+            Overlay(true.takeIf { welcome }, fade = true) {
+                BackHandler { finishWelcome() }
+                com.crossdrop.ui.welcome.WelcomeScreen(
+                    onFinish = finishWelcome,
+                    permissionNote = tr("Android will ask to find nearby devices and to show notifications. Anything else, like camera or contacts, is asked only when you use it."),
+                )
+            }
+
+            // ---- connect two devices that share no Wi-Fi
+            Overlay(true.takeIf { guideOpen }) {
+                BackHandler { guideOpen = false }
+                com.crossdrop.ui.connect.ConnectGuideScreen(
+                    onClose = { guideOpen = false },
+                    onConnectDirectly = { guideOpen = false; connectOpen = true },
+                )
+            }
+            Overlay(true.takeIf { connectOpen }) {
+                BackHandler { connectOpen = false }
+                com.crossdrop.ui.connect.ConnectDirectScreen(
+                    link = container.directLink,
+                    nearbyNames = peers.values.filter { it.vault == null }.map { it.name },
+                    onClose = { connectOpen = false },
+                    onGuide = { connectOpen = false; guideOpen = true },
+                )
+            }
 
             // ---- live transfer (one device, or a send to several)
             Overlay(focused?.takeIf { !transferHidden }) { g ->
@@ -293,7 +344,7 @@ fun Root(container: AppContainer) {
             Overlay(contactTargets) { targets ->
                 BackHandler { contactTargets = null }
                 com.crossdrop.ui.contacts.ContactPickerScreen(
-                    target = if (targets.size == 1) targets.first().name else "${targets.size} devices",
+                    target = if (targets.size == 1) targets.first().name else trPlural(targets.size, "1 device", "{n} devices"),
                     onSend = { ids ->
                         contactTargets = null
                         container.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -497,10 +548,10 @@ private fun FloatingNav(
                 Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp)).background(bg)
                     .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(t) })
                     .semantics {
-                        contentDescription = t.label + when {
-                            t == Tab.INBOX && inboxCount > 0 -> ", $inboxCount files"
-                            t == Tab.TRANSFERS && transferLive -> ", transfer in progress"
-                            else -> ""
+                        contentDescription = when {
+                            t == Tab.INBOX && inboxCount > 0 -> trPlural(inboxCount, "{0}, 1 file", "{0}, {n} files", t.label)
+                            t == Tab.TRANSFERS && transferLive -> tr("{0}, transfer in progress", t.label)
+                            else -> t.label
                         }
                     },
                 contentAlignment = Alignment.Center,

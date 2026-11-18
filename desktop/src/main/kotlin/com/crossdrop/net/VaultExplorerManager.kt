@@ -1,5 +1,6 @@
 package com.crossdrop.net
 
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.Peer
 import com.crossdrop.core.crypto.SessionIdentity
 import com.crossdrop.core.vault.VaultClient
@@ -89,11 +90,11 @@ class VaultExplorerManager(
                     )
                 } else {
                     _state.value = _state.value?.copy(
-                        loading = false, error = e.message ?: "mount failed")
+                        loading = false, error = e.message ?: tr("mount failed"))
                 }
             } catch (e: Exception) {
                 _state.value = _state.value?.copy(
-                    loading = false, error = "unreachable: ${e.message}")
+                    loading = false, error = tr("unreachable: {0}", e.message))
             }
         }
     }
@@ -123,7 +124,7 @@ class VaultExplorerManager(
                     loading = false, pinRequired = true, pinFailed = true)
             } catch (e: Exception) {
                 _state.value = _state.value?.copy(
-                    loading = false, error = "unreachable: ${e.message}")
+                    loading = false, error = tr("unreachable: {0}", e.message))
             }
         }
     }
@@ -156,7 +157,7 @@ class VaultExplorerManager(
                         loading = false, error = e2.message)
                 } catch (e2: Exception) {
                     _state.value = _state.value?.copy(
-                        loading = false, error = "lost connection")
+                        loading = false, error = tr("lost connection"))
                 }
             }
             if (entries != null) _state.value = _state.value?.copy(
@@ -196,7 +197,7 @@ class VaultExplorerManager(
                     updateJob(name) { it.copy(done = true, received = attr.size) }
                     historyAdd(name, 1, attr.size, "RECEIVING")
                 } catch (e: Exception) {
-                    updateJob(name) { it.copy(failed = e.message ?: "failed") }
+                    updateJob(name) { it.copy(failed = e.message ?: tr("failed")) }
                 }
             }
         }
@@ -222,7 +223,7 @@ class VaultExplorerManager(
                     historyAdd(name, 1, of.meta.size, "SENDING")
                     refresh(dir)
                 } catch (e: Exception) {
-                    updateJob(name) { it.copy(failed = e.message ?: "failed") }
+                    updateJob(name) { it.copy(failed = e.message ?: tr("failed")) }
                 }
             }
         }
@@ -257,7 +258,7 @@ class VaultExplorerManager(
     }
 
     private fun historyAdd(name: String, files: Int, bytes: Long, dir: String) {
-        val peerName = _state.value?.peerName ?: "vault"
+        val peerName = _state.value?.peerName ?: tr("vault")
         runCatching {
             history.add(HistoryStore.Entry(
                 ts = System.currentTimeMillis(), direction = dir,

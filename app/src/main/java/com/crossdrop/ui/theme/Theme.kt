@@ -124,10 +124,24 @@ private val typography = Typography().let { t ->
     )
 }
 
-/** Display text (Sora) — titles and big figures. */
+/**
+ * Letter-spacing in em, dropped for scripts whose letters must stay joined or shaped (Arabic, Persian, Hindi,
+ * Georgian): tracking there detaches the letters. Use this for every `letterSpacing` on text that gets translated.
+ */
+fun trackingEm(em: Float): androidx.compose.ui.unit.TextUnit =
+    if (com.crossdrop.core.i18n.I18n.isCursiveOrCaseless()) 0.em else em.em
+
+/** Capitals for small labels, only where the script has them (Turkish gets its dotted İ). */
+fun String.caps(): String =
+    if (com.crossdrop.core.i18n.I18n.isCursiveOrCaseless()) this
+    else uppercase(java.util.Locale.forLanguageTag(com.crossdrop.core.i18n.I18n.language()))
+
+/** Display text (Sora) — titles and big figures. Sora is Latin-only; other scripts fall back to the system font. */
 fun displayStyle(size: Int, tracking: Float = -0.03f, color: Color = TextPrimary) = TextStyle(
     fontFamily = DisplayFont, fontWeight = FontWeight.SemiBold,
-    fontSize = size.sp, letterSpacing = tracking.em, color = color, lineHeight = (size * 1.1f).sp,
+    fontSize = size.sp, letterSpacing = trackingEm(tracking), color = color,
+    // Devanagari, Arabic and Georgian glyphs are taller than Latin ones and clip at a tight line height.
+    lineHeight = (size * if (com.crossdrop.core.i18n.I18n.isCursiveOrCaseless()) 1.4f else 1.1f).sp,
 )
 
 /** Figures (JetBrains Mono) — sizes, speeds, codes, addresses. */

@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.StatFs
 import androidx.documentfile.provider.DocumentFile
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.vault.VaultFs
 import com.crossdrop.core.vault.VaultFs.VaultError
 import java.io.File
@@ -34,7 +35,7 @@ class SafVaultFs(
     private val stagingDir: File get() = File(stagingRoot, "saf-stage").apply { mkdirs() }
 
     /** Display name of the picked folder, for the host screen. */
-    val rootName: String get() = root.name ?: "Shared folder"
+    val rootName: String get() = root.name ?: tr("Shared folder")
 
     // --------------------------------------------------------- resolution --
 

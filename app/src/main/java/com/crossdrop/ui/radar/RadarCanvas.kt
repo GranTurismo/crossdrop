@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.Peer
 import com.crossdrop.core.UNNAMED_PEER
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.ui.CdIcon
 import com.crossdrop.ui.CdIcons
 import com.crossdrop.ui.theme.Accent
@@ -197,11 +198,11 @@ private fun SelfNode(name: String, icon: ImageVector, onTap: (() -> Unit)?, modi
             .then(
                 if (onTap != null) Modifier.clickable(
                     interactionSource = null, indication = ripple(bounded = false, radius = 64.dp),
-                    role = Role.Button, onClickLabel = "Rename", onClick = onTap,
+                    role = Role.Button, onClickLabel = tr("Rename"), onClick = onTap,
                 ) else Modifier,
             )
             .semantics(mergeDescendants = true) {
-                contentDescription = "Your device, $name" + if (onTap != null) ". Tap to rename" else ""
+                contentDescription = if (onTap != null) tr("Your device, {0}. Tap to rename", name) else tr("Your device, {0}", name)
             },
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -222,7 +223,7 @@ private fun SelfNode(name: String, icon: ImageVector, onTap: (() -> Unit)?, modi
         )
         Spacer(Modifier.height(4.dp))
         Text(
-            if (onTap != null) "you · tap to rename" else "you",
+            if (onTap != null) tr("you · tap to rename") else tr("you"),
             color = TextDim, fontSize = 11.sp, lineHeight = 12.sp,
         )
     }
@@ -238,8 +239,8 @@ private fun PeerNode(peer: Peer, nearest: Boolean, onTap: () -> Unit, modifier: 
     val dashed = vault == null && (distance == null || !reachable)
 
     val (sub, subColor) = when {
-        vault != null -> (if (vault.needsPin) "Drive · PIN" else "Drive") to Amber
-        !reachable -> "Bluetooth only" to TextDim
+        vault != null -> (if (vault.needsPin) tr("Drive · PIN") else tr("Drive")) to Amber
+        !reachable -> tr("Bluetooth only") to TextDim
         distance != null -> distanceLabel(distance) to (if (nearest) Accent else TextDim)
         else -> "Wi-Fi" to TextDim
     }
@@ -249,15 +250,14 @@ private fun PeerNode(peer: Peer, nearest: Boolean, onTap: () -> Unit, modifier: 
         dashed -> Color.White.copy(alpha = 0.25f)
         else -> Color.White.copy(alpha = 0.14f)
     }
-    val spoken = buildString {
-        append(if (vault != null) "Open drive $name" else "Send to $name")
-        when {
-            vault != null && vault.needsPin -> append(", PIN protected")
-            !reachable -> append(", seen over Bluetooth only, not reachable yet")
-            distance != null -> append(", about ${distance.roundToInt().coerceAtLeast(1)} metres away")
-            else -> append(", seen over Wi-Fi")
-        }
+    val spokenBase = if (vault != null) tr("Open drive {0}", name) else tr("Send to {0}", name)
+    val spokenDetail = when {
+        vault != null && vault.needsPin -> tr("PIN protected")
+        !reachable -> tr("seen over Bluetooth only, not reachable yet")
+        distance != null -> tr("about {0} metres away", distance.roundToInt().coerceAtLeast(1))
+        else -> tr("seen over Wi-Fi")
     }
+    val spoken = tr("{0}, {1}", spokenBase, spokenDetail)
 
     Column(
         modifier.width(NODE_W)

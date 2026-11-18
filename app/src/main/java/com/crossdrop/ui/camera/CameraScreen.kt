@@ -69,6 +69,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.media.MediaSaver
 import com.crossdrop.net.SessionState
 import com.crossdrop.net.SessionStatus
@@ -131,13 +132,13 @@ fun CameraScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
             ) {
                 CdIcon(CdIcons.Camera, TextSecondary, size = 44.dp)
-                Text("Camera access is off", style = displayStyle(22))
+                Text(tr("Camera access is off"), style = displayStyle(22))
                 Text(
-                    "CrossDrop needs the camera to send photos the moment you take them.",
+                    tr("CrossDrop needs the camera to send photos the moment you take them."),
                     color = TextDim, fontSize = 14.sp, textAlign = TextAlign.Center,
                 )
-                PillButton("Allow camera", { launcher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)) })
-                PillButton("Close", onClose, style = com.crossdrop.ui.PillStyle.Glass)
+                PillButton(tr("Allow camera"), { launcher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)) })
+                PillButton(tr("Close"), onClose, style = com.crossdrop.ui.PillStyle.Glass)
             }
         }
     }
@@ -168,7 +169,7 @@ private fun CameraBody(
 
     LaunchedEffect(front, videoMode) {
         val provider = runCatching { ProcessCameraProvider.awaitInstance(context) }.getOrNull() ?: run {
-            error = "Camera unavailable"; return@LaunchedEffect
+            error = tr("Camera unavailable"); return@LaunchedEffect
         }
         val preview = Preview.Builder().build().also { it.surfaceProvider = previewView.surfaceProvider }
         val selector = if (front) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
@@ -188,7 +189,7 @@ private fun CameraBody(
             }
             error = null
         } catch (e: Exception) {
-            error = "Camera unavailable: ${e.message}"
+            error = tr("Camera unavailable: {0}", e.message)
         }
     }
     DisposableEffect(Unit) {
@@ -230,7 +231,7 @@ private fun CameraBody(
             recording = (if (hasMic && micPresent) pending.withAudioEnabled() else pending).start(ContextCompat.getMainExecutor(context)) { ev ->
                 if (ev is VideoRecordEvent.Finalize) {
                     if (!ev.hasError() || ev.error == VideoRecordEvent.Finalize.ERROR_SOURCE_INACTIVE) onShot(file, true)
-                    else error = "Recording failed"
+                    else error = tr("Recording failed")
                 }
             }
         }
@@ -246,7 +247,7 @@ private fun CameraBody(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            CircleButton(CdIcons.Close, "Close camera", onClose, fill = Color.Black.copy(alpha = 0.45f))
+            CircleButton(CdIcons.Close, tr("Close camera"), onClose, fill = Color.Black.copy(alpha = 0.45f))
             Row(
                 Modifier.weight(1f).height(40.dp).clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.45f))
                     .padding(horizontal = 14.dp),
@@ -255,7 +256,7 @@ private fun CameraBody(
             ) {
                 Dot(Accent)
                 Text(
-                    "Live to " + targets.joinToString(", "),
+                    tr("Live to {0}", targets.joinToString(", ")),
                     color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
@@ -287,13 +288,13 @@ private fun CameraBody(
                 Shutter(videoMode, recording != null, ::shoot)
                 Spacer(Modifier.weight(1f))
                 CircleButton(
-                    CdIcons.Swap, "Switch camera", { if (recording == null) front = !front },
+                    CdIcons.Swap, tr("Switch camera"), { if (recording == null) front = !front },
                     size = 54.dp, fill = Color.Black.copy(alpha = 0.45f),
                 )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ModeChip("Photo", !videoMode) { if (recording == null) videoMode = false }
-                ModeChip("Video", videoMode) { if (recording == null) videoMode = true }
+                ModeChip(tr("Photo"), !videoMode) { if (recording == null) videoMode = false }
+                ModeChip(tr("Video"), videoMode) { if (recording == null) videoMode = true }
             }
         }
     }
@@ -319,7 +320,7 @@ private fun Shutter(video: Boolean, recording: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.size(78.dp).clip(CircleShape).border(4.dp, Color.White, CircleShape)
             .clickable(role = Role.Button, onClick = onClick)
-            .semantics { contentDescription = if (video) (if (recording) "Stop recording" else "Record video") else "Take photo" },
+            .semantics { contentDescription = if (video) (if (recording) tr("Stop recording") else tr("Record video")) else tr("Take photo") },
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -359,7 +360,7 @@ private fun LastThumb(shot: CameraShot?, modifier: Modifier) {
 @Composable
 private fun ShotStatus(shot: CameraShot?, sessions: List<SessionState>) {
     if (shot == null) {
-        Text("Take a photo — it lands on the other screen instantly", color = TextPrimary, fontSize = 13.sp,
+        Text(tr("Take a photo — it lands on the other screen instantly"), color = TextPrimary, fontSize = 13.sp,
             modifier = Modifier.clip(RoundedCornerShape(50)).background(Color.Black.copy(alpha = 0.45f)).padding(horizontal = 14.dp, vertical = 7.dp))
         return
     }
@@ -367,13 +368,13 @@ private fun ShotStatus(shot: CameraShot?, sessions: List<SessionState>) {
     val text = mine.joinToString("  ·  ") { s ->
         when (s.status) {
             SessionStatus.COMPLETED -> "${s.peerName} ✓"
-            SessionStatus.AWAITING_ACCEPT -> "Waiting for ${s.peerName} to accept"
+            SessionStatus.AWAITING_ACCEPT -> tr("Waiting for {0} to accept", s.peerName)
             SessionStatus.TRANSFERRING -> "${s.peerName} ${(s.fraction * 100).toInt()}%"
-            SessionStatus.CONNECTING -> "Connecting to ${s.peerName}"
-            SessionStatus.DECLINED -> "${s.peerName} declined"
-            else -> "${s.peerName}: not sent"
+            SessionStatus.CONNECTING -> tr("Connecting to {0}", s.peerName)
+            SessionStatus.DECLINED -> tr("{0} declined", s.peerName)
+            else -> tr("{0}: not sent", s.peerName)
         }
-    }.ifEmpty { "Saved" }
+    }.ifEmpty { tr("Saved") }
     Text(
         text, color = TextPrimary, fontSize = 13.sp, maxLines = 2, textAlign = TextAlign.Center,
         modifier = Modifier.padding(horizontal = 24.dp).clip(RoundedCornerShape(50))

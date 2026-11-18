@@ -12,6 +12,7 @@ import com.crossdrop.core.Peer
 import com.crossdrop.core.VaultDescriptor
 import com.crossdrop.core.discovery.PeerDiscovery
 import com.crossdrop.core.discovery.ServiceNames
+import com.crossdrop.core.i18n.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -129,7 +130,7 @@ class VaultDiscovery(
         if (id == selfVaultId()) return                       // our own beacon
         val host = hosts.firstOrNull { it.contains('.') } ?: hosts.firstOrNull() ?: return
         val name = attrs["name"]?.let { String(it, Charsets.UTF_8) }
-            ?.takeIf { it.isNotBlank() } ?: "Vault"
+            ?.takeIf { it.isNotBlank() } ?: tr("Vault")
         names.add(r.serviceName, id)
         _peers.update { it + (id to Peer(
             instanceId = id,

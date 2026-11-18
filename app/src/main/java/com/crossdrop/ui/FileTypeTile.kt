@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.ui.theme.Accent
 import com.crossdrop.ui.theme.Amber
 import com.crossdrop.ui.theme.GlassHigh
@@ -16,9 +17,21 @@ import com.crossdrop.ui.theme.Violet
 import com.crossdrop.ui.theme.VioletText
 
 /** What a file is, for its tile and the inbox's storage breakdown. */
-enum class FileKind(val label: String) {
-    PHOTO("Photos"), VIDEO("Videos"), AUDIO("Audio"), DOC("Documents"),
-    ARCHIVE("Archives"), APP("Apps"), FOLDER("Folders"), OTHER("Other");
+enum class FileKind {
+    PHOTO, VIDEO, AUDIO, DOC, ARCHIVE, APP, FOLDER, OTHER;
+
+    /** Display name, read at call time so a language change shows up without restarting. */
+    val label: String
+        get() = when (this) {
+            PHOTO -> tr("Photos")
+            VIDEO -> tr("Videos")
+            AUDIO -> tr("Audio")
+            DOC -> tr("Documents")
+            ARCHIVE -> tr("Archives")
+            APP -> tr("Apps")
+            FOLDER -> tr("Folders")
+            OTHER -> tr("Other")
+        }
 
     val icon: ImageVector
         get() = when (this) {

@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.SessionState
 import com.crossdrop.platform.SystemActions
 import com.crossdrop.switchphones.DesktopSwitchReceiver
@@ -86,9 +87,9 @@ fun SwitchReceiveScreen(
         ) {
             Text(
                 when {
-                    done -> "${state.peerName} is backed up here"
-                    failed -> "Move paused"
-                    else -> "Moving from ${state.peerName}"
+                    done -> tr("{0} is backed up here", state.peerName)
+                    failed -> tr("Move paused")
+                    else -> tr("Moving from {0}", state.peerName)
                 },
                 style = displayStyle(24), textAlign = TextAlign.Center,
             )
@@ -113,27 +114,27 @@ fun SwitchReceiveScreen(
             }
             receiving?.takeIf { !done }?.let {
                 Text(
-                    "Batch ${state.batch + 1} of ${state.batches} · ${(it.fraction * 100).toInt()}%" +
+                    tr("Batch {0} of {1} · {2}%", state.batch + 1, state.batches, (it.fraction * 100).toInt()) +
                         (it.bytesPerSec.takeIf { b -> b > 0 }?.let { b -> " · ${formatBytes(b)}/s" } ?: ""),
                     style = monoStyle(13, TextDim),
                 )
             }
             GlassCard(Modifier.widthIn(max = 520.dp).fillMaxWidth(), fill = Glass, border = Hairline, contentPadding = PaddingValues(6.dp)) {
-                Row(CdIcons.Photo, "Photos", "%,d / %,d".format(state.photos, state.photosTotal))
+                Row(CdIcons.Photo, tr("Photos"), "%,d / %,d".format(state.photos, state.photosTotal))
                 RowSeparator()
-                Row(CdIcons.Video, "Videos", "%,d / %,d".format(state.videos, state.videosTotal))
-                if (state.contactsTotal > 0) { RowSeparator(); Row(CdIcons.Contacts, "Contacts", if (state.contacts > 0) "Contacts.vcf" else "%,d to come".format(state.contactsTotal)) }
-                if (state.files > 0) { RowSeparator(); Row(CdIcons.Doc, "Files", "%,d".format(state.files)) }
+                Row(CdIcons.Video, tr("Videos"), "%,d / %,d".format(state.videos, state.videosTotal))
+                if (state.contactsTotal > 0) { RowSeparator(); Row(CdIcons.Contacts, tr("Contacts"), if (state.contacts > 0) "Contacts.vcf" else tr("{0} to come", "%,d".format(state.contactsTotal))) }
+                if (state.files > 0) { RowSeparator(); Row(CdIcons.Doc, tr("Files"), "%,d".format(state.files)) }
             }
             state.error?.let { Text(it, color = DangerText, fontSize = 13.sp, textAlign = TextAlign.Center) }
-            FootNote("Saved to ${state.folder.path} with the original dates. Open Contacts.vcf to add the contacts to your address book.", Modifier.widthIn(max = 520.dp), icon = CdIcons.Folder)
+            FootNote(tr("Saved to {0} with the original dates. Open Contacts.vcf to add the contacts to your address book.", state.folder.path), Modifier.widthIn(max = 520.dp), icon = CdIcons.Folder)
             Spacer(Modifier.height(4.dp))
             androidx.compose.foundation.layout.Row(Modifier.widthIn(max = 520.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton("Show folder", { if (state.folder.exists()) SystemActions.open(state.folder) }, Modifier.weight(1f), style = PillStyle.Glass, icon = CdIcons.Folder)
-                if (done || failed) PillButton("Done", onDone, Modifier.weight(1f))
+                PillButton(tr("Show folder"), { if (state.folder.exists()) SystemActions.open(state.folder) }, Modifier.weight(1f), style = PillStyle.Glass, icon = CdIcons.Folder)
+                if (done || failed) PillButton(tr("Done"), onDone, Modifier.weight(1f))
                 else {
-                    PillButton("Stop", onStop, Modifier.weight(1f), style = PillStyle.Danger)
-                    PillButton("Hide", onHide, Modifier.weight(1f), style = PillStyle.Glass)
+                    PillButton(tr("Stop"), onStop, Modifier.weight(1f), style = PillStyle.Danger)
+                    PillButton(tr("Hide"), onHide, Modifier.weight(1f), style = PillStyle.Glass)
                 }
             }
         }

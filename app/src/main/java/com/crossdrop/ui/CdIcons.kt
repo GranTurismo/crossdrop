@@ -53,11 +53,11 @@ object CdIcons {
             "M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3", stroke = 1.8f,
         )
     }
-    val ArrowRight by lazy { icon("M5 12h14M13 6l6 6-6 6", stroke = 2.2f) }
+    val ArrowRight by lazy { icon("M5 12h14M13 6l6 6-6 6", stroke = 2.2f, mirror = true) }
     val ArrowUp by lazy { icon("M12 19V5M6 11l6-6 6 6", stroke = 2.2f) }
     val ArrowDown by lazy { icon("M12 5v14M6 13l6 6 6-6", stroke = 2.2f) }
-    val ChevronLeft by lazy { icon("M15 6l-6 6 6 6", stroke = 2f) }
-    val ChevronRight by lazy { icon("M9 6l6 6-6 6", stroke = 2.2f) }
+    val ChevronLeft by lazy { icon("M15 6l-6 6 6 6", stroke = 2f, mirror = true) }
+    val ChevronRight by lazy { icon("M9 6l6 6-6 6", stroke = 2.2f, mirror = true) }
     val Check by lazy { icon("M5 12.5l4.5 4.5L19 7", stroke = 2.4f) }
     val Close by lazy { icon("M6 6l12 12M18 6L6 18", stroke = 2.2f) }
     val Lock by lazy { icon(rect(5f, 11f, 14f, 10f, 2f), "M8 11V8a4 4 0 0 1 8 0v3", stroke = 2.2f) }
@@ -96,8 +96,9 @@ fun CdIcon(
 
 private const val FOLDER = "M4 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"
 
-private fun icon(vararg paths: String, stroke: Float = 1.9f): ImageVector =
-    ImageVector.Builder(defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+/** [mirror]: a directional icon (chevron, "go" arrow) that flips in right-to-left languages. */
+private fun icon(vararg paths: String, stroke: Float = 1.9f, mirror: Boolean = false): ImageVector =
+    ImageVector.Builder(defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f, autoMirror = mirror)
         .apply {
             paths.forEach { d ->
                 addPath(

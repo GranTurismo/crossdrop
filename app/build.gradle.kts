@@ -38,6 +38,10 @@ android {
         buildConfig = true
     }
 
+    // Translations: l10n/<lang>.json is shared by every platform. The shipped ones are staged as assets
+    // (en.json and context.json are only the source list for translators).
+    sourceSets.getByName("main").assets.srcDir(layout.buildDirectory.dir("generated/l10nAssets"))
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -61,6 +65,12 @@ android {
         }
     }
 }
+
+val stageL10n by tasks.registering(Sync::class) {
+    from(rootProject.file("l10n")) { include("*.json"); exclude("en.json", "context.json") }
+    into(layout.buildDirectory.dir("generated/l10nAssets/l10n"))
+}
+tasks.named("preBuild") { dependsOn(stageL10n) }
 
 dependencies {
     implementation(project(":core"))

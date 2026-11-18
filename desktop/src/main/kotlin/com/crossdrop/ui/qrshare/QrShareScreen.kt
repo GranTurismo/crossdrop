@@ -44,6 +44,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.net.QrShareManager
 import com.crossdrop.ui.BackHeader
 import com.crossdrop.ui.CopyButton
@@ -93,14 +95,14 @@ fun QrShareScreen(
                 Modifier.weight(1f).widthIn(max = 560.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                BackHeader("Send to anyone", onStop, backLabel = "Stop sharing and go back")
+                BackHeader(tr("Send to anyone"), onStop, backLabel = tr("Stop sharing and go back"))
                 StepStrip(step, state)
 
                 BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 8.dp), contentAlignment = Alignment.Center) {
                     QrCard(state.url, size = minOf(236.dp, maxWidth - 40.dp))
                 }
                 Text(
-                    "Scan with any camera — no app needed", color = TextSecondary, fontSize = 14.sp,
+                    tr("Scan with any camera — no app needed"), color = TextSecondary, fontSize = 14.sp,
                     textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
                 )
 
@@ -116,21 +118,20 @@ fun QrShareScreen(
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                     )
                     Spacer(Modifier.size(10.dp))
-                    CopyButton(state.url, label = "Copy link", accent = true, height = 44.dp)
+                    CopyButton(state.url, label = tr("Copy link"), accent = true, height = 44.dp)
                 }
 
                 FilesSummary(state)
 
                 FootNote(
-                    "They need to be on this network. Without the secret link the page doesn't exist, " +
-                        "and it stops working the moment you leave this screen.",
+                    tr("They need to be on this network. Without the secret link the page doesn't exist, and it stops working the moment you leave this screen."),
                 )
             }
             Spacer(Modifier.height(16.dp))
             if (state.delivered) {
-                PillButton("Done", onStop, Modifier.widthIn(max = 560.dp).fillMaxWidth(), height = 56.dp)
+                PillButton(tr("Done"), onStop, Modifier.widthIn(max = 560.dp).fillMaxWidth(), height = 56.dp)
             } else {
-                PillButton("Stop sharing", onStop, Modifier.widthIn(max = 560.dp).fillMaxWidth(), style = PillStyle.Danger, height = 56.dp)
+                PillButton(tr("Stop sharing"), onStop, Modifier.widthIn(max = 560.dp).fillMaxWidth(), style = PillStyle.Danger, height = 56.dp)
             }
         }
     }
@@ -142,9 +143,9 @@ private fun StepStrip(step: Int, state: QrShareManager.State) {
         1f, 0.35f, infiniteRepeatable(tween(700), RepeatMode.Reverse), label = "b",
     )
     val labels = listOf(
-        "Waiting for a scan",
-        if (state.downloadsStarted > 0 && !state.delivered) "${state.downloadsDone} of ${state.files.size} downloaded" else "Receiver connected",
-        "Delivered",
+        tr("Waiting for a scan"),
+        if (state.downloadsStarted > 0 && !state.delivered) tr("{0} of {1} downloaded", state.downloadsDone, state.files.size) else tr("Receiver connected"),
+        tr("Delivered"),
     )
     Row(
         Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
@@ -180,6 +181,7 @@ private fun StepStrip(step: Int, state: QrShareManager.State) {
 @Composable
 private fun FilesSummary(state: QrShareManager.State) {
     val files = state.files
+    val fileCount = files.size
     GlassCard(
         Modifier.fillMaxWidth(), radius = 22.dp, fill = GlassLow, border = null,
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
@@ -196,13 +198,13 @@ private fun FilesSummary(state: QrShareManager.State) {
             Spacer(Modifier.size(if (files.size > 1) 38.dp else 12.dp))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    "${files.size} file${if (files.size == 1) "" else "s"} · ${formatBytes(files.sumOf { it.size })}",
+                    "${trPlural(fileCount, "1 file", "{n} files")} · ${formatBytes(files.sumOf { it.size })}",
                     color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     files.take(3).joinToString(", ") { it.name } +
                         (if (files.size > 3) " +${files.size - 3}" else "") +
-                        (if (files.size > 1) " · or all as one zip" else ""),
+                        (if (files.size > 1) " · " + tr("or all as one zip") else ""),
                     color = TextDim, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
                 )
             }

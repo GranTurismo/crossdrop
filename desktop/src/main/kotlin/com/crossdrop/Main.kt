@@ -18,6 +18,8 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.di.AppContainer
 import com.crossdrop.platform.Platform
 import com.crossdrop.platform.SingleInstance
@@ -42,6 +44,13 @@ const val APP_VERSION = "0.5.0"
  * just raises the running one ([SingleInstance]).
  */
 fun main(args: Array<String>) {
+    // The UI language follows the operating system's language.
+    // A language picked in the app's language list ("Automatic" or a language) wins over the OS language.
+    com.crossdrop.core.i18n.I18n.install(
+        source = { lang -> com.crossdrop.core.i18n.I18n::class.java.getResourceAsStream("/l10n/$lang.json")?.bufferedReader()?.use { it.readText() } },
+        savedChoice = runCatching { com.crossdrop.platform.Prefs().getString("language") }.getOrNull(),
+    )
+    com.crossdrop.ui.language.LanguageReactivity.install()
     // Bumped by a second launch (Windows) to ask the running window to surface.
     val showRequests = MutableStateFlow(0)
     // Files handed to the app — launch arguments (Explorer "Send to"), Finder "Open With", a file
@@ -98,9 +107,9 @@ fun main(args: Array<String>) {
             tooltip = "CrossDrop",
             onAction = { visible = true },
             menu = {
-                Item("Show CrossDrop") { visible = true }
+                Item(tr("Show CrossDrop")) { visible = true }
                 Separator()
-                Item("Quit CrossDrop") { exitApplication() }
+                Item(tr("Quit CrossDrop")) { exitApplication() }
             },
         )
 
@@ -148,22 +157,28 @@ fun main(args: Array<String>) {
                             taskbar.requestUserAttention(true, false)
                     }
                 }
+                val fileCount = offer.offer.files.size
                 if (trayOk) trayState.sendNotification(Notification(
-                    "${offer.peerName} wants to share",
+                    tr("{0} wants to share", offer.peerName),
                     when (offer.kind) {
-                        com.crossdrop.core.protocol.OfferKind.TEXT -> if (offer.text != null) "A link or note — open CrossDrop to see it"
-                            else "${offer.offer.files.size} file(s) — open CrossDrop to accept"
+                        com.crossdrop.core.protocol.OfferKind.TEXT -> if (offer.text != null) tr("A link or note — open CrossDrop to see it")
+                            else trPlural(fileCount, "1 file — open CrossDrop to accept", "{n} files — open CrossDrop to accept")
                         com.crossdrop.core.protocol.OfferKind.CONTACT -> offer.contacts.takeIf { it.isNotEmpty() }
-                            ?.let { "Contact card: ${com.crossdrop.core.contacts.ContactShare.title(it)} — open CrossDrop to save it" }
-                            ?: "A contact card — open CrossDrop to save it"
-                        com.crossdrop.core.protocol.OfferKind.CAMERA -> "Their camera, live on this screen — open CrossDrop to watch"
-                        com.crossdrop.core.protocol.OfferKind.SWITCH -> "Their photos, videos and contacts — open CrossDrop to accept"
-                        else -> "${offer.offer.files.size} file${if (offer.offer.files.size == 1) "" else "s"} — open CrossDrop to accept"
+                            ?.let { tr("Contact card: {0} — open CrossDrop to save it", com.crossdrop.core.contacts.ContactShare.title(it)) }
+                            ?: tr("A contact card — open CrossDrop to save it")
+                        com.crossdrop.core.protocol.OfferKind.CAMERA -> tr("Their camera, live on this screen — open CrossDrop to watch")
+                        com.crossdrop.core.protocol.OfferKind.SWITCH -> tr("Their photos, videos and contacts — open CrossDrop to accept")
+                        else -> trPlural(fileCount, "1 file — open CrossDrop to accept", "{n} files — open CrossDrop to accept")
                     },
                 ))
             }
 
-            CrossDropTheme { Root(container) }
+            // Arabic and Persian read right to left; the window follows.
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalLayoutDirection provides
+                    if (com.crossdrop.core.i18n.I18n.isRtl()) androidx.compose.ui.unit.LayoutDirection.Rtl
+                    else androidx.compose.ui.unit.LayoutDirection.Ltr,
+            ) { CrossDropTheme { Root(container) } }
         }
     }
 }

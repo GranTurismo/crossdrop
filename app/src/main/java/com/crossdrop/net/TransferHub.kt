@@ -4,6 +4,7 @@ import com.crossdrop.core.Peer
 import com.crossdrop.core.contacts.VCard
 import com.crossdrop.core.contacts.VContact
 import com.crossdrop.core.delta.DeltaReceiver
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.protocol.BatchInfo
 import com.crossdrop.core.protocol.FileMeta
 import com.crossdrop.core.protocol.Offer
@@ -286,7 +287,7 @@ class TransferHub(
         val job = scope.launch {
             val list = runCatching { files() }.getOrElse { emptyList() }
             if (list.isEmpty()) {
-                reduce(sid, TransferEvent.Failed("nothing readable selected"))
+                reduce(sid, TransferEvent.Failed(tr("nothing readable selected")))
                 return@launch
             }
             val opts = if (inline == null) options
@@ -298,7 +299,7 @@ class TransferHub(
     }
 
     private suspend fun runSend(sid: String, peer: Peer, files: List<OutgoingFile>, options: SendOptions) {
-        val endpoint = peer.endpoint ?: run { reduce(sid, TransferEvent.Failed("device has no address")); return }
+        val endpoint = peer.endpoint ?: run { reduce(sid, TransferEvent.Failed(tr("device has no address"))); return }
         val kind = options.kind
         val opts = if (kind == OfferKind.CAMERA || kind == OfferKind.SWITCH)
             options.copy(trust = options.trust ?: trust.credentialFor(peer.instanceId, kind)) else options
@@ -564,7 +565,7 @@ class TransferHub(
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        switchReceiver?.batchEnded(SessionStatus.FAILED, "couldn't add the items: ${e.message}")
+                        switchReceiver?.batchEnded(SessionStatus.FAILED, tr("couldn't add the items: {0}", e.message))
                     }
                 }
             }

@@ -53,6 +53,9 @@ val sharedUi = listOf(
     "transfers/TransfersScreen.kt",
     "transfer/GroupTransferScreen.kt",
     "live/LiveViewerScreen.kt",
+    "welcome/WelcomeScreen.kt",
+    "connect/ConnectHelp.kt",
+    "language/LanguageUi.kt",
 )
 // Platform-free transfer state (sessions, groups, trust, routing) shared the same way.
 val sharedNet = listOf("TransferHub.kt")
@@ -68,10 +71,17 @@ val syncSharedNet by tasks.registering(Sync::class) {
     from(rootProject.file("app/src/main/java/com/crossdrop/net")) { include(sharedNet) }
     into(layout.buildDirectory.dir("generated/sharedNet/com/crossdrop/net"))
 }
+// Translations: l10n/<lang>.json is shared with Android and iOS; en.json and context.json are only the source list.
+val stageL10n by tasks.registering(Sync::class) {
+    from(rootProject.file("l10n")) { include("*.json"); exclude("en.json", "context.json") }
+    into(layout.buildDirectory.dir("generated/l10nResources/l10n"))
+}
 sourceSets.main {
     kotlin.srcDir(layout.buildDirectory.dir("generated/sharedUi"))
     kotlin.srcDir(layout.buildDirectory.dir("generated/sharedNet"))
+    resources.srcDir(layout.buildDirectory.dir("generated/l10nResources"))
 }
+tasks.named("processResources") { dependsOn(stageL10n) }
 tasks.named("compileKotlin") { dependsOn(syncSharedUi, syncSharedNet) }
 
 // Installers can only be built on the OS they target (jpackage needs the native

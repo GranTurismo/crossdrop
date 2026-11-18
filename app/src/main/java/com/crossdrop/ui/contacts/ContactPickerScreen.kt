@@ -51,6 +51,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.switchphones.AndroidContacts
 import com.crossdrop.ui.BackHeader
 import com.crossdrop.ui.CdIcon
@@ -108,22 +110,21 @@ fun ContactPickerScreen(
         ScreenGlow(alpha = 0.12f, centerY = 120.dp, radius = 220.dp)
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 16.dp)) {
             BackHeader(
-                "Send contacts", onClose,
-                subtitle = { Text("to $target", color = TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                tr("Send contacts"), onClose,
+                subtitle = { Text(tr("to {0}", target), color = TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) },
             )
             if (!granted) {
                 Column(
                     Modifier.weight(1f).padding(top = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Text("Pick who to send", style = displayStyle(26, tracking = -0.03f))
+                    Text(tr("Pick who to send"), style = displayStyle(26, tracking = -0.03f))
                     Text(
-                        "CrossDrop needs to see your contacts to list them here. The cards you pick go straight " +
-                            "to the other device — nothing is uploaded anywhere.",
+                        tr("CrossDrop needs to see your contacts to list them here. The cards you pick go straight to the other device — nothing is uploaded anywhere."),
                         color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp,
                     )
                     PillButton(
-                        "Allow contacts access", {
+                        tr("Allow contacts access"), {
                             when {
                                 canRead(context) -> granted = true
                                 // Android stops asking after two refusals: the switch is in Settings now.
@@ -144,9 +145,9 @@ fun ContactPickerScreen(
             val list = all
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when {
-                    list == null -> Text("Loading contacts…", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 24.dp))
-                    list.isEmpty() -> FootNote("There are no contacts on this phone yet.", Modifier.padding(top = 16.dp), icon = CdIcons.Contacts)
-                    shown.isEmpty() -> Text("No one matches “$query”.", color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 24.dp))
+                    list == null -> Text(tr("Loading contacts…"), color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 24.dp))
+                    list.isEmpty() -> FootNote(tr("There are no contacts on this phone yet."), Modifier.padding(top = 16.dp), icon = CdIcons.Contacts)
+                    shown.isEmpty() -> Text(tr("No one matches “{0}”.", query), color = TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 24.dp))
                     else -> LazyColumn(contentPadding = PaddingValues(bottom = 8.dp)) {
                         items(shown, key = { it.id }) { e ->
                             val on = e.id in selected
@@ -155,12 +156,9 @@ fun ContactPickerScreen(
                     }
                 }
             }
+            val pickedCount = selected.size
             PillButton(
-                when (selected.size) {
-                    0 -> "Pick contacts"
-                    1 -> "Send 1 contact"
-                    else -> "Send ${selected.size} contacts"
-                },
+                if (pickedCount == 0) tr("Pick contacts") else trPlural(pickedCount, "Send 1 contact", "Send {n} contacts"),
                 { onSend(selected) },
                 Modifier.fillMaxWidth().padding(vertical = 14.dp),
                 enabled = selected.isNotEmpty(), icon = CdIcons.ArrowUp, glow = true,
@@ -180,7 +178,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
     ) {
         CdIcon(CdIcons.Search, TextDim, size = 18.dp)
         Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) Text("Search name, number or email", color = TextDim, fontSize = 15.sp, maxLines = 1)
+            if (value.isEmpty()) Text(tr("Search name, number or email"), color = TextDim, fontSize = 15.sp, maxLines = 1)
             BasicTextField(
                 value, onChange, singleLine = true,
                 textStyle = TextStyle(color = TextPrimary, fontSize = 15.sp),
@@ -191,7 +189,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
         }
         if (value.isNotEmpty()) {
             Box(
-                Modifier.size(28.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = "Clear") { onChange("") },
+                Modifier.size(28.dp).clip(CircleShape).clickable(role = Role.Button, onClickLabel = tr("Clear")) { onChange("") },
                 contentAlignment = Alignment.Center,
             ) { CdIcon(CdIcons.Close, TextDim, size = 14.dp) }
         }
@@ -203,7 +201,7 @@ private fun ContactRow(e: AndroidContacts.Entry, selected: Boolean, onToggle: ()
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
             .background(if (selected) Accent.copy(alpha = 0.08f) else Color.Transparent)
-            .clickable(role = Role.Checkbox, onClickLabel = if (selected) "Remove" else "Add", onClick = onToggle)
+            .clickable(role = Role.Checkbox, onClickLabel = if (selected) tr("Remove") else tr("Add"), onClick = onToggle)
             .padding(horizontal = 8.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

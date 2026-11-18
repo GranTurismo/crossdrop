@@ -1,5 +1,6 @@
 package com.crossdrop.platform
 
+import com.crossdrop.core.i18n.tr
 import java.awt.Desktop
 import java.awt.FileDialog
 import java.awt.Frame
@@ -48,7 +49,7 @@ object SystemActions {
     }
 
     /** Native multi-select file chooser; empty list when cancelled. */
-    fun pickFiles(parent: Frame? = null, title: String = "Choose files"): List<File> {
+    fun pickFiles(parent: Frame? = null, title: String = tr("Choose files")): List<File> {
         val dlg = FileDialog(parent, title, FileDialog.LOAD).apply { isMultipleMode = true }
         dlg.isVisible = true   // blocks until dismissed (modal)
         return dlg.files?.toList().orEmpty()
@@ -59,7 +60,7 @@ object SystemActions {
      * Windows' AWT FileDialog has no folder mode, so it gets a Swing chooser
      * restyled with the system look-and-feel (Explorer-like rather than Metal).
      */
-    fun pickFolder(parent: Frame? = null, title: String = "Choose a folder to share"): File? {
+    fun pickFolder(parent: Frame? = null, title: String = tr("Choose a folder to share")): File? {
         if (!Platform.isMac) {
             if (Platform.isWindows) useSystemLookAndFeel()
             val chooser = javax.swing.JFileChooser().apply {

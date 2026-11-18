@@ -28,7 +28,7 @@ class InboxStore(private val root: File = AppDirs.inbox) {
         val name: String get() = file.name
         val size: Long get() = file.length()
         val receivedAt: String
-            get() = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(file.lastModified()))
+            get() = SimpleDateFormat("HH:mm", com.crossdrop.core.i18n.I18n.locale()).format(Date(file.lastModified()))
     }
 
     fun list(): List<ReceivedFile> =

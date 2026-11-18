@@ -54,7 +54,10 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.ui.theme.Accent
+import com.crossdrop.ui.theme.caps
+import com.crossdrop.ui.theme.trackingEm
 import com.crossdrop.ui.theme.DangerText
 import com.crossdrop.ui.theme.Glass
 import com.crossdrop.ui.theme.GlassHigh
@@ -160,8 +163,8 @@ fun ScreenTitle(text: String, modifier: Modifier = Modifier, size: Int = 34) {
 @Composable
 fun SectionLabel(text: String, modifier: Modifier = Modifier) {
     Text(
-        text.uppercase(), color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-        letterSpacing = 0.08.em, modifier = modifier.padding(horizontal = 4.dp).semantics { heading() },
+        text.caps(), color = TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        letterSpacing = trackingEm(0.08f), modifier = modifier.padding(horizontal = 4.dp).semantics { heading() },
     )
 }
 
@@ -182,7 +185,7 @@ fun BackHeader(
     title: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    backLabel: String = "Back",
+    backLabel: String = tr("Back"),
     titleSize: Int = 22,
     subtitle: (@Composable () -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
@@ -304,14 +307,14 @@ fun ChipButton(
 fun CopyButton(
     value: String,
     modifier: Modifier = Modifier,
-    label: String = "Copy",
+    label: String = tr("Copy"),
     accent: Boolean = false,
     height: Dp = 36.dp,
 ) {
     val clipboard = LocalClipboardManager.current
     var copied by remember(value) { mutableStateOf(false) }
     ChipButton(
-        text = if (copied) "Copied" else label,
+        text = if (copied) tr("Copied") else label,
         onClick = { clipboard.setText(AnnotatedString(value)); copied = true },
         modifier = modifier,
         icon = if (copied) CdIcons.Check else CdIcons.Copy,
@@ -517,7 +520,7 @@ fun ConfirmDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = TextDim, fontWeight = FontWeight.SemiBold) }
+            TextButton(onClick = onDismiss) { Text(tr("Cancel"), color = TextDim, fontWeight = FontWeight.SemiBold) }
         },
     )
 }

@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import androidx.core.content.edit
 import com.crossdrop.core.Peer
 import com.crossdrop.core.contacts.VCard
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.protocol.BatchInfo
 import com.crossdrop.core.protocol.FileMeta
 import com.crossdrop.core.protocol.ItemCategory
@@ -226,7 +227,7 @@ class SwitchSender(
                     return
                 }
                 else -> {
-                    _state.update { it?.copy(phase = Phase.FAILED, error = result.error ?: "connection lost", bytesPerSec = 0) }
+                    _state.update { it?.copy(phase = Phase.FAILED, error = result.error ?: tr("connection lost"), bytesPerSec = 0) }
                     return
                 }
             }
@@ -241,7 +242,7 @@ class SwitchSender(
             history.add(
                 HistoryStore.Entry(
                     ts = System.currentTimeMillis(), direction = "SENDING", peerName = peer.name,
-                    summary = "Switch phones", files = total, bytes = _state.value?.bytesTotal ?: 0, status = "COMPLETED",
+                    summary = tr("Switch phones"), files = total, bytes = _state.value?.bytesTotal ?: 0, status = "COMPLETED",
                 )
             )
         }

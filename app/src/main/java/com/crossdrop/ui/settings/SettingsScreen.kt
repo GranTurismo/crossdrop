@@ -50,9 +50,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.BuildConfig
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.ui.AddPeerDialog
 import com.crossdrop.ui.CdIcon
 import com.crossdrop.ui.CdIcons
+import com.crossdrop.ui.ChipButton
 import com.crossdrop.ui.CircleButton
 import com.crossdrop.ui.ConfirmDialog
 import com.crossdrop.ui.DeviceNameDialog
@@ -91,6 +94,7 @@ fun SettingsScreen(
     inboxStats: () -> Pair<Int, Long>,
     onWipeInbox: () -> Unit,
     onClearHistory: () -> Unit,
+    onShowWelcome: () -> Unit = {},
     vaultState: com.crossdrop.net.VaultHostManager.State? = null,
     onOpenDrive: () -> Unit = {},
     onSelfTest: (() -> Unit)?,
@@ -112,7 +116,7 @@ fun SettingsScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 640.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                ScreenTitle("Settings", Modifier.padding(bottom = 2.dp))
+                ScreenTitle(tr("Settings"), Modifier.padding(bottom = 2.dp))
 
                 // ------------------------------------------------- identity --
                 GlassCard(radius = 28.dp, contentPadding = PaddingValues(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -127,10 +131,10 @@ fun SettingsScreen(
                             ) { CdIcon(CdIcons.Phone, OnAccent, size = 24.dp) }
                         }
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                            Text("Name others see", color = TextDim, fontSize = 12.sp)
+                            Text(tr("Name others see"), color = TextDim, fontSize = 12.sp)
                             Text(deviceName, style = displayStyle(22), maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        CircleButton(CdIcons.Pencil, "Rename this device", { renaming = true }, fill = GlassHigh, iconSize = 18.dp)
+                        CircleButton(CdIcons.Pencil, tr("Rename this device"), { renaming = true }, fill = GlassHigh, iconSize = 18.dp)
                     }
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(GlassLow)
@@ -139,21 +143,26 @@ fun SettingsScreen(
                     ) {
                         Text("id ${formatId(instanceId)}", style = monoStyle(12, TextSecondary), modifier = Modifier.weight(1f))
                         Text(
-                            if (BuildConfig.DEBUG && port > 0) "port :$port · new every launch" else "new every launch",
+                            if (BuildConfig.DEBUG && port > 0) "port :$port · new every launch" else tr("new every launch"),
                             color = Accent, fontSize = 11.sp,
                         )
                     }
                 }
 
+                // ------------------------------------------------- language --
+                var pickingLanguage by remember { mutableStateOf(false) }
+                if (pickingLanguage) com.crossdrop.ui.language.LanguageDialog { pickingLanguage = false }
+                com.crossdrop.ui.language.LanguageRow({ pickingLanguage = true })
+
                 // ------------------------------------------------ discovery --
-                SectionLabel("Discovery", Modifier.padding(top = 4.dp))
+                SectionLabel(tr("Discovery"), Modifier.padding(top = 4.dp))
                 SettingsGroup {
                     ToggleRow(
-                        "Wi-Fi", "Find devices on this network", nsdEnabled, onSetNsd, icon = CdIcons.Wifi,
+                        "Wi-Fi", tr("Find devices on this network"), nsdEnabled, onSetNsd, icon = CdIcons.Wifi,
                     )
                     RowSeparator()
                     ToggleRow(
-                        "Bluetooth LE", "Shows how close each device is", bleEnabled, onSetBle, icon = CdIcons.Bluetooth,
+                        "Bluetooth LE", tr("Shows how close each device is"), bleEnabled, onSetBle, icon = CdIcons.Bluetooth,
                     )
                 }
 
@@ -161,19 +170,20 @@ fun SettingsScreen(
                 DriveCard(vaultState, onOpenDrive)
 
                 // -------------------------------------------------- storage --
-                SectionLabel("Storage", Modifier.padding(top = 4.dp))
+                SectionLabel(tr("Storage"), Modifier.padding(top = 4.dp))
                 SettingsGroup {
                     Row(Modifier.fillMaxWidth().heightIn(min = 54.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Inbox", color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text(tr("Inbox"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        val storedCount = stats.first
                         Text(
-                            "${stats.first} file${if (stats.first == 1) "" else "s"} · ${formatBytes(stats.second)}",
+                            "${trPlural(storedCount, "1 file", "{n} files")} · ${formatBytes(stats.second)}",
                             style = monoStyle(12, TextSecondary),
                         )
                     }
                     RowSeparator()
-                    ActionRow("Wipe inbox", DangerText, enabled = stats.first > 0) { confirmWipe = true }
+                    ActionRow(tr("Wipe inbox"), DangerText, enabled = stats.first > 0) { confirmWipe = true }
                     RowSeparator()
-                    ActionRow("Clear transfer history", TextPrimary) { confirmClear = true }
+                    ActionRow(tr("Clear transfer history"), TextPrimary) { confirmClear = true }
                 }
 
                 // ---------------------------------------------------- about --
@@ -190,7 +200,8 @@ fun SettingsScreen(
                         MonoTag("HKDF-SHA256")
                         MonoTag("ChaCha20-Poly1305")
                     }
-                    Text("No cloud. No accounts. No tracking.", color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(tr("No cloud. No accounts. No tracking."), color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    ChipButton(tr("Show the welcome tour"), onShowWelcome, icon = CdIcons.Help)
                 }
 
                 // ------------------------------------------------ developer --
@@ -224,18 +235,18 @@ fun SettingsScreen(
     }
     if (confirmWipe) {
         ConfirmDialog(
-            title = "Wipe the inbox?",
-            text = "Every received file is overwritten with zeros and deleted. This can't be undone.",
-            confirmLabel = "Wipe inbox",
+            title = tr("Wipe the inbox?"),
+            text = tr("Every received file is overwritten with zeros and deleted. This can't be undone."),
+            confirmLabel = tr("Wipe inbox"),
             onConfirm = { confirmWipe = false; onWipeInbox() },
             onDismiss = { confirmWipe = false },
         )
     }
     if (confirmClear) {
         ConfirmDialog(
-            title = "Clear transfer history?",
-            text = "This forgets the log of past transfers. Received files stay in your inbox.",
-            confirmLabel = "Clear",
+            title = tr("Clear transfer history?"),
+            text = tr("This forgets the log of past transfers. Received files stay in your inbox."),
+            confirmLabel = tr("Clear"),
             onConfirm = { confirmClear = false; onClearHistory() },
             onDismiss = { confirmClear = false },
         )
@@ -294,9 +305,9 @@ private fun DriveCard(state: com.crossdrop.net.VaultHostManager.State?, onOpen: 
                     contentAlignment = Alignment.Center,
                 ) { CdIcon(CdIcons.Drive, OnAccent, size = 24.dp) }
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    Text("Turn into drive", style = displayStyle(17, tracking = -0.02f, color = OnAccent))
+                    Text(tr("Turn into drive"), style = displayStyle(17, tracking = -0.02f, color = OnAccent))
                     Text(
-                        "Open this phone from Finder, Windows or any browser",
+                        tr("Open this phone from Finder, Windows or any browser"),
                         color = OnAccentMuted, fontSize = 12.sp, lineHeight = 16.sp,
                     )
                 }
@@ -320,11 +331,11 @@ private fun DriveCard(state: com.crossdrop.net.VaultHostManager.State?, onOpen: 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.size(8.dp).alpha(glow).clip(CircleShape).background(Accent))
                         Spacer(Modifier.size(8.dp))
-                        Text("Drive is on", style = displayStyle(17, tracking = -0.02f))
+                        Text(tr("Drive is on"), style = displayStyle(17, tracking = -0.02f))
                     }
                     val n = state.clients.size
                     Text(
-                        "${state.rootLabel} · " + if (n == 0) "no one connected" else "$n connected",
+                        "${state.rootLabel} · " + if (n == 0) tr("no one connected") else tr("{0} connected", n),
                         color = TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }

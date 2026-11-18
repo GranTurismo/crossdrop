@@ -8,6 +8,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.crossdrop.core.crypto.SessionIdentity
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.vault.FileVaultFs
 import com.crossdrop.core.vault.VaultServer
 import com.crossdrop.discovery.VaultAdvertiser
@@ -88,8 +89,8 @@ class VaultHostManager(
         } else FileVaultFs(vaultRoot)
 
         val rootLabel = if (treeUri != null) {
-            DocumentFile.fromTreeUri(context, treeUri)?.name ?: "Shared folder"
-        } else "CrossDrop vault"
+            DocumentFile.fromTreeUri(context, treeUri)?.name ?: tr("Shared folder")
+        } else tr("CrossDrop vault")
         val name = label?.takeIf { it.isNotBlank() } ?: "${deviceName()} Drive"
 
         val srv = VaultServer(

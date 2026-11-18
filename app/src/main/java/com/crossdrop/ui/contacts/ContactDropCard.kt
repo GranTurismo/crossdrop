@@ -20,6 +20,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.contacts.ContactInbox
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.ui.CdIcons
 import com.crossdrop.ui.ChipButton
 import com.crossdrop.ui.ContactInitials
@@ -44,25 +45,25 @@ fun ContactDropCard(
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val first = drop.names.firstOrNull() ?: "Contact"
+    val first = drop.names.firstOrNull() ?: tr("Contact")
     val n = drop.names.size
     val waiting = drop.kept != null
     // A finished add goes away by itself; a card waiting for access stays until answered.
     if (!waiting) LaunchedEffect(drop.id) { delay(12_000); onDone() }
 
     val title = when {
-        drop.unreadable -> "Couldn't read that contact card"
-        waiting -> if (n == 1) "Add $first to your contacts?" else "Add $n contacts?"
-        drop.added > 0 && drop.skipped == 0 -> if (drop.added == 1) "Added $first" else "Added ${drop.added} contacts"
+        drop.unreadable -> tr("Couldn't read that contact card")
+        waiting -> if (n == 1) tr("Add {0} to your contacts?", first) else tr("Add {0} contacts?", n)
+        drop.added > 0 && drop.skipped == 0 -> if (drop.added == 1) tr("Added {0}", first) else tr("Added {0} contacts", drop.added)
         drop.added == 0 && drop.skipped > 0 ->
-            if (drop.skipped == 1 && n == 1) "$first is already in your contacts" else "Already in your contacts"
-        drop.added > 0 -> "Added ${drop.added} · ${drop.skipped} already there"
-        else -> "Couldn't add the contact"
+            if (drop.skipped == 1 && n == 1) tr("{0} is already in your contacts", first) else tr("Already in your contacts")
+        drop.added > 0 -> tr("Added {0} · {1} already there", drop.added, drop.skipped)
+        else -> tr("Couldn't add the contact")
     }
     val subtitle = when {
-        drop.unreadable -> "From ${drop.peerName} · saved to your Inbox"
-        waiting -> "From ${drop.peerName} · CrossDrop needs contacts access. Until then it's in your Inbox."
-        else -> "From ${drop.peerName}"
+        drop.unreadable -> tr("From {0} · saved to your Inbox", drop.peerName)
+        waiting -> tr("From {0} · CrossDrop needs contacts access. Until then it's in your Inbox.", drop.peerName)
+        else -> tr("From {0}", drop.peerName)
     }
 
     GlassCard(
@@ -83,14 +84,14 @@ fun ContactDropCard(
             Spacer(Modifier.weight(1f))
             when {
                 waiting && !drop.unreadable -> {
-                    ChipButton("Later", onDone)
-                    ChipButton("Allow", onAllow, icon = CdIcons.Contacts, fg = OnAccent, bg = Accent)
+                    ChipButton(tr("Later"), onDone)
+                    ChipButton(tr("Allow"), onAllow, icon = CdIcons.Contacts, fg = OnAccent, bg = Accent)
                 }
                 drop.viewUri != null -> {
-                    ChipButton("Done", onDone)
-                    ChipButton("View", { onView(drop.viewUri) }, icon = CdIcons.Contacts, fg = OnAccent, bg = Accent)
+                    ChipButton(tr("Done"), onDone)
+                    ChipButton(tr("View"), { onView(drop.viewUri) }, icon = CdIcons.Contacts, fg = OnAccent, bg = Accent)
                 }
-                else -> ChipButton("Done", onDone)
+                else -> ChipButton(tr("Done"), onDone)
             }
         }
     }

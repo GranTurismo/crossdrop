@@ -16,6 +16,8 @@ import androidx.lifecycle.lifecycleScope
 import com.crossdrop.CrossDropApp
 import com.crossdrop.MainActivity
 import com.crossdrop.R
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.net.Direction
 import com.crossdrop.net.SessionStatus
 import com.crossdrop.net.isTerminal
@@ -102,8 +104,8 @@ class TransferService : LifecycleService() {
 
     private fun initialNotification(): Notification = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle("CrossDrop transfer")
-        .setContentText("Starting…")
+        .setContentTitle(tr("CrossDrop transfer"))
+        .setContentText(tr("Starting…"))
         .setOngoing(true)
         .setContentIntent(contentIntent())
         .build()
@@ -127,8 +129,10 @@ class TransferService : LifecycleService() {
                 NotificationCompat.Builder(this, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_notification)
                     .setContentTitle(
-                        if (sending == sessions.size) "Sending to ${sessions.map { it.peerName }.distinct().size} devices"
-                        else "${sessions.size} transfers"
+                        if (sending == sessions.size) {
+                            val devices = sessions.map { it.peerName }.distinct().size
+                            trPlural(devices, "Sending to 1 device", "Sending to {n} devices")
+                        } else trPlural(sessions.size, "1 transfer", "{n} transfers")
                     )
                     .setContentText("$pct% · ${formatRate(sessions.sumOf { it.bytesPerSec })}")
                     .setProgress(100, pct, false)
@@ -140,7 +144,7 @@ class TransferService : LifecycleService() {
         }
         val session = sessions.first()
         val title = if (session.direction == Direction.SENDING)
-            "Sending to ${session.peerName}" else "Receiving from ${session.peerName}"
+            tr("Sending to {0}", session.peerName) else tr("Receiving from {0}", session.peerName)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -154,11 +158,11 @@ class TransferService : LifecycleService() {
                     .setProgress(100, pct, false)
                     .setOngoing(true)
             }
-            SessionStatus.COMPLETED -> builder.setContentText("Complete").setOngoing(false)
-            SessionStatus.FAILED -> builder.setContentText("Failed: ${session.error ?: "unknown"}").setOngoing(false)
-            SessionStatus.DECLINED -> builder.setContentText("Declined").setOngoing(false)
-            SessionStatus.CANCELLED -> builder.setContentText("Cancelled").setOngoing(false)
-            else -> builder.setContentText("Connecting…").setOngoing(true)
+            SessionStatus.COMPLETED -> builder.setContentText(tr("Complete")).setOngoing(false)
+            SessionStatus.FAILED -> builder.setContentText(tr("Failed: {0}", session.error ?: tr("unknown"))).setOngoing(false)
+            SessionStatus.DECLINED -> builder.setContentText(tr("Declined")).setOngoing(false)
+            SessionStatus.CANCELLED -> builder.setContentText(tr("Cancelled")).setOngoing(false)
+            else -> builder.setContentText(tr("Connecting…")).setOngoing(true)
         }
         startForegroundWith(builder.build())
     }
@@ -168,8 +172,8 @@ class TransferService : LifecycleService() {
         startForegroundWith(
             NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("Moving to ${s.peerName}")
-                .setContentText("%,d of %,d items · $pct%%".format(s.itemsDone, s.itemsTotal))
+                .setContentTitle(tr("Moving to {0}", s.peerName))
+                .setContentText(tr("{0} of {1} items · {2}%", "%,d".format(s.itemsDone), "%,d".format(s.itemsTotal), pct))
                 .setProgress(100, pct, s.bytesTotal == 0L)
                 .setOngoing(true).setOnlyAlertOnce(true)
                 .setContentIntent(contentIntent())
@@ -181,8 +185,8 @@ class TransferService : LifecycleService() {
         startForegroundWith(
             NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("Live camera from ${feed.peerName}")
-                .setContentText(if (feed.shots.isEmpty()) "Waiting for the first shot" else "${feed.shots.size} shots received")
+                .setContentTitle(tr("Live camera from {0}", feed.peerName))
+                .setContentText(if (feed.shots.isEmpty()) tr("Waiting for the first shot") else trPlural(feed.shots.size, "1 shot received", "{n} shots received"))
                 .setOngoing(true).setOnlyAlertOnce(true)
                 .setContentIntent(contentIntent())
                 .build(),
@@ -192,15 +196,16 @@ class TransferService : LifecycleService() {
     /** "Send to anyone" share — keeps the HTTP server reachable while backgrounded. */
     private fun updateShareNotification(share: com.crossdrop.net.QrShareManager.State) {
         val text = when {
-            share.delivered -> "All files delivered"
+            share.delivered -> tr("All files delivered")
             share.downloadsStarted > 0 ->
-                "${share.downloadsDone}/${share.downloadsStarted} downloads · ${formatBytes(share.bytesServed)}"
-            share.connected -> "Receiver connected"
-            else -> "${share.files.size} file${if (share.files.size == 1) "" else "s"} · waiting for a scan"
+                trPlural(share.downloadsStarted, "{0}/1 download · {1}", "{0}/{n} downloads · {1}",
+                    share.downloadsDone, formatBytes(share.bytesServed))
+            share.connected -> tr("Receiver connected")
+            else -> trPlural(share.files.size, "1 file · waiting for a scan", "{n} files · waiting for a scan")
         }
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Sharing via browser link")
+            .setContentTitle(tr("Sharing via browser link"))
             .setContentText(text)
             .setOngoing(!share.delivered)
             .setOnlyAlertOnce(true)
@@ -214,11 +219,13 @@ class TransferService : LifecycleService() {
         val clients = vault.clients.size
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Vault live — ${vault.vaultName}")
+            .setContentTitle(tr("Vault live — {0}", vault.vaultName))
             .setContentText(
-                "${if (vault.writable) "read-write" else "read-only"} · " +
-                    "$clients client${if (clients == 1) "" else "s"} · " +
-                    "↓${formatBytes(vault.bytesOut)}")
+                listOf(
+                    if (vault.writable) tr("read-write") else tr("read-only"),
+                    trPlural(clients, "1 client", "{n} clients"),
+                    "↓${formatBytes(vault.bytesOut)}",
+                ).joinToString(" · "))
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent())
@@ -227,16 +234,16 @@ class TransferService : LifecycleService() {
     }
 
     private fun formatBytes(b: Long): String = when {
-        b >= 1L shl 30 -> "%.1f GB".format(b / (1L shl 30).toDouble())
-        b >= 1L shl 20 -> "%.1f MB".format(b / (1L shl 20).toDouble())
-        b >= 1L shl 10 -> "%.0f KB".format(b / (1L shl 10).toDouble())
+        b >= 1L shl 30 -> "%.1f GB".format(com.crossdrop.core.i18n.I18n.locale(), b / (1L shl 30).toDouble())
+        b >= 1L shl 20 -> "%.1f MB".format(com.crossdrop.core.i18n.I18n.locale(), b / (1L shl 20).toDouble())
+        b >= 1L shl 10 -> "%.0f KB".format(com.crossdrop.core.i18n.I18n.locale(), b / (1L shl 10).toDouble())
         else -> "$b B"
     }
 
     private fun formatRate(bps: Long): String = when {
-        bps >= 1_000_000_000 -> "%.1f GB/s".format(bps / 1e9)
-        bps >= 1_000_000 -> "%.1f MB/s".format(bps / 1e6)
-        bps >= 1_000 -> "%.0f KB/s".format(bps / 1e3)
+        bps >= 1_000_000_000 -> "%.1f GB/s".format(com.crossdrop.core.i18n.I18n.locale(), bps / 1e9)
+        bps >= 1_000_000 -> "%.1f MB/s".format(com.crossdrop.core.i18n.I18n.locale(), bps / 1e6)
+        bps >= 1_000 -> "%.0f KB/s".format(com.crossdrop.core.i18n.I18n.locale(), bps / 1e3)
         else -> "$bps B/s"
     }
 

@@ -1,5 +1,6 @@
 package com.crossdrop.net
 
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.crypto.SessionIdentity
 import com.crossdrop.core.vault.FileVaultFs
 import com.crossdrop.core.vault.VaultServer
@@ -130,7 +131,7 @@ class VaultHostManager(
             else FileVaultFs(AppDirs.vault)
         }.getOrElse { Log.w(TAG, "cannot open drive root", it); return false }
 
-        val rootLabel = folder?.name ?: "CrossDrop vault"
+        val rootLabel = folder?.name ?: tr("CrossDrop vault")
         val name = label?.takeIf { it.isNotBlank() } ?: "${deviceName()} Drive"
 
         val srv = VaultServer(

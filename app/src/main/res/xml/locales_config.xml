@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The languages CrossDrop is translated into: Android 13+ lists them under Settings > Apps > CrossDrop > Language.
+     The catalogs are l10n/<lang>.json (see l10n/README.md); older Android just follows the system language. -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="ka" />
+    <locale android:name="hi" />
+    <locale android:name="id" />
+    <locale android:name="ar" />
+    <locale android:name="fa" />
+    <locale android:name="es" />
+    <locale android:name="pt-BR" />
+    <locale android:name="ru" />
+    <locale android:name="tr" />
+</locale-config>

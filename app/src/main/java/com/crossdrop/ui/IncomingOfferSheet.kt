@@ -54,11 +54,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.AnnotatedString
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.core.protocol.ItemCategory
 import com.crossdrop.core.protocol.OfferKind
 import com.crossdrop.net.IncomingOffer
@@ -76,8 +77,10 @@ import com.crossdrop.ui.theme.ScreenGlow
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
 import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.caps
 import com.crossdrop.ui.theme.displayStyle
 import com.crossdrop.ui.theme.monoStyle
+import com.crossdrop.ui.theme.trackingEm
 import com.crossdrop.ui.transfer.formatBytes
 
 /**
@@ -141,13 +144,13 @@ fun IncomingOfferSheet(
                         Dot(Accent)
                         Text(
                             when {
-                                text != null -> if (isLink) "INCOMING LINK" else "INCOMING TEXT"
-                                contact -> if (contactCount == 1) "INCOMING CONTACT" else "INCOMING CONTACTS"
-                                camera -> "LIVE CAMERA"
-                                switch -> "SWITCH PHONES"
-                                else -> "INCOMING FILES"
-                            }, color = TextSecondary, fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold, letterSpacing = 0.06.em,
+                                text != null -> if (isLink) tr("Incoming link") else tr("Incoming text")
+                                contact -> if (contactCount == 1) tr("Incoming contact") else tr("Incoming contacts")
+                                camera -> tr("Live camera")
+                                switch -> tr("Switch phones")
+                                else -> tr("Incoming files")
+                            }.caps(), color = TextSecondary, fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold, letterSpacing = trackingEm(0.06f),
                         )
                     }
 
@@ -163,13 +166,12 @@ fun IncomingOfferSheet(
                     ) {
                         Text(
                             when {
-                                text != null -> "${offer.peerName} sent you " + if (isLink) "a link" else "some text"
-                                contact -> "${offer.peerName} sent you " +
-                                    if (contactCount == 1) "a contact" else "$contactCount contacts"
-                                camera -> "${offer.peerName} wants to share their camera"
-                                switch -> "${offer.peerName} wants to move to this device"
-                                else -> "${offer.peerName} wants to send you " +
-                                    if (files.size == 1) "a file" else "${files.size} files"
+                                text != null ->
+                                    if (isLink) tr("{0} sent you a link", offer.peerName) else tr("{0} sent you some text", offer.peerName)
+                                contact -> trPlural(contactCount, "{0} sent you a contact", "{0} sent you {n} contacts", offer.peerName)
+                                camera -> tr("{0} wants to share their camera", offer.peerName)
+                                switch -> tr("{0} wants to move to this device", offer.peerName)
+                                else -> trPlural(files.size, "{0} wants to send you a file", "{0} wants to send you {n} files", offer.peerName)
                             },
                             style = displayStyle(28, tracking = -0.035f).copy(lineHeight = 31.sp),
                             textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis,
@@ -177,9 +179,12 @@ fun IncomingOfferSheet(
                         Text(
                             buildAnnotatedString {
                                 if (text == null && !camera && !contact) append(formatBytes(offer.offer.batch?.totalBytes?.takeIf { switch && it > 0 } ?: total) + " · ")
-                                append("auto-declines in ")
+                                // The sentence is one translatable string; the seconds are styled where {0} lands.
+                                val parts = tr("auto-declines in {0}", "\u0001").split('\u0001', limit = 2)
+                                append(parts[0])
                                 withStyle(SpanStyle(fontFamily = MonoFont, color = Accent)) { append("$secondsLeft") }
                                 withStyle(SpanStyle(color = Accent)) { append(" s") }
+                                parts.getOrNull(1)?.let { append(it) }
                             },
                             color = TextDim, fontSize = 14.sp,
                             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
@@ -198,8 +203,7 @@ fun IncomingOfferSheet(
                     } else if (camera) {
                         GlassCard(Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline) {
                             Text(
-                                "Every photo and video they take shows up here the moment it's taken, without asking " +
-                                    "again. Closing the viewer ends it.",
+                                tr("Every photo and video they take shows up here the moment it's taken, without asking again. Closing the viewer ends it."),
                                 color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp,
                             )
                         }
@@ -227,7 +231,7 @@ fun IncomingOfferSheet(
                         if (files.size > 4) {
                             RowSeparator(color = HairlineSoft)
                             Text(
-                                "+ ${files.size - 4} more",
+                                tr("+ {0} more", files.size - 4),
                                 color = TextDim, fontSize = 13.sp,
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
                             )
@@ -242,30 +246,30 @@ fun IncomingOfferSheet(
                 ) {
                     if (text != null) {
                         PillButton(
-                            "Dismiss", { onRespond(false) }, Modifier.weight(1f),
+                            tr("Dismiss"), { onRespond(false) }, Modifier.weight(1f),
                             style = PillStyle.Outline, height = 62.dp, fontSize = 16,
                         )
                         PillButton(
-                            "Copy", { clipboard.setText(AnnotatedString(text)); onRespond(true) }, Modifier.weight(1f),
+                            tr("Copy"), { clipboard.setText(AnnotatedString(text)); onRespond(true) }, Modifier.weight(1f),
                             style = if (isLink) PillStyle.Glass else PillStyle.Accent, height = 62.dp, fontSize = 16,
                             icon = CdIcons.Copy, glow = !isLink,
                         )
                         if (isLink) PillButton(
-                            "Open", { onRespond(true); runCatching { uriHandler.openUri(text.trim()) } }, Modifier.weight(1f),
+                            tr("Open"), { onRespond(true); runCatching { uriHandler.openUri(text.trim()) } }, Modifier.weight(1f),
                             style = PillStyle.Accent, height = 62.dp, fontSize = 16, icon = CdIcons.Globe, glow = true,
                         )
                     } else {
                         PillButton(
-                            "Decline", { onRespond(false) }, Modifier.weight(1f),
+                            tr("Decline"), { onRespond(false) }, Modifier.weight(1f),
                             style = PillStyle.Outline, height = 62.dp, fontSize = 16,
                         )
                         PillButton(
                             when {
-                                camera -> "Watch"
-                                switch -> "Start moving"
-                                contact && addsToContacts -> "Add to contacts"
-                                contact -> "Save"
-                                else -> "Accept"
+                                camera -> tr("Watch")
+                                switch -> tr("Start moving")
+                                contact && addsToContacts -> tr("Add to contacts")
+                                contact -> tr("Save")
+                                else -> tr("Accept")
                             }, { onRespond(true) }, Modifier.weight(1.5f),
                             style = PillStyle.Accent, height = 62.dp, fontSize = 16,
                             icon = if (contact && addsToContacts) CdIcons.Contacts else CdIcons.Check, glow = true,
@@ -353,14 +357,14 @@ private fun ContactCards(cards: List<com.crossdrop.core.contacts.VContact>, adds
         if (cards.size > 4) {
             RowSeparator(color = HairlineSoft)
             Text(
-                "+ ${cards.size - 4} more",
+                tr("+ {0} more", cards.size - 4),
                 color = TextDim, fontSize = 13.sp,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
             )
         }
         Text(
-            if (addsToContacts) "Goes straight into your contacts. Anyone who's already there is skipped."
-            else "Saved to your Inbox as a contact card (.vcf) you can open in your contacts app.",
+            if (addsToContacts) tr("Goes straight into your contacts. Anyone who's already there is skipped.")
+            else tr("Saved to your Inbox as a contact card (.vcf) you can open in your contacts app."),
             color = TextDim, fontSize = 12.sp, lineHeight = 17.sp,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
         )
@@ -385,10 +389,10 @@ private fun SwitchSummary(offer: IncomingOffer) {
     val b = offer.offer.batch
     val cats = offer.offer.files.groupingBy { it.cat }.eachCount()
     val rows = listOf(
-        Triple(CdIcons.Photo, "Photos", b?.photos ?: cats[ItemCategory.PHOTO] ?: 0),
-        Triple(CdIcons.Video, "Videos", b?.videos ?: cats[ItemCategory.VIDEO] ?: 0),
-        Triple(CdIcons.Contacts, "Contacts", b?.contacts ?: 0),
-        Triple(CdIcons.Doc, "Files", b?.files ?: cats[null] ?: 0),
+        Triple(CdIcons.Photo, tr("Photos"), b?.photos ?: cats[ItemCategory.PHOTO] ?: 0),
+        Triple(CdIcons.Video, tr("Videos"), b?.videos ?: cats[ItemCategory.VIDEO] ?: 0),
+        Triple(CdIcons.Contacts, tr("Contacts"), b?.contacts ?: 0),
+        Triple(CdIcons.Doc, tr("Files"), b?.files ?: cats[null] ?: 0),
     ).filter { it.third > 0 }
     GlassCard(
         Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline,
@@ -407,8 +411,7 @@ private fun SwitchSummary(offer: IncomingOffer) {
             }
         }
         Text(
-            "Photos and videos go to your gallery with their original dates, contacts to your address book. " +
-                "Keep both devices awake and on this Wi-Fi.",
+            tr("Photos and videos go to your gallery with their original dates, contacts to your address book. Keep both devices awake and on this Wi-Fi."),
             color = TextDim, fontSize = 12.sp, lineHeight = 17.sp,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
         )

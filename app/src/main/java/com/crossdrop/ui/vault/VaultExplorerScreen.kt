@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.vault.VaultDirEntry
 import com.crossdrop.net.VaultExplorerManager
 import com.crossdrop.ui.BackHeader
@@ -156,15 +157,15 @@ fun VaultExplorerScreen(
         ) {
             Column(Modifier.widthIn(max = 640.dp).fillMaxWidth().weight(1f)) {
                 BackHeader(
-                    state.peerName, onClose, backLabel = "Close drive", titleSize = 20,
+                    state.peerName, onClose, backLabel = tr("Close drive"), titleSize = 20,
                     subtitle = {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                             CdIcon(CdIcons.Lock, Accent, size = 12.dp)
                             Text(
-                                "Encrypted · " + when {
-                                    state.pinRequired -> "PIN needed"
-                                    state.writable -> "you can add & edit"
-                                    else -> "view & download"
+                                when {
+                                    state.pinRequired -> tr("Encrypted · PIN needed")
+                                    state.writable -> tr("Encrypted · you can add & edit")
+                                    else -> tr("Encrypted · view & download")
                                 },
                                 color = Accent, fontSize = 12.sp,
                             )
@@ -182,10 +183,10 @@ fun VaultExplorerScreen(
                 Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (state.writable) {
-                        PillButton("Upload", { picker.launch(arrayOf("*/*")) }, height = 44.dp, icon = CdIcons.ArrowUp, fontSize = 14)
+                        PillButton(tr("Upload"), { picker.launch(arrayOf("*/*")) }, height = 44.dp, icon = CdIcons.ArrowUp, fontSize = 14)
                     }
                     PillButton(
-                        if (selecting) "Done" else "Select",
+                        if (selecting) tr("Done") else tr("Select"),
                         {
                             if (selecting) state.selected.forEach { key ->
                                 state.entries.firstOrNull { joinKey(state.path, it.name) == key }?.let(onToggleSelect)
@@ -202,18 +203,18 @@ fun VaultExplorerScreen(
                         state.loading -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(color = Accent, strokeWidth = 3.dp)
                             Spacer(Modifier.height(12.dp))
-                            Text("Reading the drive…", color = TextDim, fontSize = 13.sp)
+                            Text(tr("Reading the drive…"), color = TextDim, fontSize = 13.sp)
                         }
                         state.error != null -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(state.error, color = DangerText, fontSize = 13.sp, textAlign = TextAlign.Center)
                             Spacer(Modifier.height(12.dp))
-                            PillButton("Try again", { onBrowse(state.path) }, height = 44.dp, style = PillStyle.Glass)
+                            PillButton(tr("Try again"), { onBrowse(state.path) }, height = 44.dp, style = PillStyle.Glass)
                         }
                         state.entries.isEmpty() -> Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                             IconTile(CdIcons.Folder, Amber, size = 56.dp, radius = 28.dp, iconSize = 26.dp)
                             Spacer(Modifier.height(12.dp))
-                            Text("This folder is empty", style = displayStyle(16))
-                            if (state.writable) Text("Upload something to fill it.", color = TextDim, fontSize = 13.sp)
+                            Text(tr("This folder is empty"), style = displayStyle(16))
+                            if (state.writable) Text(tr("Upload something to fill it."), color = TextDim, fontSize = 13.sp)
                         }
                         else -> LazyColumn(
                             Modifier.fillMaxSize(),
@@ -268,11 +269,11 @@ fun VaultExplorerScreen(
                 if (state.selected.isNotEmpty()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "${state.selected.size} selected", color = TextSecondary, fontSize = 14.sp,
+                            tr("{0} selected", state.selected.size), color = TextSecondary, fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f).padding(start = 4.dp),
                         )
                         PillButton(
-                            "Download", { onDownload(state.selected.toList()); selecting = false },
+                            tr("Download"), { onDownload(state.selected.toList()); selecting = false },
                             height = 48.dp, icon = CdIcons.Download, glow = true,
                         )
                     }
@@ -323,12 +324,12 @@ private fun Crumb(label: String, current: Boolean, onClick: () -> Unit) {
 private fun FolderTile(e: VaultDirEntry, modifier: Modifier, onClick: () -> Unit) {
     GlassCard(
         modifier, radius = 22.dp, fill = Glass, contentPadding = PaddingValues(14.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp), onClick = onClick, onClickLabel = "Open folder",
+        verticalArrangement = Arrangement.spacedBy(12.dp), onClick = onClick, onClickLabel = tr("Open folder"),
     ) {
         CdIcon(CdIcons.Folder, Amber, size = 26.dp)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(e.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text("Folder", color = TextDim, fontSize = 12.sp)
+            Text(tr("Folder"), color = TextDim, fontSize = 12.sp)
         }
     }
 }
@@ -345,7 +346,7 @@ private fun FileRow(
     val kind = FileKind.of(e.name)
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
-            .clickable(role = Role.Button, onClickLabel = if (selecting) "Select" else if (media) "Stream" else "Download", onClick = onOpen)
+            .clickable(role = Role.Button, onClickLabel = if (selecting) tr("Select") else if (media) tr("Stream") else tr("Download"), onClick = onOpen)
             .padding(start = 10.dp, end = 0.dp, top = 9.dp, bottom = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -358,14 +359,14 @@ private fun FileRow(
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(e.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                formatBytes(e.size) + " · " + if (media) "tap to stream"
-                else SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(e.mtime * 1000)),
+                formatBytes(e.size) + " · " + if (media) tr("tap to stream")
+                else SimpleDateFormat("MMM d, HH:mm", com.crossdrop.core.i18n.I18n.locale()).format(Date(e.mtime * 1000)),
                 color = TextDim, fontSize = 12.sp, maxLines = 1,
             )
         }
         if (selecting) {
             Box(
-                Modifier.size(44.dp).semantics { contentDescription = if (selected) "Selected" else "Not selected" },
+                Modifier.size(44.dp).semantics { contentDescription = if (selected) tr("Selected") else tr("Not selected") },
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -376,7 +377,7 @@ private fun FileRow(
                 ) { if (selected) CdIcon(CdIcons.Check, OnAccent, size = 14.dp) }
             }
         } else {
-            CircleButton(CdIcons.Download, "Download ${e.name}", onDownload, fill = Color.Transparent, tint = TextSecondary)
+            CircleButton(CdIcons.Download, tr("Download {0}", e.name), onDownload, fill = Color.Transparent, tint = TextSecondary)
         }
     }
 }
@@ -394,7 +395,7 @@ private fun JobRow(j: VaultExplorerManager.Job) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(j.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
-                    j.failed ?: (if (j.uploading) "Uploading" else "Saving to inbox"),
+                    j.failed ?: (if (j.uploading) tr("Uploading") else tr("Saving to inbox")),
                     color = if (j.failed != null) DangerText else TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -424,12 +425,12 @@ private fun PinGate(failed: Boolean, pin: String, onPin: (String) -> Unit, onUnl
             contentAlignment = Alignment.Center,
         ) { CdIcon(CdIcons.Lock, Amber, size = 30.dp) }
         Spacer(Modifier.height(18.dp))
-        Text("This drive needs a passcode", style = displayStyle(22), textAlign = TextAlign.Center)
+        Text(tr("This drive needs a passcode"), style = displayStyle(22), textAlign = TextAlign.Center)
         Spacer(Modifier.height(6.dp))
-        Text("It's the 4 digits shown on the device sharing it.", color = TextDim, fontSize = 13.sp, textAlign = TextAlign.Center)
+        Text(tr("It's the 4 digits shown on the device sharing it."), color = TextDim, fontSize = 13.sp, textAlign = TextAlign.Center)
         if (failed) {
             Spacer(Modifier.height(8.dp))
-            Text("That passcode didn't work — try again", color = DangerText, fontSize = 13.sp)
+            Text(tr("That passcode didn't work — try again"), color = DangerText, fontSize = 13.sp)
         }
         Spacer(Modifier.height(22.dp))
         OutlinedTextField(
@@ -442,9 +443,9 @@ private fun PinGate(failed: Boolean, pin: String, onPin: (String) -> Unit, onUnl
                 focusedBorderColor = Accent, unfocusedBorderColor = HairlineStrong, cursorColor = Accent,
                 focusedContainerColor = GlassLow, unfocusedContainerColor = GlassLow,
             ),
-            modifier = Modifier.width(200.dp).semantics { contentDescription = "Passcode" },
+            modifier = Modifier.width(200.dp).semantics { contentDescription = tr("Passcode") },
         )
         Spacer(Modifier.height(18.dp))
-        PillButton("Unlock", onUnlock, Modifier.width(200.dp), enabled = pin.length == 4, glow = true)
+        PillButton(tr("Unlock"), onUnlock, Modifier.width(200.dp), enabled = pin.length == 4, glow = true)
     }
 }

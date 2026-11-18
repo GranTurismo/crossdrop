@@ -1,5 +1,6 @@
 package com.crossdrop.platform
 
+import com.crossdrop.core.i18n.tr
 import java.io.File
 
 /**
@@ -37,7 +38,7 @@ object WindowsIntegration {
         fun q(s: String) = "'" + s.replace("'", "''") + "'"
         val script = "\$s=(New-Object -ComObject WScript.Shell).CreateShortcut(${q(lnk.path)});" +
             "\$s.TargetPath=${q(exe.path)};\$s.IconLocation=${q(exe.path + ",0")};" +
-            "\$s.Description='Send with CrossDrop';\$s.Save()"
+            "\$s.Description=${q(tr("Send with CrossDrop"))};\$s.Save()"
         val p = ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
             .redirectErrorStream(true).start()
         p.inputStream.readBytes()

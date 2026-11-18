@@ -67,10 +67,24 @@ class AppContainer(private val app: Context) {
             }.getOrNull()?.takeIf { it.isNotBlank() }
             ?: Build.MODEL
 
+    /** Is there a Wi-Fi/Ethernet network (or our own hotspot) to find other devices on? Drives the radar's help. */
+    val localNetwork = com.crossdrop.net.LocalNetworkMonitor(app)
+
+    /** "Connect directly": a private Wi-Fi network this phone makes for a device that has none to share. */
+    val directLink = com.crossdrop.net.DirectLink(app, scope)
+
     val identity = SessionIdentity()
     val engine = TransferEngine(identity, deviceName::value, instanceId)
     val inbox = InboxStore(app)
     val history = HistoryStore(app)
+
+    /**
+     * The first-run welcome is shown once. Anyone who has already transferred something has seen
+     * enough, so an update never greets them with it; Settings can replay it any time.
+     */
+    var welcomeSeen: Boolean
+        get() = prefs.getBoolean("welcome_seen", false) || history.list().isNotEmpty()
+        set(v) = prefs.edit { putBoolean("welcome_seen", v) }
 
     val server = TransferServer(scope, engine, onBound = ::onListenerBound)
     val coordinator = TransferCoordinator(scope, app, engine, server, inbox, history)

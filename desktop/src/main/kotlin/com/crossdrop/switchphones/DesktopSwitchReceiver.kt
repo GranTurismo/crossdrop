@@ -1,5 +1,6 @@
 package com.crossdrop.switchphones
 
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.delta.FileDeltaStore
 import com.crossdrop.core.protocol.BatchInfo
@@ -129,7 +130,7 @@ class DesktopSwitchReceiver(
                 history.add(
                     HistoryStore.Entry(
                         ts = System.currentTimeMillis(), direction = "RECEIVING", peerName = peerName,
-                        summary = "Phone backup", files = (s?.photos ?: 0) + (s?.videos ?: 0) + (s?.files ?: 0),
+                        summary = tr("Phone backup"), files = (s?.photos ?: 0) + (s?.videos ?: 0) + (s?.files ?: 0),
                         bytes = s?.bytesTotal ?: 0, status = "COMPLETED",
                     )
                 )
@@ -151,8 +152,8 @@ class DesktopSwitchReceiver(
         _state.update {
             it?.copy(
                 phase = Phase.FAILED,
-                error = if (status == SessionStatus.CANCELLED) "The phone stopped the move."
-                    else "Connection lost. Start again on the phone — it picks up where it stopped.",
+                error = if (status == SessionStatus.CANCELLED) tr("The phone stopped the move.")
+                    else tr("Connection lost. Start again on the phone — it picks up where it stopped."),
             )
         }
     }

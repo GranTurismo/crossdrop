@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.Direction
 import com.crossdrop.net.SessionState
 import com.crossdrop.net.SessionStatus
@@ -92,14 +93,14 @@ fun GroupTransferScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                if (onHide != null && !done) CircleButton(CdIcons.ChevronLeft, "Back to transfers", onHide)
+                if (onHide != null && !done) CircleButton(CdIcons.ChevronLeft, tr("Back to transfers"), onHide)
                 else Spacer(Modifier.size(44.dp))
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Text(
                         when {
-                            !done -> "Sending to ${group.sessions.size} devices"
-                            allOk -> "Delivered to all ${group.sessions.size}"
-                            else -> "${group.completed} of ${group.sessions.size} delivered"
+                            !done -> tr("Sending to {0} devices", group.sessions.size)
+                            allOk -> tr("Delivered to all {0}", group.sessions.size)
+                            else -> tr("{0} of {1} delivered", group.completed, group.sessions.size)
                         },
                         color = if (done && !allOk) TextSecondary else Accent,
                         fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -117,14 +118,14 @@ fun GroupTransferScreen(
                 Text(
                     listOfNotNull(
                         "${formatBytes(group.bytesDone)} / ${formatBytes(group.bytesTotal)}",
-                        group.bytesPerSec.takeIf { it > 0 }?.let { "${formatBytes(it)}/s total" },
+                        group.bytesPerSec.takeIf { it > 0 }?.let { tr("{0}/s total", formatBytes(it)) },
                     ).joinToString(" · "),
                     style = monoStyle(13, TextDim),
                 )
                 Spacer(Modifier.height(4.dp))
                 group.sessions.forEach { DeviceRow(it) }
                 Text(
-                    "Each device gets its own encrypted connection. Compare the code on a device to be sure it's the one you meant.",
+                    tr("Each device gets its own encrypted connection. Compare the code on a device to be sure it's the one you meant."),
                     color = TextDim, fontSize = 12.sp, lineHeight = 17.sp,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
                 )
@@ -134,13 +135,13 @@ fun GroupTransferScreen(
             Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 when {
                     done && group.problems > 0 && group.direction == Direction.SENDING -> {
-                        PillButton("Done", onClose, Modifier.weight(1f), style = PillStyle.Glass)
-                        PillButton("Retry ${group.problems}", onRetry, Modifier.weight(1f), icon = CdIcons.ArrowUp)
+                        PillButton(tr("Done"), onClose, Modifier.weight(1f), style = PillStyle.Glass)
+                        PillButton(tr("Retry {0}", group.problems), onRetry, Modifier.weight(1f), icon = CdIcons.ArrowUp)
                     }
-                    done -> PillButton("Done", onClose, Modifier.weight(1f), style = if (allOk) PillStyle.Accent else PillStyle.Glass)
+                    done -> PillButton(tr("Done"), onClose, Modifier.weight(1f), style = if (allOk) PillStyle.Accent else PillStyle.Glass)
                     else -> {
-                        PillButton("Cancel all", onCancelAll, Modifier.weight(1f), style = PillStyle.Danger)
-                        if (onHide != null) PillButton("Hide", onHide, Modifier.weight(1f), style = PillStyle.Glass)
+                        PillButton(tr("Cancel all"), onCancelAll, Modifier.weight(1f), style = PillStyle.Danger)
+                        if (onHide != null) PillButton(tr("Hide"), onHide, Modifier.weight(1f), style = PillStyle.Glass)
                     }
                 }
             }
@@ -155,7 +156,7 @@ private fun GroupRing(group: TransferGroup) {
         val d = minOf(176.dp, maxWidth * 0.5f)
         Box(
             Modifier.size(d).semantics {
-                contentDescription = "Overall progress"
+                contentDescription = tr("Overall progress")
                 progressBarRangeInfo = ProgressBarRangeInfo(shown, 0f..1f)
             },
             contentAlignment = Alignment.Center,
@@ -219,14 +220,14 @@ private fun DeviceRow(s: SessionState) {
 }
 
 private fun sessionLabel(s: SessionState): Pair<String, Color> = when (s.status) {
-    SessionStatus.CONNECTING -> "Connecting…" to TextDim
-    SessionStatus.AWAITING_ACCEPT -> "Waiting for them to accept" to TextDim
+    SessionStatus.CONNECTING -> tr("Connecting…") to TextDim
+    SessionStatus.AWAITING_ACCEPT -> tr("Waiting for them to accept") to TextDim
     SessionStatus.TRANSFERRING -> listOfNotNull(
         "${(s.fraction * 100).toInt()}%",
         s.bytesPerSec.takeIf { it > 0 }?.let { "${formatBytes(it)}/s" },
     ).joinToString(" · ") to Accent
-    SessionStatus.COMPLETED -> "Delivered" to Accent
-    SessionStatus.DECLINED -> "Declined" to DangerText
-    SessionStatus.CANCELLED -> "Cancelled" to TextSecondary
-    SessionStatus.FAILED -> ("Failed" + (s.error?.let { ": $it" } ?: "")) to DangerText
+    SessionStatus.COMPLETED -> tr("Delivered") to Accent
+    SessionStatus.DECLINED -> tr("Declined") to DangerText
+    SessionStatus.CANCELLED -> tr("Cancelled") to TextSecondary
+    SessionStatus.FAILED -> (s.error?.let { tr("Failed: {0}", it) } ?: tr("Failed")) to DangerText
 }

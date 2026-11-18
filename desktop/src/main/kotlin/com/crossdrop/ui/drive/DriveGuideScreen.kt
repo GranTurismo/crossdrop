@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.VaultHostManager
 import com.crossdrop.platform.Platform
 import com.crossdrop.ui.BackHeader
@@ -58,7 +59,8 @@ import com.crossdrop.ui.theme.TextPrimary
 import com.crossdrop.ui.theme.TextSecondary
 import com.crossdrop.ui.theme.monoStyle
 
-internal val GUIDE_TABS = listOf("Mac", "Windows", "Browser")
+// A function, not a val: the language is read when the tabs are drawn.
+internal fun guideTabs() = listOf("Mac", "Windows", tr("Browser"))
 
 /**
  * "Can't connect?" — the full per-platform guide with copyable address and
@@ -80,32 +82,30 @@ fun DriveGuideScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                BackHeader("Connect to your drive", onClose)
+                BackHeader(tr("Connect to your drive"), onClose)
                 Text(
-                    "Pick the device you're connecting from — no apps to install.",
+                    tr("Pick the device you're connecting from — no apps to install."),
                     color = TextDim, fontSize = 13.sp, modifier = Modifier.padding(horizontal = 4.dp),
                 )
-                SegmentedTabs(GUIDE_TABS, tab, { tab = it })
+                SegmentedTabs(guideTabs(), tab, { tab = it })
                 GlassCard(Modifier.fillMaxWidth(), radius = 28.dp, fill = GlassLow, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     ConnectSteps(state, tab, withCopy = true)
                 }
-                SectionLabel("Troubleshooting", Modifier.padding(top = 6.dp))
+                SectionLabel(tr("Troubleshooting"), Modifier.padding(top = 6.dp))
                 GroupCard(contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)) {
                     TroubleItem(
-                        "Devices can't see the drive?",
-                        "Check both devices are on the exact same Wi-Fi — not one on Guest and one on Main. " +
-                            "Turn off any VPN apps on both devices.",
+                        tr("Devices can't see the drive?"),
+                        tr("Check both devices are on the exact same Wi-Fi — not one on Guest and one on Main. Turn off any VPN apps on both devices."),
                     )
                     RowSeparator()
                     TroubleItem(
-                        "On hotel, school or public Wi-Fi?",
-                        "Public networks often block devices from talking to each other. Turn on your phone's " +
-                            "Personal Hotspot and connect both devices to it — the drive works instantly at full speed.",
+                        tr("On hotel, school or public Wi-Fi?"),
+                        tr("Public networks often block devices from talking to each other. Turn on your phone's Personal Hotspot and connect both devices to it — the drive works instantly at full speed."),
                     )
                     RowSeparator()
                     TroubleItem(
-                        "Video buffers or previews are slow?",
-                        "Move the devices closer to each other or to the router — the drive runs at the speed of your Wi-Fi.",
+                        tr("Video buffers or previews are slow?"),
+                        tr("Move the devices closer to each other or to the router — the drive runs at the speed of your Wi-Fi."),
                     )
                 }
             }
@@ -123,41 +123,44 @@ internal fun ConnectSteps(state: VaultHostManager.State, tab: Int, withCopy: Boo
     val pin = state.pin
     when (tab) {
         0 -> {
-            Step(1) { Text(rich("In Finder, press ", key = "⌘K"), color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp) }
-            Step(2, "Paste the address and press Connect", copy = state.url.takeIf { withCopy })
+            Step(1) { Text(rich(tr("In Finder, press {0}"), key = "⌘K"), color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp) }
+            Step(2, tr("Paste the address and press Connect"), copy = state.url.takeIf { withCopy })
             if (pin != null) {
-                Step(3, "Choose Registered User and sign in with name “drive” and the passcode. It mounts like a disk.")
+                Step(3, tr("Choose Registered User and sign in with name “drive” and the passcode. It mounts like a disk."))
                 if (withCopy) CredentialRows(pin)
             } else {
-                Step(3, "Choose Guest. It mounts like a disk — drag files in or out, or scrub video right on the drive.")
+                Step(3, tr("Choose Guest. It mounts like a disk — drag files in or out, or scrub video right on the drive."))
             }
         }
         1 -> {
-            Step(1, "Open This PC, then ••• (or right-click empty space) → Add a network location")
-            Step(2, "Choose a custom network location and paste the address", copy = state.url.takeIf { withCopy })
+            Step(1, tr("Open This PC, then ••• (or right-click empty space) → Add a network location"))
+            Step(2, tr("Choose a custom network location and paste the address"), copy = state.url.takeIf { withCopy })
             if (pin != null) {
-                Step(3, "When asked, sign in with name “drive” and the passcode. A drive folder appears under This PC.")
+                Step(3, tr("When asked, sign in with name “drive” and the passcode. A drive folder appears under This PC."))
                 if (withCopy) CredentialRows(pin)
             } else {
-                Step(3, "A drive folder appears under This PC — it behaves like a plugged-in USB stick.")
+                Step(3, tr("A drive folder appears under This PC — it behaves like a plugged-in USB stick."))
             }
         }
         else -> {
-            Step(1, "On any laptop, tablet or phone on this Wi-Fi, open a browser — Safari, Chrome, Edge")
-            Step(2, "Scan the QR, or type the address", copy = state.url.takeIf { withCopy })
+            Step(1, tr("On any laptop, tablet or phone on this Wi-Fi, open a browser — Safari, Chrome, Edge"))
+            Step(2, tr("Scan the QR, or type the address"), copy = state.url.takeIf { withCopy })
             Step(
                 3,
-                if (pin != null) "Enter the 4-digit passcode. Browse, stream or download — works on iPhone and iPad too."
-                else "Browse folders, stream video or download any file — works on iPhone and iPad too.",
+                if (pin != null) tr("Enter the 4-digit passcode. Browse, stream or download — works on iPhone and iPad too.")
+                else tr("Browse folders, stream video or download any file — works on iPhone and iPad too."),
                 copy = pin.takeIf { withCopy },
             )
         }
     }
 }
 
+/** [text] is the translated sentence with a `{0}` where the key (rendered as a keycap) goes. */
 private fun rich(text: String, key: String) = buildAnnotatedString {
-    append(text)
+    val at = text.indexOf("{0}")
+    append(if (at < 0) text else text.substring(0, at))
     withStyle(SpanStyle(fontFamily = MonoFont, color = TextPrimary, background = GlassHigh)) { append(" $key ") }
+    if (at >= 0) append(text.substring(at + 3))
 }
 
 @Composable
@@ -179,8 +182,8 @@ private fun Step(n: Int, copy: String? = null, body: @Composable () -> Unit) {
 @Composable
 private fun CredentialRows(pin: String) {
     Column(Modifier.padding(start = 38.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        CopyField("drive", label = "name")
-        CopyField(pin, label = "passcode")
+        CopyField("drive", label = tr("name"))
+        CopyField(pin, label = tr("passcode"))
     }
 }
 
@@ -204,7 +207,7 @@ private fun TroubleItem(title: String, body: String) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp))
                 .clickable(role = Role.Button) { open = !open }
-                .semantics { stateDescription = if (open) "Expanded" else "Collapsed" }
+                .semantics { stateDescription = if (open) tr("Expanded") else tr("Collapsed") }
                 .padding(horizontal = 10.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),

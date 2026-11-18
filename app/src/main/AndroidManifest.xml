@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- "Connect directly": a private local-only hotspot for devices with no shared Wi-Fi -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
         tools:ignore="UnusedAttribute" />
@@ -17,9 +19,11 @@
         tools:ignore="UnusedAttribute" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <!-- Legacy BLE (≤ API 30) requires location -->
+    <!-- Legacy BLE (≤ API 30) requires location. Through API 32 Android also wants it before an app may
+         create the local-only hotspot behind "Connect directly" (13+ uses NEARBY_WIFI_DEVICES instead);
+         on 31-32 it is only asked for when that feature is used, after an explanation. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
-        android:maxSdkVersion="30" />
+        android:maxSdkVersion="32" />
 
     <!-- Transfers + notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -53,6 +57,7 @@
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true"
+        android:localeConfig="@xml/locales_config"
         tools:targetApi="36"
         tools:ignore="UnusedAttribute">
 
