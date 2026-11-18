@@ -25,6 +25,10 @@ on:
         description: "First RELEASE an older version Apple approved that still waits for you (Pending Developer Release). Public!"
         type: boolean
         default: false
+      withdraw_waiting:
+        description: "First WITHDRAW an older version that is still Waiting for Review (it never ships, loses its place in line) so this one takes its place"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,5 +54,6 @@ jobs:
           args=(--version "${{ inputs.version }}" --build "${{ inputs.build }}" --notes "release/${{ inputs.notes }}/appstore.txt")
           [ "${{ inputs.submit }}" = true ] && args+=(--submit)
           [ "${{ inputs.release_pending }}" = true ] && args+=(--release-pending)
+          [ "${{ inputs.withdraw_waiting }}" = true ] && args+=(--withdraw-waiting)
           ASC_KEY_ID="$APPSTORE_KEY_ID" ASC_ISSUER_ID="$APPSTORE_ISSUER_ID" ASC_KEY_PATH="$KEY" \
             python3 tools/release/appstore_submit.py "${args[@]}"

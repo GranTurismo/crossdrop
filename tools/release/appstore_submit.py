@@ -19,6 +19,7 @@ DRAFT = {"READY_FOR_REVIEW"}
 SENT = {"WAITING_FOR_REVIEW", "IN_REVIEW", "PENDING_DEVELOPER_RELEASE", "PENDING_APPLE_RELEASE", "PROCESSING_FOR_APP_STORE",
         "PROCESSING_FOR_DISTRIBUTION", "ACCEPTED", "READY_FOR_SALE", "READY_FOR_DISTRIBUTION", "REPLACED_WITH_NEW_VERSION"}
 PENDING = "PENDING_DEVELOPER_RELEASE"      # approved by Apple, waiting for the developer to press Release
+WAITING = "WAITING_FOR_REVIEW"             # submitted, Apple hasn't started: can still be withdrawn (IN_REVIEW can't)
 RELEASING = {PENDING, "PROCESSING_FOR_DISTRIBUTION", "PROCESSING_FOR_APP_STORE"}
 POLL = int(os.environ.get("ASC_POLL_SECONDS", "30"))
 
@@ -128,6 +129,28 @@ def release_pending(asc, app_id, platform, pending, minutes, log):
         time.sleep(POLL)
 
 
+def withdraw_waiting(asc, app_id, platform, waiting, minutes, log):
+    """Take a version that is only WAITING for review back out of the queue, so its slot can become a newer version.
+    The version returns to an editable state (the caller then renames it). Never touches one that is already IN_REVIEW."""
+    name = waiting["attributes"]["versionString"]
+    subs = asc.get(f"/v1/apps/{app_id}/reviewSubmissions", **{"filter[platform]": platform, "filter[state]": WAITING, "limit": "5"}).get("data", [])
+    if len(subs) != 1:
+        raise RuntimeError(f"{name} is waiting for review, but I found {len(subs)} waiting submissions (expected 1): not withdrawing anything")
+    asc.call("PATCH", f"/v1/reviewSubmissions/{subs[0]['id']}", {"data": {
+        "type": "reviewSubmissions", "id": subs[0]["id"], "attributes": {"canceled": True}}})
+    log(f"  withdrew {name} from review")
+    deadline = time.time() + minutes * 60
+    while True:
+        versions = asc.get(f"/v1/apps/{app_id}/appStoreVersions", **{"filter[platform]": platform, "limit": "20"}).get("data", [])
+        now = next((v for v in versions if v["id"] == waiting["id"]), None)
+        if now is not None and state_of(now) in EDITABLE | DRAFT:
+            return versions
+        if time.time() >= deadline:
+            raise RuntimeError(f"{name} is still {state_of(now) if now else 'missing'} after {minutes} min")
+        log(f"  {name} is {state_of(now) if now else 'missing'}; waiting…")
+        time.sleep(POLL)
+
+
 def whats_new_text(path):
     text = open(path, encoding="utf-8").read().strip()
     if not text or len(text) > 4000:
@@ -151,11 +174,18 @@ def process(asc, app_id, platform, a, text, log):
         raise RuntimeError(what + ". Apple allows no new version until it is released: press Release in App Store Connect, "
                                   "or run again with release_pending on to let this script release it, then submit")
 
+    waiting = next((v for v in versions if state_of(v) == WAITING and v is not target), None)
     build = (find_build(asc, app_id, platform, a.version, a.build) if not a.submit else
              wait_for_build(asc, app_id, platform, a.version, a.build, a.wait_minutes, log))
     log(f"  build {a.version} ({a.build}): " + (build["attributes"]["processingState"] if build else "not found (not uploaded yet?)"))
     if not a.submit:
         editable = [v for v in versions if state_of(v) in EDITABLE | DRAFT]
+        if waiting and not target:
+            wn = waiting["attributes"]["versionString"]
+            return (f"{platform}: read-only, would withdraw {wn} from review, rename it to {a.version}, attach build, set What's New, submit"
+                    if a.withdraw_waiting else
+                    f"{platform}: BLOCKED: {wn} is waiting for review and Apple allows no new version meanwhile. "
+                    "Wait for it, or run again with withdraw_waiting on to replace it with this version.")
         plan = ("would reuse the editable version" if target else
                 f"would {'rename the editable version ' + editable[0]['attributes']['versionString'] + ' to' if editable else 'create'} {a.version}")
         return f"{platform}: read-only, {plan}, attach build, set What's New, submit"
@@ -164,6 +194,8 @@ def process(asc, app_id, platform, a, text, log):
 
     if pending and a.release_pending:
         versions = release_pending(asc, app_id, platform, pending, a.wait_minutes, log)
+    if waiting and not target and a.withdraw_waiting:
+        versions = withdraw_waiting(asc, app_id, platform, waiting, min(a.wait_minutes, 10), log)
     if not target:
         editable = [v for v in versions if state_of(v) in EDITABLE | DRAFT]
         if editable:
@@ -217,6 +249,7 @@ def main():
     p.add_argument("--wait-minutes", type=int, default=40, help="how long to wait for Apple to process the build")
     p.add_argument("--submit", action="store_true", help="really submit (the default only reads and prints)")
     p.add_argument("--release-pending", action="store_true", help="first release an older version that Apple approved but that still waits for the developer (a public release!)")
+    p.add_argument("--withdraw-waiting", action="store_true", help="first take an older version that is still WAITING for review out of the queue and reuse its slot for this one (it never ships; it loses its place in line)")
     a = p.parse_args()
     asc = Asc(os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"], os.environ["ASC_KEY_PATH"])
     log = lambda s: print(s, flush=True)
