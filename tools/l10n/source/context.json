@@ -99,7 +99,7 @@
  "All {0} received files are overwritten with zeros and deleted. This can't be undone.": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:186",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:187",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:88"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:93"
  ],
  "Allow": [
   "app/src/main/java/com/crossdrop/ui/contacts/ContactDropCard.kt:88",
@@ -148,7 +148,7 @@
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:217"
  ],
  "Android will ask to find nearby devices and to show notifications. Anything else, like camera or contacts, is asked only when you use it.": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:261"
+  "app/src/main/java/com/crossdrop/ui/Root.kt:262"
  ],
  "Any type, pick several": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:601",
@@ -423,7 +423,7 @@
  "Contact": [
   "app/src/main/java/com/crossdrop/ui/contacts/ContactDropCard.kt:48",
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:350",
-  "app/src/main/java/com/crossdrop/net/TransferCoordinator.kt:147"
+  "app/src/main/java/com/crossdrop/net/TransferCoordinator.kt:148"
  ],
  "Contact card: {0} — open CrossDrop to save it": [
   "desktop/src/main/kotlin/com/crossdrop/Main.kt:167"
@@ -544,17 +544,17 @@
  "Delete": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:199",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:200",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:93"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:98"
  ],
  "Delete {0}": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:272",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:274",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:171"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:176"
  ],
  "Delete {0}?": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:197",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:198",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:90"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:95"
  ],
  "Delivered": [
   "app/src/main/java/com/crossdrop/ui/transfer/TransferScreen.kt:324",
@@ -747,7 +747,7 @@
  "Files you accept land here.": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:286",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:288",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:197"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:202"
  ],
  "Find devices on this network": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:161",
@@ -909,13 +909,7 @@
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:318"
  ],
  "Kept in CrossDrop's own folder on this {0} (also reachable from the Files app). Wiping overwrites each file with zeros first.": [
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:78"
- ],
- "Kept in CrossDrop's own folder on this {0}. Wiping overwrites each file with zeros first.": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:176"
- ],
- "Kept inside CrossDrop and out of cloud backups. Wiping overwrites each file with zeros first.": [
-  "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:175"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:82"
  ],
  "Language": [
   "app/src/main/java/com/crossdrop/ui/language/LanguageUi.kt:77",
@@ -939,7 +933,7 @@
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:502"
  ],
  "Link": [
-  "app/src/main/java/com/crossdrop/net/TransferCoordinator.kt:146",
+  "app/src/main/java/com/crossdrop/net/TransferCoordinator.kt:147",
   "desktop/src/main/kotlin/com/crossdrop/net/TransferCoordinator.kt:98",
   "ios/CrossDrop/Services/TransferCoordinator.swift:527"
  ],
@@ -1127,12 +1121,12 @@
  "Nothing here in {0}.": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:156",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:156",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:67"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:68"
  ],
  "Nothing received yet": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:284",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:286",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:196"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:201"
  ],
  "OK": [
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:153"
@@ -1203,15 +1197,15 @@
  ],
  "Open CrossDrop to add it": [
   "app/src/main/java/com/crossdrop/service/OfferNotifier.kt:40",
-  "ios/CrossDrop/Services/AppContainer.swift:442"
+  "ios/CrossDrop/Services/AppContainer.swift:443"
  ],
  "Open CrossDrop to start": [
   "app/src/main/java/com/crossdrop/service/OfferNotifier.kt:43",
-  "ios/CrossDrop/Services/AppContainer.swift:448"
+  "ios/CrossDrop/Services/AppContainer.swift:449"
  ],
  "Open CrossDrop to watch their photos arrive live": [
   "app/src/main/java/com/crossdrop/service/OfferNotifier.kt:42",
-  "ios/CrossDrop/Services/AppContainer.swift:445"
+  "ios/CrossDrop/Services/AppContainer.swift:446"
  ],
  "Open Location settings": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:238"
@@ -1266,7 +1260,7 @@
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:167"
  ],
  "Open {0}": [
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:170"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:175"
  ],
  "Opens the drive": [
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:237",
@@ -1276,7 +1270,7 @@
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:257"
  ],
  "Opens the file": [
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:169"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:174"
  ],
  "Opens the folder": [
   "ios/CrossDrop/UI/Vault/VaultExplorerScreen.swift:289"
@@ -1513,6 +1507,11 @@
   "app/src/main/java/com/crossdrop/ui/camera/CameraScreen.kt:377",
   "ios/CrossDrop/UI/Camera/CameraScreen.swift:278"
  ],
+ "Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first.": [
+  "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:175",
+  "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:176",
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:80"
+ ],
  "Saved to your Inbox as a contact card (.vcf) you can open in your contacts app.": [
   "app/src/main/java/com/crossdrop/ui/IncomingOfferSheet.kt:367"
  ],
@@ -1677,7 +1676,7 @@
   "app/src/main/java/com/crossdrop/net/SafVaultFs.kt:38"
  ],
  "Share…": [
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:176"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:181"
  ],
  "Sharing": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:245",
@@ -1850,7 +1849,7 @@
  ],
  "Text": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:345",
-  "app/src/main/java/com/crossdrop/net/TransferCoordinator.kt:146",
+  "app/src/main/java/com/crossdrop/net/TransferCoordinator.kt:147",
   "desktop/src/main/kotlin/com/crossdrop/net/TransferCoordinator.kt:98"
  ],
  "Text or link": [
@@ -1876,7 +1875,7 @@
  "The file is overwritten with zeros and removed from this device.": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:198",
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:199",
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:92"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:97"
  ],
  "The other person has no app?": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectHelp.kt:159",
@@ -2231,7 +2230,7 @@
   "desktop/src/main/kotlin/com/crossdrop/platform/Platform.kt:21"
  ],
  "connection closed": [
-  "ios/CrossDrop/Services/VaultExplorerManager.swift:372"
+  "ios/CrossDrop/Services/VaultExplorerManager.swift:431"
  ],
  "connection lost": [
   "app/src/main/java/com/crossdrop/switchphones/SwitchSender.kt:230",
@@ -2241,10 +2240,10 @@
   "ios/CrossDrop/Services/AppContainer.swift:235"
  ],
  "couldn't add the items: {0}": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:568"
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:578"
  ],
  "device has no address": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:302",
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:308",
   "ios/CrossDrop/Services/TransferCoordinator.swift:201"
  ],
  "device unreachable": [
@@ -2258,12 +2257,12 @@
   "ios/CrossDrop/UI/Welcome/WelcomeScreen.swift:278"
  ],
  "failed": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:204",
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:243",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:200"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:259",
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:298",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:254"
  ],
  "file": [
-  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:90"
+  "ios/CrossDrop/UI/Inbox/InboxScreen.swift:95"
  ],
  "file manager": [
   "desktop/src/main/kotlin/com/crossdrop/platform/Platform.kt:29"
@@ -2281,9 +2280,9 @@
   "core/src/main/kotlin/com/crossdrop/core/transfer/TransferEngine.kt:536"
  ],
  "lost connection": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:164",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:160",
-  "ios/CrossDrop/Services/VaultExplorerManager.swift:154"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:218",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:214",
+  "ios/CrossDrop/Services/VaultExplorerManager.swift:212"
  ],
  "match it on {0}": [
   "app/src/main/java/com/crossdrop/ui/transfer/TransferScreen.kt:374",
@@ -2294,8 +2293,8 @@
   "desktop/src/main/kotlin/com/crossdrop/platform/Platform.kt:35"
  ],
  "mount failed": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:97",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:93"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:108",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:104"
  ],
  "name": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveGuideScreen.kt:184",
@@ -2313,7 +2312,7 @@
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:246"
  ],
  "nothing readable selected": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:290",
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:296",
   "ios/CrossDrop/Services/QrShareManager.swift:61",
   "ios/CrossDrop/Services/TransferCoordinator.swift:126"
  ],
@@ -2367,14 +2366,14 @@
   "app/src/main/java/com/crossdrop/service/TransferService.kt:162"
  ],
  "unreachable: {0}": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:101",
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:131",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:97"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:112",
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:143",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:108"
  ],
  "vault": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:278",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:261",
-  "ios/CrossDrop/Services/VaultExplorerManager.swift:303"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:333",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:315",
+  "ios/CrossDrop/Services/VaultExplorerManager.swift:361"
  ],
  "view & download": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:625",
@@ -2506,10 +2505,10 @@
  ],
  "{0} wants to move to this {1}": [
   "ios/CrossDrop/UI/IncomingOfferSheet.swift:32",
-  "ios/CrossDrop/Services/AppContainer.swift:447"
+  "ios/CrossDrop/Services/AppContainer.swift:448"
  ],
  "{0} wants to send you files": [
-  "ios/CrossDrop/Services/AppContainer.swift:450"
+  "ios/CrossDrop/Services/AppContainer.swift:451"
  ],
  "{0} wants to send you {n} files": [
   "app/src/main/java/com/crossdrop/ui/IncomingOfferSheet.kt:174",
@@ -2537,7 +2536,7 @@
   "ios/CrossDrop/UI/Camera/CameraScreen.swift:281"
  ],
  "{0}, transfer in progress": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:553",
+  "app/src/main/java/com/crossdrop/ui/Root.kt:554",
   "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:400",
   "ios/CrossDrop/UI/Root.swift:314"
  ],
@@ -2545,7 +2544,7 @@
   "app/src/main/java/com/crossdrop/ui/radar/RadarCanvas.kt:260"
  ],
  "{0}, {n} files": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:552",
+  "app/src/main/java/com/crossdrop/ui/Root.kt:553",
   "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:399",
   "ios/CrossDrop/UI/Root.swift:313"
  ],
@@ -2571,7 +2570,7 @@
   "app/src/main/java/com/crossdrop/service/TransferService.kt:226"
  ],
  "{n} devices": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:347",
+  "app/src/main/java/com/crossdrop/ui/Root.kt:348",
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:365",
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:189"
  ],

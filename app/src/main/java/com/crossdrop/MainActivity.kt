@@ -30,12 +30,14 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         foreground = true
+        (application as CrossDropApp).container.vaultExplorer.livePaused = false
         com.crossdrop.service.OfferNotifier.clear(this)
     }
 
     override fun onPause() {
         super.onPause()
         foreground = false
+        (application as CrossDropApp).container.vaultExplorer.livePaused = true     // nobody is watching the drive list
     }
 
     companion object {

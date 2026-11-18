@@ -21,6 +21,7 @@ import com.crossdrop.platform.Platform
 import com.crossdrop.platform.Prefs
 import com.crossdrop.platform.SleepGuard
 import com.crossdrop.storage.HistoryStore
+import com.crossdrop.platform.AppDirs
 import com.crossdrop.storage.InboxStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -88,7 +89,12 @@ class AppContainer {
 
     val identity = SessionIdentity()
     val engine = TransferEngine(identity, deviceName::value, instanceId)
-    val inbox = InboxStore()
+    val inbox = InboxStore(AppDirs.inbox, AppDirs.inboxState).also { store ->
+        // Received files used to live in Application Support; bring them to Downloads once (cheap when there is nothing).
+        kotlin.concurrent.thread(name = "inbox-migrate", isDaemon = true) {
+            runCatching { store.migrateFrom(AppDirs.legacyInbox) }
+        }
+    }
     val history = HistoryStore()
 
     /** The first-run welcome is shown once; anyone who has already transferred something has seen enough. */

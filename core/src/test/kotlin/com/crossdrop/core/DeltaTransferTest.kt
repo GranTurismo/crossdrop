@@ -368,6 +368,30 @@ class DeltaTransferTest {
     }
 
     @Test
+    fun `separate state dir keeps bookkeeping out of the received-files folder`() {
+        val dir = Files.createTempDirectory("visible").toFile()
+        val state = Files.createTempDirectory("state").toFile()
+        val payload = content(600_000, seed = 11)
+        val meta = FileMeta("shared.bin", payload.size.toLong())
+        val file = { OutgoingFile(meta) { ByteArrayInputStream(payload) } }
+
+        val (c1, s1) = runDelta(dir, listOf(file()), store = FileDeltaStore(dir, state))
+        assertTrue(c1.last() is TransferEvent.Completed)
+        assertTrue(s1.last() is TransferEvent.Completed)
+        assertArrayEquals(payload, File(dir, "shared.bin").readBytes())
+
+        // Only the user's file is in the visible folder; the index lives in the state dir.
+        assertEquals(listOf("shared.bin"), dir.list()!!.toList())
+        assertTrue(File(state, ".idx/shared.bin.idx").isFile)
+
+        // …and a re-share still deltas against it: nothing crosses the wire.
+        val (c2, _) = runDelta(dir, listOf(file()), store = FileDeltaStore(dir, state))
+        assertEquals(meta.size, c2.filterIsInstance<TransferEvent.Progress>().last().bytesSkipped)
+        assertTrue(c2.last() is TransferEvent.Completed)
+        assertEquals(listOf("shared.bin"), dir.list()!!.toList())
+    }
+
+    @Test
     fun `push output is indexed so a re-share sends zero bytes`() {
         val dir = Files.createTempDirectory("push").toFile()
         val payload = content(500_000)

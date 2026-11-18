@@ -122,10 +122,17 @@ function crumbs(){
     ev.preventDefault();load(a.dataset.p)});
 }
 const esc=s=>s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-async function load(path){
-  cwd=path;crumbs();$("#err").textContent="";
+let last="";
+// quiet=true is the live refresh: same folder, no flicker, repaint only when the host's listing changed.
+async function load(path,quiet){
+  if(!quiet){cwd=path;crumbs();$("#err").textContent="";last=""}
+  const at=cwd;
   try{
-    const j=await api("/api/fs?path="+encodeURIComponent(cwd));
+    const j=await api("/api/fs?path="+encodeURIComponent(at));
+    if(at!==cwd)return;
+    const sig=JSON.stringify(j);
+    if(quiet&&sig===last)return;
+    last=sig;
     $("#mode").textContent=j.writable?"RW":"RO";
     $("#mode").className="badge"+(j.writable?"":" ro");
     $("#up").style.display=j.writable?"":"none";
@@ -143,8 +150,14 @@ async function load(path){
     }).join("");
     list.querySelectorAll("a[data-d]").forEach(a=>a.onclick=ev=>{
       ev.preventDefault();load(a.dataset.p)});
-  }catch(e){if(e.code!==401)$("#err").textContent=e.message||"error"}
+  }catch(e){if(!quiet&&e.code!==401)$("#err").textContent=e.message||"error"}
 }
+// Live: files added, renamed or removed on the host show up within a couple of seconds.
+let polling=false;   // a slow host must not get a second listing before the first one is answered
+setInterval(async()=>{
+  if(polling||document.hidden||$("#pinbox").classList.contains("on"))return;
+  polling=true;try{await load(cwd,true)}finally{polling=false}
+},1500);
 $("#up").onclick=()=>$("#files").click();
 $("#files").onchange=async ev=>{
   const files=[...ev.target.files];if(!files.length)return;

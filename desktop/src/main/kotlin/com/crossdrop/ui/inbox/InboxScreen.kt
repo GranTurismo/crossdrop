@@ -94,7 +94,7 @@ private enum class InboxFilter(val kinds: Set<FileKind>?) {
 }
 
 /**
- * Received files staged in the app sandbox: a storage breakdown, type
+ * Received files in the CrossDrop folder inside Downloads: a storage breakdown, type
  * filters and the list. Open with the system app, show in Finder/Explorer, or
  * shred (zero-fill + unlink). Desktop copy of the Android screen.
  */
@@ -173,7 +173,7 @@ fun InboxScreen(
             }
             item {
                 FootNote(
-                    tr("Kept in CrossDrop's own folder on this {0}. Wiping overwrites each file with zeros first.", Platform.current.computerNoun),
+                    tr("Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first."),
                     Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     icon = CdIcons.Lock,
                 )

@@ -6,23 +6,27 @@ import com.crossdrop.platform.AppDirs
 import java.io.File
 import java.io.FileOutputStream
 import java.io.OutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
- * Staging area for received files, kept inside Application Support rather than
- * Downloads (storage-isolation pillar). Files stay here until the user opens,
- * reveals or deletes them; wiping is a zero-fill pass plus unlink.
+ * Received files: a `CrossDrop` folder inside the user's Downloads ([AppDirs.inbox]), so they are
+ * ordinary files they can open, move or share from Finder / File Explorer. Files stay until the
+ * user opens, reveals or deletes them; wiping is a zero-fill pass plus unlink.
+ *
+ * The resume pool and delta indexes live in [state], outside the visible folder.
  */
-class InboxStore(private val root: File = AppDirs.inbox) {
+class InboxStore(private val root: File = AppDirs.inbox, private val state: File = root) {
 
     val dir: File
         get() = root.apply { mkdirs() }
 
-    /** v2 delta/resume plumbing: staging pool + baseline indexes under the inbox. */
+    /** v2 delta/resume plumbing: staging pool + baseline indexes (in [state]) for files in the inbox. */
     val delta: com.crossdrop.core.delta.DeltaReceiver =
-        com.crossdrop.core.delta.FileDeltaStore(dir) { meta -> sanitize(meta.name) }
+        com.crossdrop.core.delta.FileDeltaStore(dir, state) { meta -> sanitize(meta.name) }
 
     data class ReceivedFile(val file: File) {
         val name: String get() = file.name
@@ -33,7 +37,7 @@ class InboxStore(private val root: File = AppDirs.inbox) {
 
     fun list(): List<ReceivedFile> =
         dir.listFiles()
-            ?.filter { it.isFile && !it.name.startsWith(".") }
+            ?.filter { it.isFile && !it.name.startsWith(".") && !it.isHidden }
             ?.sortedByDescending { it.lastModified() }?.map(::ReceivedFile) ?: emptyList()
 
     /** Collision- and traversal-safe local filename for an incoming [FileMeta]. */
@@ -76,8 +80,41 @@ class InboxStore(private val root: File = AppDirs.inbox) {
 
     fun shredAll() {
         list().forEach { shred(it.file) }
-        File(dir, ".staging").listFiles()?.forEach { it.delete() }
-        File(dir, ".idx").listFiles()?.forEach { it.delete() }
+        File(state, ".staging").listFiles()?.forEach { it.delete() }
+        File(state, ".idx").listFiles()?.forEach { it.delete() }
+    }
+
+    /**
+     * One-time move of the pre-Downloads inbox ([from], inside Application Support) into this one:
+     * visible files keep their names (numbered on a clash), the resume pool and indexes follow into
+     * [state]. Returns how many files moved; an empty or missing [from] costs nothing, so it is safe
+     * to call on every launch.
+     */
+    fun migrateFrom(from: File): Int {
+        if (!from.isDirectory || from.canonicalFile == dir.canonicalFile) return 0
+        var moved = 0
+        val newName = HashMap<String, String>()          // old name -> name it got here (numbered on a clash)
+        for (f in from.listFiles().orEmpty()) {
+            if (!f.isFile || f.name.startsWith(".")) continue
+            val to = uniqueFile(f.name)
+            if (runCatching { Files.move(f.toPath(), to.toPath()) }.isSuccess) { moved++; newName[f.name] = to.name }
+        }
+        for (sub in listOf(".staging", ".idx")) {
+            val src = File(from, sub)
+            if (!src.isDirectory) continue
+            val dst = File(state, sub).apply { mkdirs() }
+            for (item in src.listFiles().orEmpty()) {
+                // An index is `<file>.idx`: it follows its file, so a renumbered file never overwrites
+                // (or inherits) the index of the one that was already here.
+                val target = if (sub == ".idx" && item.name.endsWith(".idx"))
+                    newName[item.name.removeSuffix(".idx")]?.let { "$it.idx" } ?: item.name
+                else item.name
+                runCatching { Files.move(item.toPath(), File(dst, target).toPath(), StandardCopyOption.REPLACE_EXISTING) }
+            }
+            src.delete()
+        }
+        from.delete()    // only succeeds once empty
+        return moved
     }
 
     private fun sanitize(name: String): String = sanitizeName(name)

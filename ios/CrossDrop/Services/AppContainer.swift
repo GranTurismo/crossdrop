@@ -368,6 +368,7 @@ final class AppContainer: ObservableObject {
 
     /// Foregrounded again: sockets/mDNS may have been torn down while suspended.
     func resume() {
+        vaultExplorer.livePaused = false
         guard started else { return }
         inbox.refresh()
         KeepAwake.shared.refresh()
@@ -391,7 +392,7 @@ final class AppContainer: ObservableObject {
     }
 
     private var wasBackgrounded = false
-    func didEnterBackground() { wasBackgrounded = true }
+    func didEnterBackground() { wasBackgrounded = true; vaultExplorer.livePaused = true }
 
     func restartDiscovery() {
         guard discoveryEnabled, Self.welcomeSeen, listener.port > 0 else { return }

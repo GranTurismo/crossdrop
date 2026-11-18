@@ -127,6 +127,12 @@ interface ReceivePort {
     fun newInboxFile(meta: FileMeta): File
     /** The inbox's chunk store (v2/v3 delta/resume path). */
     val inboxDelta: DeltaReceiver
+    /**
+     * A plain-files receive finished: [files] (parallel to the offer) are whole and in the inbox.
+     * Runs off the transfer thread. Where the inbox needs a last step (Android moves them into
+     * Downloads) it happens here; the default does nothing.
+     */
+    fun received(files: List<File>) {}
 }
 
 /**
@@ -538,6 +544,10 @@ class TransferHub(
 
     private fun onReceived(route: Route, offer: Offer) {
         when (route.kind) {
+            null, OfferKind.FILES -> {
+                val files = receivedFiles(route, offer)
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) { runCatching { port.received(files) } }
+            }
             OfferKind.CAMERA -> {
                 val now = System.currentTimeMillis()
                 val shots = receivedFiles(route, offer).mapIndexed { i, f ->

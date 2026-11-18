@@ -49,6 +49,11 @@ final class VaultExplorerManager: ObservableObject {
     private var peer: Peer?
     private var pin: String?
     private var generation = 0         // bumps on mount/close — stale callbacks bail out
+    private var watcher: Task<Void, Never>?
+    /// Set while the app is in the background: nobody is looking at the list, so stop asking the host about it.
+    var livePaused = false
+    /// A listing or reconnect is already under way: a slow host never gets a second one queued behind it.
+    private var watchBusy = false
 
     init(identity: SessionIdentity, deviceName: @escaping () -> String, instanceId: String,
          inbox: InboxStore, history: HistoryStore) {
@@ -101,6 +106,7 @@ final class VaultExplorerManager: ObservableObject {
                     self.state?.entries = Self.sorted(entries)
                     self.state?.path = path
                     self.state?.selected = []
+                    self.startWatching(gen: gen)
                 }
             } catch let e as VaultError where e.code == 401 {
                 c.close()
@@ -117,6 +123,69 @@ final class VaultExplorerManager: ObservableObject {
                     self.state?.loading = false
                     self.state?.error = (error as? VaultError)?.message ?? tr("unreachable: {0}", Self.describe(error))
                 }
+            }
+        }
+    }
+
+    // MARK: live
+
+    /// Keep the folder on screen in step with the host: every 1.5 s the current folder is listed again and
+    /// the screen only changes if something differs — a file added, renamed, grown or removed on the host (or
+    /// uploaded by another guest) shows up within a couple of seconds, without a refresh. One cheap listing
+    /// per tick on the browsing connection, which also keeps that connection from idling out.
+    private func startWatching(gen: Int) {
+        watcher?.cancel()
+        watcher = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard let self, self.generation == gen else { return }
+                if !self.livePaused { self.watchOnce(gen: gen) }
+            }
+        }
+    }
+
+    private func watchOnce(gen: Int) {
+        guard !watchBusy, let c = client, let ui = state, !ui.loading, !ui.pinRequired else { return }
+        let path = ui.path
+        watchBusy = true
+        queue.async { [weak self] in
+            var listed: [VaultDirEntry]?
+            var socketDied = false
+            do { listed = try c.ls(path.isEmpty ? "/" : path) }
+            catch is VaultError { }                 // e.g. the folder was just removed on the host: keep what is shown
+            catch { socketDied = true }             // network blip, host restarted
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.watchBusy = false
+                guard self.generation == gen else { return }
+                if socketDied { self.reconnect(gen: gen, stale: c); return }    // quietly; the next tick lists again
+                guard let listed, var s = self.state, s.path == path, !s.loading else { return }
+                let fresh = Self.sorted(listed)
+                guard fresh != s.entries else { return }
+                s.entries = fresh
+                s.selected = s.selected.filter { key in fresh.contains { self.joinPath(path, $0.name) == key } }
+                s.error = nil
+                self.state = s
+            }
+        }
+    }
+
+    private func reconnect(gen: Int, stale: VaultClient) {
+        guard !watchBusy, generation == gen, client === stale, let fresh = makeClient() else { return }
+        let pin = self.pin
+        watchBusy = true
+        queue.async { [weak self] in
+            do { try fresh.connect(pin: pin) } catch {
+                fresh.close()
+                DispatchQueue.main.async { self?.watchBusy = false }
+                return
+            }
+            DispatchQueue.main.async {
+                guard let self else { fresh.close(); return }
+                self.watchBusy = false
+                guard self.generation == gen, self.client === stale else { fresh.close(); return }
+                self.client = fresh
+                self.queue.async { stale.close() }
             }
         }
     }
@@ -307,6 +376,7 @@ final class VaultExplorerManager: ObservableObject {
 
     func close() {
         generation += 1
+        watcher?.cancel(); watcher = nil
         let a = client
         client = nil
         queue.async { a?.close() }

@@ -23,7 +23,8 @@ private enum InboxFilter: String, CaseIterable {
     }
 }
 
-/// Received files in the app's `Documents/Received`: a storage breakdown, type filters and the list.
+/// Received files (`Downloads/CrossDrop` on Mac, the app's `Documents/Received` on iPhone/iPad): a storage breakdown,
+/// type filters and the list.
 /// Open in Quick Look (which can share/export), or shred (zero-fill + unlink).
 struct InboxScreen: View {
     @ObservedObject var inbox: InboxStore
@@ -75,8 +76,12 @@ struct InboxScreen: View {
                             }
                         }
                     }
+                    #if targetEnvironment(macCatalyst)
+                    FootNote(tr("Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first."), icon: CdIcons.lock)
+                    #else
                     FootNote(tr("Kept in CrossDrop's own folder on this {0} (also reachable from the Files app). Wiping overwrites each file with zeros first.",
                                 Platform.deviceNoun), icon: CdIcons.lock)
+                    #endif
                 }
                 .padding(.horizontal, 16).padding(.top, 28).padding(.bottom, navInset + 8)
                 .readableWidth()

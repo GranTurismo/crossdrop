@@ -232,6 +232,50 @@ class DesktopWiringTest {
         assertEquals(listOf("hello.txt"), shared.list()!!.toList())
     }
 
+    @Test fun aGuestSeesFilesAppearInAHostedDriveWithoutRefreshing() = runBlocking<Unit> {
+        val shared = File(shareRoot, "live").apply { mkdirs() }
+        File(shared, "first.txt").writeText("one")
+        val hub = MdnsHub()
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val host = VaultHostManager(scope, SessionIdentity(), { "host-mac" }, VaultAdvertiser(hub))
+        val guestRoot = File(home, "guest").apply { mkdirs() }
+        val explorer = com.crossdrop.net.VaultExplorerManager(
+            scope, SessionIdentity(), { "guest" }, "guest-id",
+            InboxStore(File(guestRoot, "inbox")), HistoryStore(File(guestRoot, "history.json")))
+        try {
+            assertTrue(host.start(writable = false, usePin = false, folder = shared))
+            val port = host.state.value!!.port
+            explorer.mount(
+                Peer("host-id", "host-mac", Endpoint("127.0.0.1", port),
+                    vault = com.crossdrop.core.VaultDescriptor("live", writable = false, needsPin = false)))
+
+            fun names() = explorer.state.value?.entries?.map { it.name }.orEmpty()
+            awaitNotNull("initial listing") { names().takeIf { it.isNotEmpty() } }
+            assertEquals(listOf("first.txt"), names())
+
+            // Something lands in the shared folder behind the app's back (a copy in Finder, a download…).
+            File(shared, "added-later.txt").writeText("two")
+            File(shared, "docs").mkdirs()
+            awaitNotNull("new file shown", { "(shows ${names()})" }) { names().takeIf { "added-later.txt" in it && "docs" in it } }
+
+            // Removal and rename follow too, and a size change on an existing file shows up.
+            File(shared, "first.txt").delete()
+            File(shared, "added-later.txt").writeText("longer content now")
+            awaitNotNull("removal shown", { "(shows ${names()})" }) { names().takeIf { "first.txt" !in it } }
+            awaitNotNull("size change shown") {
+                explorer.state.value?.entries?.firstOrNull { it.name == "added-later.txt" }?.takeIf { it.size == 18L }
+            }
+
+            // Browsing into a folder keeps watching that folder, not the root.
+            explorer.browse("docs")
+            awaitNotNull("browsed") { explorer.state.value?.takeIf { it.path == "docs" && !it.loading } }
+            File(shared, "docs/inside.md").writeText("# hi")
+            awaitNotNull("file inside folder shown", { "(shows ${names()})" }) { names().takeIf { it == listOf("inside.md") } }
+        } finally {
+            explorer.close(); host.stop(); hub.stop(); scope.cancel()
+        }
+    }
+
     @Test fun refusesToShareHomeLibraryAndRoot() {
         val host = VaultHostManager(CoroutineScope(Dispatchers.Default), SessionIdentity(), { "t" }, VaultAdvertiser(MdnsHub()))
         val userHome = File(System.getProperty("user.home"))

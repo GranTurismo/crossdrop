@@ -94,6 +94,21 @@ final class TransferTests: XCTestCase {
         XCTAssertEqual(skipped(s), 2_000_000)
     }
 
+    /// A browsable inbox (Mac Downloads) keeps the resume pool and indexes elsewhere — and re-shares still delta.
+    func testSeparateStateDirKeepsBookkeepingOutOfTheInbox() throws {
+        let src = tmpDir(), inbox = tmpDir(), state = tmpDir()
+        let a = randomFile(in: src, name: "a.bin", size: 2_000_000)
+        let store = FileDeltaStore(inboxDir: inbox, stateDir: state)
+        _ = run(files: [a], inbox: inbox, store: store)
+        let visible = try FileManager.default.contentsOfDirectory(atPath: inbox.path)
+        XCTAssertEqual(visible, ["a.bin"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: state.appendingPathComponent(".idx/a.bin.idx").path))
+        let (s, r) = run(files: [a], inbox: inbox, store: store)
+        XCTAssertTrue(completed(s)); XCTAssertTrue(completed(r))
+        XCTAssertEqual(skipped(s), 2_000_000)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: inbox.path), ["a.bin"])
+    }
+
     func testV1Fallback() throws {
         let src = tmpDir(), inbox = tmpDir()
         let a = randomFile(in: src, name: "a.bin", size: 1_000_000)

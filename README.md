@@ -36,7 +36,8 @@ reference implementation; the Swift port is interop-tested against it.
   (Android photo picker: gallery, albums, Google Photos where supported)
   or "Files" (SAF documents picker), multi-select on both.
 - **Transfer history** — persisted log of past sends/receives with outcome.
-- **Inbox** — sandboxed staging for received files with zero-fill shredding.
+- **Inbox** — received files are saved in a `CrossDrop` folder inside Downloads (Android: through
+  MediaStore, no permission; iPhone/iPad: the Files app), with zero-fill shredding.
 
 ## Build
 

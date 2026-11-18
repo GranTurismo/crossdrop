@@ -69,8 +69,9 @@ triggers `restartDiscovery()`.
 
 `ui/inbox/InboxScreen.kt` + `storage/InboxStore.kt`:
 
-- Received files land in `filesDir/inbox/` — a **sandboxed staging area**,
-  deliberately separate from gallery/Downloads (storage-isolation pillar).
+- Received files land in **`Download/CrossDrop/`** (desktop: `<Downloads>/CrossDrop`). On Android a receive is
+  assembled in the private `filesDir/inbox/` and then published into Downloads through MediaStore; see
+  "Where received files go" in `AGENTS.md`.
 - Filenames sanitized (path traversal stripped, odd chars → `_`, ≤96 chars)
   and de-duplicated as `name (2).ext`.
 - Badge count on the nav tab.
@@ -501,8 +502,8 @@ Android SDK (`ANDROID_HOME` or `local.properties`).
   the SAS chip gives users a human-verifiable authenticity check today.
 - **Human-in-the-loop receive** — nothing writes to disk without an explicit
   Accept tap (45 s timeout ⇒ auto-decline).
-- **Storage isolation** — received files stay in the app sandbox, never in
-  shared media collections; filename sanitization blocks path traversal.
+- **Predictable storage** — received files go to one visible folder (`Downloads/CrossDrop`), never into
+  the gallery or other apps' folders; filename sanitization blocks path traversal.
 - **Secure delete** — inbox wipe is a zero-fill overwrite before unlink.
 - **Vault jail** — the hosted drive is confined to `filesDir/vault` by
   canonical-path containment; uploads stage outside the visible tree and

@@ -10,10 +10,16 @@ import java.io.File
  *
  * Layout under [inboxDir]:
  *   `<file>`            assembled received files
+ *
+ * and under [stateDir] (the inbox itself unless told otherwise):
  *   `.staging/<b3>.bin` received-but-not-yet-assembled chunks, hash-named —
  *                       survives process death, so a re-offer resumes
  *   `.idx/<file>.idx`   persisted chunk indexes so re-shares of an already-
  *                       received file delta without re-chunking on this side
+ *
+ * An inbox the user can browse (Downloads) passes its own [stateDir]: dot
+ * folders are only hidden on Unix, and bookkeeping doesn't belong beside
+ * someone's files anyway.
  *
  * [nameFor] lets the caller inject its own sanitize/dedupe naming; the
  * index is keyed off the resolved filename so a file received under any
@@ -21,6 +27,7 @@ import java.io.File
  */
 class FileDeltaStore(
     private val inboxDir: File,
+    private val stateDir: File = inboxDir,
     // Default strips path separators — raw meta.name would escape inboxDir.
     private val nameFor: (FileMeta) -> String = {
         it.name.substringAfterLast('/').substringAfterLast('\\')
@@ -28,8 +35,8 @@ class FileDeltaStore(
     },
 ) : DeltaReceiver {
 
-    private val pool get() = File(inboxDir, ".staging")
-    private val idxDir get() = File(inboxDir, ".idx")
+    private val pool get() = File(stateDir, ".staging")
+    private val idxDir get() = File(stateDir, ".idx")
 
     override fun stagingPool(): File = pool.apply { mkdirs() }
 

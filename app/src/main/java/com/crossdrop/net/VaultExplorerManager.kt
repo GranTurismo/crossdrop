@@ -13,9 +13,12 @@ import com.crossdrop.storage.HistoryStore
 import com.crossdrop.storage.InboxStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job as CoroutineJob
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +67,14 @@ class VaultExplorerManager(
     val state: StateFlow<Ui?> = _state
     val isMounted: Boolean get() = _state.value != null
 
+    private var watcher: CoroutineJob? = null
+
+    /**
+     * Android sets this while the app is in the background: nobody is looking at the list, so don't
+     * keep the radio busy asking the host about it.
+     */
+    @Volatile var livePaused = false
+
     private var client: VaultClient? = null
     private var bridge: VaultMediaBridge? = null
     private var peer: Peer? = null
@@ -85,6 +96,7 @@ class VaultExplorerManager(
             try {
                 dial()
                 refresh("")
+                startWatching()
             } catch (e: VaultError) {
                 if (e.code == 401) {
                     _state.value = _state.value?.copy(
@@ -123,12 +135,60 @@ class VaultExplorerManager(
             try {
                 dial()
                 refresh("")
+                startWatching()
             } catch (e: VaultError) {
                 _state.value = _state.value?.copy(
                     loading = false, pinRequired = true, pinFailed = true)
             } catch (e: Exception) {
                 _state.value = _state.value?.copy(
                     loading = false, error = tr("unreachable: {0}", e.message))
+            }
+        }
+    }
+
+    // ------------------------------------------------------------- live --
+
+    /**
+     * Keep the folder on screen in step with the host: every [WATCH_MS] the current folder is listed
+     * again and the screen only changes if something differs — a file added, renamed, grown or removed on
+     * the host (or uploaded by another guest) shows up within a couple of seconds, with no pull-to-refresh.
+     * One cheap listing per tick, on the connection we already have; it also keeps that connection alive
+     * (hosts drop idle sockets). Ends with [close].
+     */
+    private fun startWatching() {
+        watcher?.cancel()
+        watcher = scope.launch(Dispatchers.IO) {
+            while (isActive) {
+                delay(WATCH_MS)
+                if (!livePaused) watchOnce()
+            }
+        }
+    }
+
+    private suspend fun watchOnce() {
+        val c = client ?: return
+        val ui = _state.value ?: return
+        if (ui.loading || ui.pinRequired) return
+        val path = ui.path
+        val fresh = try {
+            c.ls(if (path.isEmpty()) "/" else path)
+        } catch (e: VaultError) {
+            return                      // e.g. the folder was just removed on the host: keep what is shown
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The socket died (network blip, host restarted): reconnect quietly; the next tick lists again.
+            // Not after close(): `client` is already null then.
+            if (client === c && currentCoroutineContext().isActive) {
+                try { dial() } catch (e2: kotlinx.coroutines.CancellationException) { throw e2 } catch (_: Exception) {}
+            }
+            return
+        }
+        _state.update { cur ->
+            if (cur == null || cur.path != path || cur.loading || cur.entries == fresh) cur
+            else {
+                val keys = fresh.map { joinPath(path, it.name) }.toSet()
+                cur.copy(entries = fresh, selected = cur.selected.filterTo(HashSet()) { it in keys }, error = null)
             }
         }
     }
@@ -190,17 +250,20 @@ class VaultExplorerManager(
             val name = path.substringAfterLast('/')
             scope.launch(Dispatchers.IO) {
                 addJob(name, uploading = false)
+                var dest: File? = null
                 try {
                     val attr = c.stat(path)
-                    val dest = uniqueInbox(name)
+                    dest = uniqueInbox(name)
                     FileOutputStream(dest).use { out ->
                         c.pull(path, out = out) { recv ->
                             updateJob(name) { it.copy(received = recv, total = attr.size) }
                         }
                     }
+                    inbox.publish(dest)      // into Download/CrossDrop; stays listed in the inbox if that fails
                     updateJob(name) { it.copy(done = true, received = attr.size) }
                     historyAdd(name, 1, attr.size, "RECEIVING")
                 } catch (e: Exception) {
+                    runCatching { dest?.delete() }      // no half file left in the inbox
                     updateJob(name) { it.copy(failed = e.message ?: tr("failed")) }
                 }
             }
@@ -290,6 +353,7 @@ class VaultExplorerManager(
     }
 
     fun close() {
+        watcher?.cancel(); watcher = null
         runCatching { bridge?.close() }; bridge = null
         runCatching { client?.close() }; client = null
         peer = null
@@ -297,5 +361,9 @@ class VaultExplorerManager(
         _state.value = null
     }
 
-    private companion object { const val TAG = "VaultExplorer" }
+    private companion object {
+        const val TAG = "VaultExplorer"
+        /** How often the open folder is checked against the host. */
+        const val WATCH_MS = 1_500L
+    }
 }

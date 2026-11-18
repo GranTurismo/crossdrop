@@ -207,6 +207,7 @@ class SwitchImporter(
     private fun moveToInbox(f: File, meta: FileMeta) {
         val target = inbox.newFileFor(meta)
         if (!f.renameTo(target)) { f.copyTo(target, overwrite = true); f.delete() }
+        inbox.publish(target)
     }
 
     /** Stop accepting batches (the sender's next one asks again) and close the screen. */

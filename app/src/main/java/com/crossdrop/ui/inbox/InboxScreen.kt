@@ -94,8 +94,8 @@ private enum class InboxFilter(val kinds: Set<FileKind>?) {
 }
 
 /**
- * Received files staged in the app sandbox: a storage breakdown, type
- * filters and the list. Open via FileProvider, or shred (zero-fill + unlink).
+ * Received files in `Download/CrossDrop`: a storage breakdown, type filters
+ * and the list. Open with the system app, or shred (zero-fill + delete).
  */
 @Composable
 fun InboxScreen(
@@ -172,7 +172,7 @@ fun InboxScreen(
             }
             item {
                 FootNote(
-                    tr("Kept inside CrossDrop and out of cloud backups. Wiping overwrites each file with zeros first."),
+                    tr("Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first."),
                     Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     icon = CdIcons.Lock,
                 )
@@ -199,7 +199,7 @@ fun InboxScreen(
             confirmLabel = tr("Delete"),
             onConfirm = {
                 confirmDelete = null
-                inbox.shred(item.file); tick++; onChanged()
+                inbox.shred(item); tick++; onChanged()
             },
             onDismiss = { confirmDelete = null },
         )
@@ -266,7 +266,7 @@ private fun FileRow(item: InboxStore.ReceivedFile, onOpen: () -> Unit, onDelete:
                 item.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
-            Text("${formatBytes(item.size)} · ${whenLabel(item.file.lastModified())}", color = TextDim, fontSize = 12.sp)
+            Text("${formatBytes(item.size)} · ${whenLabel(item.modifiedMs)}", color = TextDim, fontSize = 12.sp)
         }
         ChipButton(tr("Open"), onOpen)
         CircleButton(CdIcons.Trash, tr("Delete {0}", item.name), onDelete, size = 40.dp, iconSize = 17.dp, fill = androidx.compose.ui.graphics.Color.Transparent, tint = TextDim)
@@ -302,7 +302,19 @@ private fun whenLabel(ts: Long): String {
     return SimpleDateFormat(pattern, com.crossdrop.core.i18n.I18n.locale()).format(Date(ts))
 }
 
-private fun openFile(context: android.content.Context, item: InboxStore.ReceivedFile) = openFile(context, item.file)
+private fun openFile(context: android.content.Context, item: InboxStore.ReceivedFile) {
+    item.file?.let { return openFile(context, it) }
+    val uri = item.uri ?: return
+    runCatching {
+        val mime = context.contentResolver.getType(uri) ?: "*/*"
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        )
+    }
+}
 
 /** Hand a file from the app's own storage to whatever app views its type. */
 fun openFile(context: android.content.Context, file: java.io.File) {

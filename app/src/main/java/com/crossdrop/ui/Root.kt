@@ -149,7 +149,8 @@ fun Root(container: AppContainer) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // Files may land while we're anywhere in the app — keep badges fresh.
-    LaunchedEffect(doneCount, switchIn?.phase) { inboxCount = container.inbox.list().size }
+    val inboxVersion by container.inbox.version.collectAsState()
+    LaunchedEffect(doneCount, switchIn?.phase, inboxVersion) { inboxCount = container.inbox.list().size }
     // A newly focused group always opens the transfer view.
     LaunchedEffect(focused?.id) { if (focused != null) transferHidden = false }
     // A minimised group that finishes is cleared — history already has it.
@@ -207,7 +208,7 @@ fun Root(container: AppContainer) {
                 Tab.INBOX -> InboxScreen(
                     inbox = container.inbox,
                     onChanged = { inboxCount = container.inbox.list().size },
-                    refreshSignal = listOf(doneCount, inboxTick, switchIn?.phase),
+                    refreshSignal = listOf(doneCount, inboxTick, switchIn?.phase, inboxVersion),
                 )
                 Tab.SETTINGS -> SettingsScreen(
                     deviceName = deviceName,

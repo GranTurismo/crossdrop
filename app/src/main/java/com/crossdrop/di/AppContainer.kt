@@ -75,7 +75,10 @@ class AppContainer(private val app: Context) {
 
     val identity = SessionIdentity()
     val engine = TransferEngine(identity, deviceName::value, instanceId)
-    val inbox = InboxStore(app)
+    val inbox = InboxStore(app).also { store ->
+        // Received files used to sit in the app's private folder; move them to Downloads once.
+        Thread({ runCatching { store.migrateToDownloads() } }, "inbox-migrate").apply { isDaemon = true }.start()
+    }
     val history = HistoryStore(app)
 
     /**

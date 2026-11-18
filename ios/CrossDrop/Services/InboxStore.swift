@@ -1,8 +1,12 @@
 import Foundation
 @preconcurrency import CrossDropCore
 
-/// Sandboxed staging area for received files (storage-isolation pillar). Lives in the app's
-/// Documents/Inbox so it's reachable from the Files app; dot-directories (.staging/.idx) stay hidden.
+/// Where received files land.
+///  - **Mac (Catalyst)**: a `CrossDrop` folder inside the real Downloads (sandbox entitlement
+///    `files.downloads.read-write`); the resume pool and delta indexes stay in Application Support.
+///  - **iPhone / iPad**: iOS gives an app no shared Downloads folder to write to, so it is the app's
+///    `Documents/Received` — `UIFileSharingEnabled` lists it in the Files app under On My iPhone › CrossDrop.
+///    Dot-directories (.staging/.idx) stay hidden there.
 /// Engine threads only call `sinkFor`/`delta` (stateless file work); `files` is written on the main thread.
 final class InboxStore: ObservableObject, @unchecked Sendable {
     struct ReceivedFile: Identifiable, Equatable {
@@ -14,15 +18,79 @@ final class InboxStore: ObservableObject, @unchecked Sendable {
     }
 
     let dir: URL
+    /// Resume pool + delta indexes. The inbox itself on iPhone/iPad; outside the visible folder on Mac.
+    let state: URL
     let delta: FileDeltaStore
     @Published private(set) var files: [ReceivedFile] = []
 
     init() {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        dir = docs.appendingPathComponent("Received", isDirectory: true)   // not "Inbox": iOS reserves that name for Open-in copies
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        delta = FileDeltaStore(inboxDir: dir) { meta in InboxStore.sanitize(meta.name) }
+        let fm = FileManager.default
+        let docs = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        // not "Inbox": iOS reserves that name for Open-in copies
+        let received = docs.appendingPathComponent("Received", isDirectory: true)
+        var visible = received, bookkeeping = received
+        #if targetEnvironment(macCatalyst)
+        if let downloads = try? fm.url(for: .downloadsDirectory, in: .userDomainMask, appropriateFor: nil, create: true) {
+            let target = downloads.appendingPathComponent("CrossDrop", isDirectory: true)
+            try? fm.createDirectory(at: target, withIntermediateDirectories: true)
+            if fm.isWritableFile(atPath: target.path) {     // not writable → stay in the app container
+                visible = target
+                bookkeeping = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                    .appendingPathComponent("InboxState", isDirectory: true)
+            }
+        }
+        #endif
+        dir = visible
+        state = bookkeeping
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: state, withIntermediateDirectories: true)
+        delta = FileDeltaStore(inboxDir: dir, stateDir: state) { meta in InboxStore.sanitize(meta.name) }
         refresh()
+        // A big old inbox can take a while to move (Downloads may be on another volume): never at launch, on the main thread.
+        if received != dir {
+            let (from, to, st) = (received, dir, state)
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                Self.migrate(from: from, to: to, state: st)
+                self?.refresh()
+            }
+        }
+    }
+
+    /// One-time move of the pre-Downloads inbox (`Documents/Received`) into the new one: visible files keep
+    /// their names (numbered on a clash), the resume pool and indexes follow into `state`. Free when there's
+    /// nothing to move.
+    static func migrate(from old: URL, to dir: URL, state: URL) {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: old.path) else { return }
+        var newName: [String: String] = [:]          // old name -> name it got here (numbered on a clash)
+        for name in names where !name.hasPrefix(".") {
+            let src = old.appendingPathComponent(name)
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: src.path, isDirectory: &isDir), !isDir.boolValue else { continue }
+            let ext = (name as NSString).pathExtension, stem = (name as NSString).deletingPathExtension
+            var target = dir.appendingPathComponent(name)
+            var i = 1
+            while fm.fileExists(atPath: target.path) {
+                target = dir.appendingPathComponent(ext.isEmpty ? "\(stem) (\(i))" : "\(stem) (\(i)).\(ext)")
+                i += 1
+            }
+            if (try? fm.moveItem(at: src, to: target)) != nil { newName[name] = target.lastPathComponent }
+        }
+        for sub in [".staging", ".idx"] {
+            let from = old.appendingPathComponent(sub, isDirectory: true)
+            let to = state.appendingPathComponent(sub, isDirectory: true)
+            try? fm.createDirectory(at: to, withIntermediateDirectories: true)
+            for item in (try? fm.contentsOfDirectory(atPath: from.path)) ?? [] {
+                // An index is `<file>.idx`: it follows its file, so a renumbered file never overwrites
+                // (or inherits) the index of the one that was already here.
+                var target = item
+                if sub == ".idx", item.hasSuffix(".idx"), let n = newName[String(item.dropLast(4))] { target = n + ".idx" }
+                let dst = to.appendingPathComponent(target)
+                try? fm.removeItem(at: dst)
+                try? fm.moveItem(at: from.appendingPathComponent(item), to: dst)
+            }
+            try? fm.removeItem(at: from)
+        }
     }
 
     func refresh() {
@@ -69,14 +137,14 @@ final class InboxStore: ObservableObject, @unchecked Sendable {
             try? h.close()
         }
         try? FileManager.default.removeItem(at: file.url)
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(".idx/\(file.name).idx"))
+        try? FileManager.default.removeItem(at: state.appendingPathComponent(".idx/\(file.name).idx"))
         refresh()
     }
 
     func shredAll() {
         files.forEach { shred($0) }
         delta.clearPool()
-        try? FileManager.default.removeItem(at: dir.appendingPathComponent(".idx"))
+        try? FileManager.default.removeItem(at: state.appendingPathComponent(".idx"))
         refresh()
     }
 

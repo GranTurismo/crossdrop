@@ -37,6 +37,31 @@ Inbound offers are a full-screen layer on top with an auto-decline countdown
 each terminal session once — direction is taken from the emitting call site
 (not `_session`, which can hold the opposite leg of a loopback).
 
+## Where received files go (the inbox)
+
+Received files are ordinary files in the user's **Downloads**, in a `CrossDrop` folder, on every platform
+that allows it. Bookkeeping (resume pool `.staging/`, delta indexes `.idx/`) never sits beside them:
+`FileDeltaStore(inboxDir, stateDir)` keeps it in `stateDir` (dot-folders aren't hidden on Windows).
+
+- **Desktop**: `AppDirs.inbox` = `<Downloads>/CrossDrop` (`AppDirs.downloadsDir`: `~/Downloads`; on Windows the
+  `User Shell Folders` registry value, because OneDrive/other-drive redirection is common), falling back to the
+  old `support/inbox` only if Downloads isn't writable. State is `AppDirs.inboxState`. `InboxStore.migrateFrom`
+  moves the pre-Downloads inbox across once at launch. `-Dcrossdrop.inbox=<dir>` overrides it for dev/tests.
+  macOS asks once for Downloads access (TCC) on first write.
+- **Android** (scoped storage: the engine can't write `Download/` with plain files): a receive is assembled in the
+  private `filesDir/inbox` (plus resume pool/indexes), then `InboxStore.publish(file)` moves it into
+  `Download/CrossDrop/` through MediaStore (no permission; the app owns what it publishes and can list, open, shred
+  and delete it; MediaStore numbers name clashes). `ReceivePort.received(files)` is the hub hook (plain-files
+  receives only; no-op on desktop). `list()` merges MediaStore rows with anything still in the private dir (a failed
+  publish, a card kept for contacts, live camera shots) so nothing vanishes. `migrateToDownloads()` publishes the
+  old private inbox once (pref `downloads_migrated`). Because a published file is no longer a local baseline, a
+  re-send of the same name transfers in full (no delta). Files from a previous install aren't ours to list.
+- **iOS**: iPhone/iPad apps can't write the system Downloads folder, so it stays `Documents/Received` (the Files
+  app lists it: `UIFileSharingEnabled`). **Mac Catalyst** uses the real `~/Downloads/CrossDrop` (sandbox entitlement
+  `com.apple.security.files.downloads.read-write`), state in Application Support, and moves the old
+  `Documents/Received` across on first launch.
+- "Wipe all" shreds every file in that folder, including ones the user put there.
+
 ## Look & feel ("Sonar" design)
 
 Implemented from the "CrossDrop mobile app" design canvas: near-black ink
@@ -114,6 +139,16 @@ App: `VaultHostManager` (server + NSD advert `xdrop-vault-<16hex>` on
 root label + drive URL, WiFiLock HIGH_PERF + partial WakeLock for screen-off
 streaming), `VaultDiscovery` (vaults as peers — own beacon filtered by TXT
 `id`), `VaultExplorerManager` (mount/browse/download-queue/upload/pin-retry).
+**Live updates**: a guest's explorer follows the host's folder without a refresh. Every 1.5 s
+`VaultExplorerManager` (Android, desktop, iOS) re-lists the open folder on its existing connection and only
+touches state when the listing differs (files added/removed/renamed/grown on the host, or uploaded by another
+guest; selection keeps only paths that still exist; a dead socket is re-dialled quietly). It pauses while the app
+is in the background (`livePaused`, set from `MainActivity` onPause/onResume and iOS `didEnterBackground`/`resume`).
+The browser page (`vault.html`, and its byte-identical Swift copy `VaultPage.swift` — regenerate it with the
+formula in the file header whenever the HTML changes) polls `/api/fs` the same way while the tab is visible.
+It is poll-based on purpose: it works against every host version (listings are never cached; SAF lists live).
+Test: `DesktopWiringTest.aGuestSeesFilesAppearInAHostedDriveWithoutRefreshing`. Cost to watch: a SAF-backed
+host lists via one `DocumentFile` query per attribute per child, so a huge shared folder makes each poll slow.
 Client side: `VaultClient` + `VaultMediaBridge` (127.0.0.1 HTTP→pull bridge so
 players get Range streaming over the AEAD session).
 
@@ -149,8 +184,8 @@ same class names (`AppContainer`, `TransferCoordinator`, `QrShareManager`,
   IP changes) used by `MdnsDiscovery`/`VaultDiscovery`/`VaultAdvertiser`. Same
   service types + TXT keys as Android NSD, so phones and Macs see each other.
   **No BLE** on desktop (no pure-JVM BLE) — BLE only affected radar distance anyway.
-- **Platform bits** (`platform/`): Application Support dirs, `Prefs` (properties
-  file), native `FileDialog` pickers (incl. folder mode), Finder reveal,
+- **Platform bits** (`platform/`): Application Support dirs (the inbox itself is in Downloads, see "Where
+  received files go"), `Prefs` (properties file), native `FileDialog` pickers (incl. folder mode), Finder reveal,
   `SleepGuard` (`caffeinate -w <pid>` while transferring/serving = WakeLock).
 - **Drive**: pick any folder → `FileVaultFs(folder, stagingRoot=…)` (staging kept
   out of the shared folder). `VaultHostManager.isShareable` refuses `/`, `~`,

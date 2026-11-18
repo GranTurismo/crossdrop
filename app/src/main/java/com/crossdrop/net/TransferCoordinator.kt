@@ -40,6 +40,7 @@ class TransferCoordinator(
         port = object : ReceivePort {
             override fun newInboxFile(meta: FileMeta): File = inbox.newFileFor(meta)
             override val inboxDelta: DeltaReceiver get() = inbox.delta
+            override fun received(files: List<File>) { files.forEach { inbox.publish(it) } }
         },
         onEnded = ::record,
     )

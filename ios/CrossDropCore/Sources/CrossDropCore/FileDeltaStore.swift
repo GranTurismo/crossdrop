@@ -4,15 +4,22 @@ import Foundation
 ///
 /// Layout under `inboxDir`:
 ///   `<file>`            assembled received files
+///
+/// and under `stateDir` (the inbox itself unless told otherwise):
 ///   `.staging/<b3>.bin` received-but-not-yet-assembled chunks (survive process death → resume)
 ///   `.idx/<file>.idx`   persisted chunk indexes so re-shares delta without re-chunking
+///
+/// An inbox the user browses in Finder (Mac: Downloads) passes its own `stateDir`: bookkeeping doesn't belong
+/// beside someone's files.
 public final class FileDeltaStore: DeltaReceiver {
     private let inboxDir: URL
+    private let stateDir: URL
     private let nameFor: (FileMeta) -> String
     private let fm = FileManager.default
 
-    public init(inboxDir: URL, nameFor: ((FileMeta) -> String)? = nil) {
+    public init(inboxDir: URL, stateDir: URL? = nil, nameFor: ((FileMeta) -> String)? = nil) {
         self.inboxDir = inboxDir
+        self.stateDir = stateDir ?? inboxDir
         self.nameFor = nameFor ?? { FileDeltaStore.sanitizedFileName($0.name) }
     }
 
@@ -38,8 +45,8 @@ public final class FileDeltaStore: DeltaReceiver {
         return stem.isEmpty ? "file" + keepExt : stem + keepExt
     }
 
-    private var pool: URL { inboxDir.appendingPathComponent(".staging", isDirectory: true) }
-    private var idxDir: URL { inboxDir.appendingPathComponent(".idx", isDirectory: true) }
+    private var pool: URL { stateDir.appendingPathComponent(".staging", isDirectory: true) }
+    private var idxDir: URL { stateDir.appendingPathComponent(".idx", isDirectory: true) }
 
     public func stagingPool() -> URL {
         try? fm.createDirectory(at: pool, withIntermediateDirectories: true)
