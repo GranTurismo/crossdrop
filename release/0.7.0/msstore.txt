@@ -1,0 +1,2 @@
+• Received files now save in a CrossDrop folder inside Downloads, so you can open them from File Explorer like any other file. Files already in your inbox move there automatically
+• Shared drives update live: when a file is added to a drive you are browsing, it appears within seconds, with no refresh

@@ -1,0 +1,2 @@
+• Shared drives update live: when a file is added to a drive you are browsing, it appears within seconds, with no refresh needed.
+• On Mac, received files now save to a CrossDrop folder inside Downloads. On iPhone and iPad they stay in the Files app under CrossDrop.

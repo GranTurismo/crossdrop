@@ -1,0 +1,2 @@
+• Received files now save to Downloads › CrossDrop, so any file manager or app can open them. Files already in your inbox move there automatically
+• Shared drives update live: add a file on the device sharing the drive and the other device shows it within seconds, no refresh needed
