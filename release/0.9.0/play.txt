@@ -1,0 +1,1 @@
+New: connect two phones with no shared Wi-Fi — one shows a code, the other scans it in CrossDrop. Back up your photos and videos to your own computer (CrossDrop for Mac, Windows or Linux) whenever both are on the same Wi-Fi, then free up space once the computer has re-checked them. Photos now keep their location when moved. Still no cloud, no account, no ads.
