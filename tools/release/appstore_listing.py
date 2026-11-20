@@ -48,6 +48,20 @@ def show(asc, app_id):
                 print(f"[{a['locale']} {name}] {a.get(name)!r}" + (f"   <-- mentions: {', '.join(bad)}" if bad else ""))
 
 
+def reviews(asc, app_id):
+    for platform in PLATFORMS:
+        print(f"=== {platform}")
+        subs = asc.get(f"/v1/apps/{app_id}/reviewSubmissions", **{"filter[platform]": platform, "limit": "20", "include": "items"})
+        items = {i["id"]: i for i in subs.get("included", [])}
+        for sub in subs.get("data", []):
+            a = sub["attributes"]
+            print(f"submission {sub['id']}: {a.get('state')} submitted={a.get('submittedDate')}")
+            for ref in (sub.get("relationships", {}).get("items", {}).get("data") or []):
+                it = items.get(ref["id"], {})
+                rel = it.get("relationships", {}).get("appStoreVersion", {}).get("data") or {}
+                print(f"   item {ref['id']}: {it.get('attributes')} version={rel.get('id')}")
+
+
 def read(dirpath, locale, file):
     path = os.path.join(dirpath, locale, file + ".txt")
     if not os.path.exists(path):
@@ -98,6 +112,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("show")
+    sub.add_parser("reviews", help="read-only: every review submission and its items per platform")
     s = sub.add_parser("set")
     s.add_argument("--dir", default="store-assets/appstore")
     s.add_argument("--apply", action="store_true")
@@ -108,7 +123,12 @@ def main():
     if not apps:
         sys.exit(f"no app with bundle id {BUNDLE_ID} in this App Store Connect account")
     try:
-        show(asc, apps[0]["id"]) if a.cmd == "show" else set_listing(asc, apps[0]["id"], a.dir, a.apply, a.platforms.split(","))
+        if a.cmd == "show":
+            show(asc, apps[0]["id"])
+        elif a.cmd == "reviews":
+            reviews(asc, apps[0]["id"])
+        else:
+            set_listing(asc, apps[0]["id"], a.dir, a.apply, a.platforms.split(","))
     except ApiError as e:
         sys.exit(f"App Store Connect said: {e}")
 

@@ -28,7 +28,13 @@ class ApiError(Exception):
     def __init__(self, status, body):
         self.status = status
         try:
-            self.errors = json.loads(body).get("errors", [])
+            doc = json.loads(body)
+            self.errors = doc.get("errors", [])
+            # a 409 "cannot be reviewed" keeps the real reasons in meta.associatedErrors (path -> errors)
+            for path, errs in [
+                    kv for e in self.errors for kv in ((e.get("meta") or {}).get("associatedErrors") or {}).items()]:
+                for err in errs:
+                    self.errors.append({"title": err.get("title", ""), "detail": f"{path}: {err.get('detail', '')}"})
         except Exception:
             self.errors = [{"detail": body.decode("utf-8", "replace")[:300]}]
         super().__init__(f"HTTP {status}: " + "; ".join(e.get("detail") or e.get("title", "?") for e in self.errors))

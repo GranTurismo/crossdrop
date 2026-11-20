@@ -9,9 +9,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "show = print the live listing; set = write the files in store-assets/appstore"
+        description: "show = print the live listing; reviews = list review submissions; set = write the files in store-assets/appstore"
         type: choice
-        options: [show, set]
+        options: [show, reviews, set]
         default: show
       apply:
         description: "With set: really write (off = print what would change)"
