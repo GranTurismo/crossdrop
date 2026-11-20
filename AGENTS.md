@@ -14,7 +14,7 @@ installed size, ambient "Sonar" UX (radar, glass, one mint accent).
   BLE both implement `PeerDiscovery`; sightings merge by `instanceId`
   (rotating per-launch token) in `AppContainer.peers`.
 
-- `:desktop` — macOS + Windows app (Compose Multiplatform Desktop on `:core`). Same wire
+- `:desktop` — macOS + Windows + Linux app (Compose Multiplatform Desktop on `:core`). Same wire
   protocol, same QR share, same Wireless Drive (HTTP/WebDAV/AEAD), same radar UI.
   See "Desktop (macOS)" below.
 
@@ -257,6 +257,46 @@ Same `:desktop` module, one codebase. Everything OS-specific sits behind
   firewall prompt flow, mDNS interop on port 5353 alongside Windows' own responder, tray
   toasts, and the Explorer reveal. They are unit-tested through injected platform values and a
   fake kernel32; the Windows CI run executes the same suites natively.
+
+## Desktop (Linux)
+
+Same `:desktop` module again; `Platform.LINUX` (an unknown OS stays `OTHER`, dev-only). The Linux-specific code is in
+`platform/LinuxDesktop.kt` (pure functions that decide what to run or where to look, unit-tested on any host in
+`LinuxSupportTest`, plus the few functions that start a process) and a `LINUX` branch wherever Mac/Windows have one.
+
+- **State**: `$XDG_DATA_HOME/CrossDrop` (`~/.local/share/CrossDrop`; a relative `XDG_DATA_HOME` is ignored, per the spec).
+  **Inbox**: `<Downloads>/CrossDrop`, where Downloads is `XDG_DOWNLOAD_DIR` from `$XDG_CONFIG_HOME/user-dirs.dirs`
+  (translated or moved folders); a value of `$HOME` itself means "switched off" and falls back to `~/Downloads`.
+- **Open / reveal**: `xdg-open` first (AWT's `Desktop` only works when GTK/GNOME libraries load); reveal = the
+  `org.freedesktop.FileManager1.ShowItems` D-Bus call through `dbus-send`, falling back to opening the folder.
+- **File and folder pickers**: `zenity` (GNOME and most others) or `kdialog` (KDE sessions first), whichever is
+  installed; else a Swing `JFileChooser` with the system look and feel. AWT's own `FileDialog` is a Motif box on Linux and
+  has no folder mode. The wait pumps AWT events (a secondary loop) while a helper thread runs the picker — blocking the UI
+  thread would make the window manager show "not responding".
+- **Keep awake**: `systemd-inhibit --what=sleep:idle … tail --pid=<ours> -f /dev/null` (ends with us, like `caffeinate -w`);
+  does nothing without systemd.
+- **Single instance**: `SingleInstance` runs on Windows and Linux (a second launch raises the first).
+- **Network**: `LocalIp` also skips libvirt (`virbr`, `vnet`), Docker user networks (`br-<hash>`), LXC/LXD/Incus, Podman,
+  Kubernetes CNIs and VPN-named interfaces (`wg0`, `tailscale0`, `zt…`); `en*`/`wl*` (systemd predictable names) count as
+  LAN. A plain `br0` bridge is kept: that is how a server or VM host attaches its real NIC.
+- **Drive roots**: `VaultHostManager.isForbiddenRoot` refuses dot-folders under the home (`.ssh`, `.gnupg`, `.config`…),
+  other users' homes, and system trees (`/etc`, `/usr`, `/proc`, `/run/user`…); `/run/media` (USB sticks on Fedora/Arch) is fine.
+- **Tray**: AWT `SystemTray`. GNOME has no tray without the AppIndicator extension (Ubuntu ships it); `SystemTray.isSupported()` is
+  then false and closing the window quits (the existing fail-safe) rather than hiding where it can't be reopened.
+- **Packaging**: `.deb`, `.rpm` and a portable `.tar.gz` of the app image, built by `.github/workflows/desktop-linux.yml` on
+  Ubuntu (see `desktop/RELEASE.md`); the workflow installs the `.deb` and starts the installed app under Xvfb. `release.yml`
+  attaches them to the GitHub release (x86-64 only). `linux { packageName = "crossdrop" }`: Debian names must be lowercase.
+  jpackage's `.rpm` has no dependencies, so `packageRpmWithDeps` (build.gradle.kts) rebuilds it from the app image with the
+  X11/GL/font libraries as soname `Requires`; `tools/release/linux_smoke.sh` (Ubuntu, .deb) and `linux_smoke_rpm.sh` (clean Fedora)
+  install the package and start the app. A bare container needs the freedesktop menu folders before the `.deb` installs
+  (jpackage's post-install calls `xdg-desktop-menu`); every desktop has them. Java reads `user.home` from the passwd entry, not
+  `$HOME`: pass `-Duser.home` when testing with a throw-away profile.
+
+```sh
+sudo apt install fakeroot dpkg-dev rpm            # jpackage's tools (Linux host only)
+./gradlew :desktop:run                            # dev run
+./gradlew :desktop:packageDeb :desktop:packageRpm :desktop:createDistributable
+```
 
 ## iOS
 

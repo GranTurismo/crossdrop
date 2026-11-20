@@ -19,6 +19,10 @@ object LocalIp {
     private val virtualPrefixes = listOf(
         "utun", "awdl", "llw", "bridge", "vmnet", "vboxnet", "docker", "veth",
         "gif", "stf", "ap", "anpi", "ipsec", "ppp", "tun", "tap",
+        // Linux: libvirt/KVM (virbr, vnet), Docker user networks (br-<hash>), LXC/LXD/Incus, Podman, Kubernetes CNIs,
+        // and the VPNs that name their interface after themselves (WireGuard wg0, Tailscale, ZeroTier, NordLynx).
+        "virbr", "vnet", "br-", "lxc", "lxd", "incus", "podman", "cni", "flannel", "cali", "kube", "wg",
+        "tailscale", "zt", "nordlynx", "dummy", "ifb",
     )
 
     /**
@@ -34,7 +38,8 @@ object LocalIp {
         "loopback", "bluetooth", "pseudo", "teredo", "isatap", "miniport", "npcap",
     )
 
-    private val lanNamePrefixes = listOf("en", "wlan", "eth", "wireless", "ethernet")
+    // "en"/"wl" also cover systemd's predictable names on Linux (enp3s0, eno1, ens33, wlp2s0, wlo1).
+    private val lanNamePrefixes = listOf("en", "wl", "eth", "wireless", "ethernet")
     private val lanDisplayHints = listOf("wi-fi", "wifi", "wireless", "802.11", "ethernet", "gbe", "lan")
 
     internal fun isVirtual(name: String, displayName: String): Boolean {

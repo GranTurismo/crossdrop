@@ -37,10 +37,10 @@ import java.awt.Taskbar
 const val APP_VERSION = "0.7.0"
 
 /**
- * CrossDrop for macOS and Windows. Closing the window hides it to the menu bar /
+ * CrossDrop for macOS, Windows and Linux. Closing the window hides it to the menu bar /
  * system tray so the receiver keeps listening (like the Android foreground
  * service); an inbound offer pops the window forward. Quit from the tray icon
- * (or ⌘Q on a Mac). On Windows only one copy runs per user: launching it again
+ * (or ⌘Q on a Mac). On Windows and Linux only one copy runs per user: launching it again
  * just raises the running one ([SingleInstance]).
  */
 fun main(args: Array<String>) {
@@ -51,12 +51,12 @@ fun main(args: Array<String>) {
         savedChoice = runCatching { com.crossdrop.platform.Prefs().getString("language") }.getOrNull(),
     )
     com.crossdrop.ui.language.LanguageReactivity.install()
-    // Bumped by a second launch (Windows) to ask the running window to surface.
+    // Bumped by a second launch (Windows, Linux) to ask the running window to surface.
     val showRequests = MutableStateFlow(0)
     // Files handed to the app — launch arguments (Explorer "Send to"), Finder "Open With", a file
     // dropped on the Dock icon, or a second launch — wait here until the UI picks them up.
     val opened = MutableStateFlow(args.map(::File).filter { it.isFile })
-    val singleInstance = if (Platform.isWindows) SingleInstance() else null
+    val singleInstance = if (Platform.isWindows || Platform.isLinux) SingleInstance() else null
     if (singleInstance != null && !singleInstance.acquire(opened.value) { files ->
             if (files.isNotEmpty()) opened.value = files
             showRequests.update { it + 1 }
@@ -73,8 +73,8 @@ fun main(args: Array<String>) {
         val container = remember { AppContainer().also { it.start() } }
         var visible by remember { mutableStateOf(true) }
         val trayState = rememberTrayState()
-        // Without a tray (some locked-down Windows SKUs) a hidden window could never be
-        // reopened, so closing the window must quit instead.
+        // Without a tray (some locked-down Windows SKUs, GNOME without the AppIndicator extension) a
+        // hidden window could never be reopened, so closing the window must quit instead.
         val trayOk = remember { SystemTray.isSupported() }
         val windowState = rememberWindowState(
             size = DpSize(1080.dp, 760.dp),

@@ -13,11 +13,14 @@ import java.util.concurrent.CountDownLatch
 object SystemActions {
 
     fun open(file: File) {
+        // On Linux AWT's Desktop only works when GTK/GNOME libraries happen to be loadable; xdg-open always is the OS answer.
+        if (Platform.current == Platform.LINUX && LinuxDesktop.xdgOpen(file.absolutePath)) return
         runCatching { Desktop.getDesktop().open(file) }
             .onFailure { Log.w("System", "open failed", it) }
     }
 
     fun openUrl(url: String) {
+        if (Platform.current == Platform.LINUX && LinuxDesktop.xdgOpen(url)) return
         runCatching { Desktop.getDesktop().browse(java.net.URI(url)) }
             .onFailure { Log.w("System", "browse failed", it) }
     }
@@ -31,11 +34,13 @@ object SystemActions {
     internal fun revealCommand(platform: Platform, file: File): List<String>? = when (platform) {
         Platform.MAC -> listOf("open", "-R", file.absolutePath)
         Platform.WINDOWS -> listOf("explorer.exe", "/select,", file.absolutePath)
+        Platform.LINUX -> LinuxDesktop.showItemsCommand(file)
         Platform.OTHER -> null
     }
 
-    /** Select [file] in a Finder / File Explorer window. */
+    /** Select [file] in a Finder / File Explorer / Linux file-manager window. */
     fun reveal(file: File) {
+        if (Platform.current == Platform.LINUX) { LinuxDesktop.reveal(file, ::open); return }
         val cmd = revealCommand(Platform.current, file)
         if (cmd != null) runCatching { ProcessBuilder(cmd).start() }
             .onFailure { open(file.parentFile ?: file) }
@@ -50,6 +55,16 @@ object SystemActions {
 
     /** Native multi-select file chooser; empty list when cancelled. */
     fun pickFiles(parent: Frame? = null, title: String = tr("Choose files")): List<File> {
+        if (Platform.isLinux) {
+            // zenity / kdialog when installed; otherwise a Swing chooser (AWT's FileDialog is a Motif box on Linux).
+            LinuxDesktop.runPicker(LinuxDesktop.pickerCommands(
+                LinuxDesktop.Pick.FILES, title, File(System.getProperty("user.home")), System.getenv("XDG_CURRENT_DESKTOP")))
+                ?.let { return it }
+            useSystemLookAndFeel()
+            val chooser = javax.swing.JFileChooser().apply { isMultiSelectionEnabled = true; dialogTitle = title }
+            return if (chooser.showOpenDialog(parent) == javax.swing.JFileChooser.APPROVE_OPTION)
+                chooser.selectedFiles.toList() else emptyList()
+        }
         val dlg = FileDialog(parent, title, FileDialog.LOAD).apply { isMultipleMode = true }
         dlg.isVisible = true   // blocks until dismissed (modal)
         return dlg.files?.toList().orEmpty()
@@ -58,11 +73,17 @@ object SystemActions {
     /**
      * Native folder chooser. macOS honours the directory flag on [FileDialog];
      * Windows' AWT FileDialog has no folder mode, so it gets a Swing chooser
-     * restyled with the system look-and-feel (Explorer-like rather than Metal).
+     * restyled with the system look-and-feel (Explorer-like rather than Metal);
+     * Linux tries zenity / kdialog first, then the same Swing chooser.
      */
     fun pickFolder(parent: Frame? = null, title: String = tr("Choose a folder to share")): File? {
+        if (Platform.isLinux) {
+            LinuxDesktop.runPicker(LinuxDesktop.pickerCommands(
+                LinuxDesktop.Pick.FOLDER, title, File(System.getProperty("user.home")), System.getenv("XDG_CURRENT_DESKTOP")))
+                ?.let { return it.firstOrNull() }
+        }
         if (!Platform.isMac) {
-            if (Platform.isWindows) useSystemLookAndFeel()
+            if (Platform.isWindows || Platform.isLinux) useSystemLookAndFeel()
             val chooser = javax.swing.JFileChooser().apply {
                 fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
                 dialogTitle = title
@@ -98,6 +119,8 @@ object SystemActions {
  * moved — the desktop analogue of Android's WifiLock + WakeLock.
  *
  *  - macOS: `caffeinate -i -w <pid>`, which dies with us if we crash.
+ *  - Linux: a `systemd-inhibit` (sleep + idle) that lasts as long as our pid ([LinuxDesktop.inhibitCommand]);
+ *    without systemd it does nothing.
  *  - Windows: `SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED)` on a
  *    dedicated thread (the state is per-thread and ends with it, so a crash or
  *    quit releases it automatically). Only idle *sleep* is blocked — the
@@ -109,18 +132,20 @@ object SleepGuard {
 
     @Synchronized fun hold(active: Boolean) {
         when (Platform.current) {
-            Platform.MAC -> holdMac(active)
+            Platform.MAC -> holdProcess(active) { listOf("/usr/bin/caffeinate", "-i", "-w", it.toString()) }
             Platform.WINDOWS -> holdWindows(active, Kernel32Api::instance)
+            Platform.LINUX -> holdProcess(active, LinuxDesktop::inhibitCommand)
             Platform.OTHER -> Unit
         }
     }
 
-    private fun holdMac(active: Boolean) {
+    /** Keep a helper process alive while [active]; [command] gets our pid so the helper ends with us. */
+    private fun holdProcess(active: Boolean, command: (Long) -> List<String>) {
         if (active == (proc?.isAlive == true)) return
         if (!active) { proc?.destroy(); proc = null; return }
         proc = runCatching {
-            ProcessBuilder("/usr/bin/caffeinate", "-i", "-w", ProcessHandle.current().pid().toString())
-                .redirectErrorStream(true).start()
+            ProcessBuilder(command(ProcessHandle.current().pid()))
+                .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start()
         }.getOrNull()
     }
 

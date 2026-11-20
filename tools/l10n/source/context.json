@@ -79,10 +79,13 @@
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:43"
  ],
  "After switching networks or allowing CrossDrop through Windows Firewall": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:161"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:162"
+ ],
+ "After switching networks or allowing CrossDrop through your firewall": [
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:163"
  ],
  "After switching networks or approving CrossDrop under Local Network": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:162"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:164"
  ],
  "All": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:88",
@@ -305,10 +308,10 @@
   "ios/CrossDrop/UI/Drive/DriveGuideScreen.swift:71"
  ],
  "Choose a folder to share": [
-  "desktop/src/main/kotlin/com/crossdrop/platform/SystemActions.kt:63"
+  "desktop/src/main/kotlin/com/crossdrop/platform/SystemActions.kt:79"
  ],
  "Choose files": [
-  "desktop/src/main/kotlin/com/crossdrop/platform/SystemActions.kt:52"
+  "desktop/src/main/kotlin/com/crossdrop/platform/SystemActions.kt:57"
  ],
  "Choose files to send": [
   "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:166"
@@ -329,13 +332,13 @@
  ],
  "Clear transfer history": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:186",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:183",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:186",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:65"
  ],
  "Clear transfer history?": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:247",
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:148",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:224"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:227"
  ],
  "Close": [
   "app/src/main/java/com/crossdrop/ui/camera/CameraScreen.kt:141",
@@ -526,7 +529,7 @@
  ],
  "CrossDrop vault": [
   "app/src/main/java/com/crossdrop/net/VaultHostManager.kt:93",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultHostManager.kt:134",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultHostManager.kt:149",
   "ios/CrossDrop/Services/VaultHostManager.swift:78"
  ],
  "CrossDrop's camera sends each photo or video to the devices you picked the moment you take it.": [
@@ -635,7 +638,7 @@
  "Drive is on": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:334",
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:230",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:311"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:314"
  ],
  "Drive · PIN": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarCanvas.kt:242"
@@ -696,7 +699,7 @@
  ],
  "Every received file is overwritten with zeros and deleted. This can't be undone.": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:239",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:216",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:219",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:86"
  ],
  "Everything stays on this Wi-Fi — nothing touches the internet.": [
@@ -1081,7 +1084,7 @@
  ],
  "No cloud. No accounts. No tracking.": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:203",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:200",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:203",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:171"
  ],
  "No free Wi-Fi channel right now": [
@@ -1254,7 +1257,7 @@
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:262"
  ],
  "Open this {0} from other computers, phones or any browser": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:287"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:290"
  ],
  "Open transfer": [
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:167"
@@ -1714,7 +1717,7 @@
  ],
  "Show the welcome tour": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:204",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:201",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:204",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:172"
  ],
  "Show {0} in {1}": [
@@ -1790,7 +1793,7 @@
  ],
  "Storage": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:173",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:171",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:174",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:52"
  ],
  "Stored on this device only. Keeps your last {0} sessions.": [
@@ -1940,7 +1943,7 @@
  "This forgets the log of past transfers. Received files stay in your inbox.": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:248",
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:149",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:225"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:228"
  ],
  "This phone didn't let us. The hotspot steps still work.": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:227"
@@ -1994,7 +1997,7 @@
  ],
  "Turn into drive": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:308",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:285",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:288",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:261"
  ],
  "Turn off any VPN on both devices.": [
@@ -2162,12 +2165,12 @@
  "Wipe inbox": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:184",
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:240",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:181"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:184"
  ],
  "Wipe the inbox?": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:238",
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:185",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:215"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:218"
  ],
  "Wireless Drive": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:113",
@@ -2230,7 +2233,7 @@
   "desktop/src/main/kotlin/com/crossdrop/platform/Platform.kt:21"
  ],
  "connection closed": [
-  "ios/CrossDrop/Services/VaultExplorerManager.swift:431"
+  "ios/CrossDrop/Services/VaultExplorerManager.swift:442"
  ],
  "connection lost": [
   "app/src/main/java/com/crossdrop/switchphones/SwitchSender.kt:230",
@@ -2257,9 +2260,9 @@
   "ios/CrossDrop/UI/Welcome/WelcomeScreen.swift:278"
  ],
  "failed": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:259",
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:298",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:254"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:267",
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:306",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:260"
  ],
  "file": [
   "ios/CrossDrop/UI/Inbox/InboxScreen.swift:95"
@@ -2280,9 +2283,9 @@
   "core/src/main/kotlin/com/crossdrop/core/transfer/TransferEngine.kt:536"
  ],
  "lost connection": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:218",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:214",
-  "ios/CrossDrop/Services/VaultExplorerManager.swift:212"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:224",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:220",
+  "ios/CrossDrop/Services/VaultExplorerManager.swift:223"
  ],
  "match it on {0}": [
   "app/src/main/java/com/crossdrop/ui/transfer/TransferScreen.kt:374",
@@ -2293,8 +2296,8 @@
   "desktop/src/main/kotlin/com/crossdrop/platform/Platform.kt:35"
  ],
  "mount failed": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:108",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:104"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:109",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:105"
  ],
  "name": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveGuideScreen.kt:184",
@@ -2308,7 +2311,7 @@
  ],
  "no one connected": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:338",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:315",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:318",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:246"
  ],
  "nothing readable selected": [
@@ -2366,14 +2369,14 @@
   "app/src/main/java/com/crossdrop/service/TransferService.kt:162"
  ],
  "unreachable: {0}": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:112",
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:143",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:108"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:113",
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:144",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:109"
  ],
  "vault": [
-  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:333",
-  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:315",
-  "ios/CrossDrop/Services/VaultExplorerManager.swift:361"
+  "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:341",
+  "desktop/src/main/kotlin/com/crossdrop/net/VaultExplorerManager.kt:321",
+  "ios/CrossDrop/Services/VaultExplorerManager.swift:372"
  ],
  "view & download": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:625",
@@ -2419,7 +2422,7 @@
  "{0} connected": [
   "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:338",
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:233",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:315"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:318"
  ],
  "{0} declined": [
   "app/src/main/java/com/crossdrop/ui/camera/CameraScreen.kt:374",
