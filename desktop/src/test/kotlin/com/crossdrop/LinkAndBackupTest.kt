@@ -269,6 +269,7 @@ class LinkAndBackupTest {
             // The last file can still be a `.part` while it lands: wait for the finished names, not a count.
             val filed = setOf("Notes.apk", "Notes - config.arm64_v8a.apk", "Maps.apk")
             await("C filed them") { c.inbox.list().map { it.file.name }.toSet().takeIf { it == filed } }
+            Unit
         } finally { a.close(); b.close(); c.close() }
     }
 }
