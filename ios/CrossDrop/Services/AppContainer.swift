@@ -47,6 +47,10 @@ final class AppContainer: ObservableObject {
     let switchImporter: SwitchImporter
     /// Contact cards sent on their own: straight into the address book.
     let contactInbox: ContactInbox
+    /// Devices known by address: ones that announced themselves to us, and the phone whose code we scanned.
+    let announced = AnnouncedPeers()
+    /// "Scan a code": join another phone's private link (or any Wi-Fi code) and connect to it.
+    let wifiJoin: WifiJoin
     /// Live camera open, sending to these devices.
     @Published var cameraTargets: [Peer]?
     /// "Switch phones" screen open for this device.
@@ -83,6 +87,7 @@ final class AppContainer: ObservableObject {
         qrShare = QrShareManager(deviceName: { box.value }, history: history)
         vaultExplorer = VaultExplorerManager(identity: identity, deviceName: { box.value }, instanceId: id, inbox: inbox, history: history)
         vaultHost = VaultHostManager(identity: identity, deviceName: { box.value })
+        wifiJoin = WifiJoin(engine: engine, known: announced)
         discovery = BonjourDiscovery(instanceId: id, deviceName: { box.value })
         discovery.onPeersChanged = { [weak self] map in
             self?.bonjour = map
@@ -95,6 +100,13 @@ final class AppContainer: ObservableObject {
             self?.vaultBeacons = map
             self?.mergePeers()
         }
+        // A device that announced itself (e.g. one that scanned this network's code) shows like any sighting.
+        let announced = self.announced
+        announced.onChange = { [weak self] in self?.mergePeers() }
+        coordinator.control = AnnounceRelay { name, instanceId, host, port in
+            DispatchQueue.main.async { announced.add(instanceId: instanceId, name: name, host: host, port: port) }
+        }
+        wifiJoin.listenPort = { [weak self] in self?.listenerPort ?? 0 }
         // Radar only shows peers whose listener still answers (mDNS alone keeps a vanished device for an hour).
         liveness.onChange = { [weak self] in self?.mergePeers() }
         liveness.start { [weak self] in self?.sightedPeers() ?? [] }
@@ -248,6 +260,7 @@ final class AppContainer: ObservableObject {
         }
         hasNetwork = Self.localNetworkUp()
         pathMonitor.start(queue: .global(qos: .utility))
+        announced.start()
         coordinator.onOfferArrived = { [weak self] offer in self?.notifyOffer(offer) }
         // Ask for notifications in context — after the first finished transfer, not at launch.
         if !UserDefaults.standard.bool(forKey: "asked_notifications") {
@@ -353,6 +366,15 @@ final class AppContainer: ObservableObject {
         if let mode = args.string(forKey: "dev_vault") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.vaultHost.startDebug(mode: mode) }
         }
+        // "Scan a code" without a camera: `-dev_join '<WIFI:… code>'` joins for real (system prompt; device only);
+        // `-dev_join_skip_wifi '<code>'` skips the Wi-Fi step (the simulator shares the Mac's network) and goes
+        // straight to connect + announce.
+        if let v = args.string(forKey: "dev_join"), let code = WifiQr.parse(v) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { self.wifiJoin.join(code) }
+        }
+        if let v = args.string(forKey: "dev_join_skip_wifi"), let code = WifiQr.parse(v) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.wifiJoin.connectForDebug(code) }
+        }
     }
 
     /// Sends a generated 4 MiB file to `host:port` (`-dev_send`, Settings → Developer).
@@ -370,6 +392,7 @@ final class AppContainer: ObservableObject {
     func resume() {
         vaultExplorer.livePaused = false
         guard started else { return }
+        wifiJoin.resumed()
         inbox.refresh()
         KeepAwake.shared.refresh()
         qrShare.resume()
@@ -392,7 +415,7 @@ final class AppContainer: ObservableObject {
     }
 
     private var wasBackgrounded = false
-    func didEnterBackground() { wasBackgrounded = true; vaultExplorer.livePaused = true }
+    func didEnterBackground() { wasBackgrounded = true; vaultExplorer.livePaused = true; wifiJoin.enteredBackground() }
 
     func restartDiscovery() {
         guard discoveryEnabled, Self.welcomeSeen, listener.port > 0 else { return }
@@ -410,6 +433,8 @@ final class AppContainer: ObservableObject {
 
     private func sightedPeers() -> [Peer] {
         var merged = bonjour
+        // After Bonjour: for a device seen both ways, its own advert speaks for it.
+        for (k, v) in announced.peers where merged[k] == nil { merged[k] = v }
         for (k, v) in vaultBeacons { merged[k] = v }
         for (k, v) in manual { merged[k] = v }
         return Array(merged.values)

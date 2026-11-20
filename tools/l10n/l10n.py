@@ -294,7 +294,7 @@ def cmd_audit(paths):
 
 PLIST_KEYS = {  # Info.plist key -> English text (also listed in source/extra.json so it gets translated)
     "NSLocalNetworkUsageDescription": "CrossDrop uses your local network to find nearby devices and send files directly to them — nothing leaves your Wi-Fi.",
-    "NSCameraUsageDescription": "CrossDrop's camera sends each photo or video to the devices you picked the moment you take it.",
+    "NSCameraUsageDescription": "CrossDrop uses the camera to scan another phone's code, and to send the photos and videos you take to the devices you pick.",
     "NSMicrophoneUsageDescription": "Sound for the videos you record in CrossDrop's camera.",
     "NSPhotoLibraryUsageDescription": "To switch phones, CrossDrop reads your photos and videos and moves them straight to your other device.",
 }

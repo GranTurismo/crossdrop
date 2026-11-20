@@ -58,6 +58,23 @@ public enum SessionCrypto {
         return [UInt8](mac.finalize())
     }
 
+    /// The long-lived key two paired devices share ("My devices"): HKDF-SHA256(shared, salt: binding,
+    /// info: "crossdrop/v1/pair/<pairId>", 32). Both sides compute it from the session they paired over.
+    public static func pairKey(shared: [UInt8], binding: [UInt8], pairId: String) -> [UInt8] {
+        hkdf(shared, binding, "crossdrop/v1/pair/\(pairId)", 32)
+    }
+
+    /// HMAC-SHA256(key, utf8(label) ‖ 0x00 ‖ binding ‖ extra): every pairing proof, each with its own label
+    /// ("check-i"/"check-r" with the nonce, "offer"/"accept" with the transfer id).
+    public static func pairProof(key: [UInt8], label: String, binding: [UInt8], extra: [UInt8] = []) -> [UInt8] {
+        var mac = HMAC<SHA256>(key: SymmetricKey(data: key))
+        mac.update(data: Data(label.utf8))
+        mac.update(data: Data([0]))
+        mac.update(data: binding)
+        mac.update(data: extra)
+        return [UInt8](mac.finalize())
+    }
+
     static func hkdf(_ ikm: [UInt8], _ salt: [UInt8], _ info: String, _ outLen: Int) -> [UInt8] {
         let key = HKDF<SHA256>.deriveKey(
             inputKeyMaterial: SymmetricKey(data: ikm), salt: salt,

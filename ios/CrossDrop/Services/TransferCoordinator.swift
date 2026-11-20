@@ -61,6 +61,8 @@ final class TransferCoordinator: ObservableObject {
     var autoAcceptOnce = false
     var autoAcceptAll = false
     var onOfferArrived: ((IncomingOffer) -> Void)?
+    /// Connections that carry no files (ANNOUNCE; pairing frames are declined by the engine). Never a session.
+    var control: ControlHandler?
     /// Called once per session as it ends (camera shots and switch batches excluded) — app-layer hooks.
     var onSessionEnded: ((SessionState) -> Void)?
 
@@ -293,8 +295,9 @@ final class TransferCoordinator: ObservableObject {
         let engine = self.engine, inbox = self.inbox, trust = self.trust
         let switchRx = self.switchReceiver
         let contactRx = self.contactReceiver
+        let control = self.control
         Thread.detachNewThread { [weak self] in
-            engine.receive(socket: socket, cancel: token, decideRequest: { req in
+            engine.receive(socket: socket, cancel: token, control: control, decideRequest: { req in
                 let offer = req.offer
                 var route: Route?
                 if let g = trust.match(req) {

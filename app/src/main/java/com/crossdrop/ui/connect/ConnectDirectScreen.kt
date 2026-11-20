@@ -65,9 +65,10 @@ import com.crossdrop.ui.theme.displayStyle
 import com.crossdrop.ui.theme.monoStyle
 
 /**
- * "Connect directly": this phone makes a private Wi-Fi network and shows one QR code. The other person
- * scans it with their camera and is on the network; CrossDrop on their side then finds this phone like
- * on any Wi-Fi. [nearbyNames] are the devices the radar currently sees, used to notice who joined.
+ * "Connect directly": one phone shows a code, the other scans it. Showing a code makes a private Wi-Fi
+ * network on this phone; the other person scans it with CrossDrop ([onScan] on their side), which joins
+ * and connects straight to this phone, or with their camera (no app) and uses "Send to anyone".
+ * [nearbyNames] are the devices the radar currently sees, used to notice who joined.
  */
 @Composable
 fun ConnectDirectScreen(
@@ -75,7 +76,10 @@ fun ConnectDirectScreen(
     nearbyNames: List<String>,
     onClose: () -> Unit,
     onGuide: () -> Unit,
+    onScan: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Skip the show/scan question and start the link right away. */
+    showNow: Boolean = false,
 ) {
     val state by link.state.collectAsState()
     val context = LocalContext.current
@@ -86,9 +90,10 @@ fun ConnectDirectScreen(
         // Before Android 13 the permission is "Location", a scary prompt for a Wi-Fi feature: explain first.
         if (missing != null && !explainFirst) permission.launch(missing) else link.start()
     }
-    // Opening the screen is the request: start unless a link is already up.
+    // Until someone picks "Show a code", nothing is started: the phone that scans must not make a network.
+    var chosen by remember { mutableStateOf(state !is DirectLinkState.Off) }
     LaunchedEffect(Unit) {
-        if (state is DirectLinkState.Off || state is DirectLinkState.Failed) begin(explainFirst = Build.VERSION.SDK_INT < 33)
+        if (showNow && state is DirectLinkState.Off) { chosen = true; begin(explainFirst = Build.VERSION.SDK_INT < 33) }
     }
 
     Box(modifier.fillMaxSize()) {
@@ -101,10 +106,59 @@ fun ConnectDirectScreen(
             Column(Modifier.widthIn(max = 560.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 BackHeader(tr("Connect directly"), onClose)
                 when (val s = state) {
-                    DirectLinkState.Off, DirectLinkState.Starting -> Starting(onCancel = { link.stop(); onClose() })
+                    DirectLinkState.Off -> if (!chosen) Choice(
+                        onShow = { chosen = true; begin(explainFirst = Build.VERSION.SDK_INT < 33) },
+                        onScan = onScan,
+                    ) else Starting(onCancel = { link.stop(); onClose() })
+                    DirectLinkState.Starting -> Starting(onCancel = { link.stop(); onClose() })
                     is DirectLinkState.On -> Ready(s, nearbyNames, onStop = { link.stop(); onClose() }, onDone = onClose)
-                    is DirectLinkState.Failed -> Problem(s.reason, onRetry = ::begin, onGuide = onGuide, context = context)
+                    is DirectLinkState.Failed -> Problem(s.reason, onRetry = ::begin, onGuide = onGuide, onScan = onScan, context = context)
                 }
+            }
+        }
+    }
+}
+
+/** Which side are you? One phone shows the code, the other scans it. */
+@Composable
+private fun Choice(onShow: () -> Unit, onScan: () -> Unit) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            tr("One phone shows a code, the other scans it"),
+            style = displayStyle(22).copy(lineHeight = 27.sp), color = TextPrimary,
+        )
+        Text(
+            tr("No Wi-Fi or internet needed: the two phones link to each other."),
+            color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp,
+        )
+        ChoiceCard(
+            CdIcons.Qr, tr("Show a code"),
+            tr("This phone makes a private link. The other phone scans the code with CrossDrop, or with its camera if it doesn't have CrossDrop."),
+            onShow,
+        )
+        ChoiceCard(
+            CdIcons.Scan, tr("Scan a code"),
+            tr("The other phone shows a code. Scan it here and the two phones see each other."),
+            onScan,
+        )
+        FootNote(
+            tr("Your phone may leave its own Wi-Fi while the link is on. Nothing goes over the internet."),
+            icon = CdIcons.Wifi,
+        )
+    }
+}
+
+@Composable
+private fun ChoiceCard(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, body: String, onClick: () -> Unit) {
+    GlassCard(
+        Modifier.fillMaxWidth(), onClick = onClick, radius = 24.dp,
+        contentPadding = PaddingValues(16.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            com.crossdrop.ui.IconTile(icon, Accent, size = 42.dp, radius = 14.dp, iconSize = 20.dp)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                Text(body, color = TextDim, fontSize = 13.sp, lineHeight = 18.sp)
             }
         }
     }
@@ -134,9 +188,13 @@ private fun Ready(s: DirectLinkState.On, nearbyNames: List<String>, onStop: () -
 
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         Text(
-            tr("Ask the other person to open their camera and scan this"),
+            tr("Ask the other person to scan this"),
             style = displayStyle(22).copy(lineHeight = 27.sp), color = TextPrimary,
             modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            tr("With CrossDrop: Connect directly, then Scan a code. Without it: their phone's camera."),
+            color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp, modifier = Modifier.fillMaxWidth(),
         )
         QrCard(s.qr, size = 252.dp, description = tr("Wi-Fi code for the private link. Scan it with a camera."))
 
@@ -203,7 +261,7 @@ private fun Detail(label: String, value: String) {
 }
 
 @Composable
-private fun Problem(reason: DirectLinkFailure, onRetry: () -> Unit, onGuide: () -> Unit, context: android.content.Context) {
+private fun Problem(reason: DirectLinkFailure, onRetry: () -> Unit, onGuide: () -> Unit, onScan: () -> Unit, context: android.content.Context) {
     val (title, body) = when (reason) {
         DirectLinkFailure.PERMISSION ->
             if (Build.VERSION.SDK_INT >= 33) {
@@ -256,6 +314,7 @@ private fun Problem(reason: DirectLinkFailure, onRetry: () -> Unit, onGuide: () 
                 }
             }, Modifier.fillMaxWidth(), style = PillStyle.Glass)
         }
+        PillButton(tr("Scan the other phone's code instead"), onScan, Modifier.fillMaxWidth(), style = PillStyle.Glass)
         PillButton(tr("Use a hotspot instead"), onGuide, Modifier.fillMaxWidth(), style = PillStyle.Glass)
     }
 }

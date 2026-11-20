@@ -1,9 +1,6 @@
 package com.crossdrop.switchphones
 
-import android.content.ContentUris
 import android.content.Context
-import android.net.Uri
-import android.provider.MediaStore
 import androidx.core.content.edit
 import com.crossdrop.core.Peer
 import com.crossdrop.core.contacts.VCard
@@ -95,35 +92,11 @@ class SwitchSender(
         )
     }
 
-    private fun queryMedia(video: Boolean): List<Item> {
-        val uri = if (video) MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-            else MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        val proj = arrayOf(
-            MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME, MediaStore.MediaColumns.SIZE,
-            MediaStore.MediaColumns.MIME_TYPE, MediaStore.MediaColumns.DATE_TAKEN, MediaStore.MediaColumns.DATE_MODIFIED,
-        )
-        val out = ArrayList<Item>()
-        runCatching {
-            context.contentResolver.query(uri, proj, null, null, "${MediaStore.MediaColumns.DATE_TAKEN} DESC")?.use { c ->
-                while (c.moveToNext()) {
-                    val id = c.getLong(0)
-                    val size = c.getLong(2)
-                    if (size <= 0) continue
-                    val itemUri: Uri = ContentUris.withAppendedId(uri, id)
-                    val taken = c.getLong(4).takeIf { it > 0 } ?: (c.getLong(5) * 1000)
-                    out += Item(
-                        (if (video) "v:" else "p:") + id,
-                        FileMeta(
-                            c.getString(1) ?: "item_$id", size, c.getString(3),
-                            cat = if (video) ItemCategory.VIDEO else ItemCategory.PHOTO,
-                            mtime = taken.takeIf { it > 0 },
-                        ),
-                    ) { context.contentResolver.openInputStream(itemUri) ?: throw java.io.FileNotFoundException("$itemUri") }
-                }
-            }
+    private fun queryMedia(video: Boolean): List<Item> =
+        com.crossdrop.media.MediaLibrary.query(context, video).map { m ->
+            // Opened as the original, so photos keep where they were taken.
+            Item(m.id, m.meta) { com.crossdrop.media.MediaLibrary.open(context, m.uri) }
         }
-        return out
-    }
 
     // ------------------------------------------------------------ moving --
 

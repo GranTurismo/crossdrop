@@ -50,8 +50,10 @@ public struct FileMeta: Codable, Equatable {
     public var cat: String?
     /// Original capture/modification time, epoch ms.
     public var mtime: Int64?
-    public init(name: String, size: Int64, mime: String? = nil, cat: String? = nil, mtime: Int64? = nil) {
-        self.name = name; self.size = size; self.mime = mime; self.cat = cat; self.mtime = mtime
+    /// `OfferKind.backup`: the sender's stable id for this item, so the receiver can recognise it later.
+    public var key: String?
+    public init(name: String, size: Int64, mime: String? = nil, cat: String? = nil, mtime: Int64? = nil, key: String? = nil) {
+        self.name = name; self.size = size; self.mime = mime; self.cat = cat; self.mtime = mtime; self.key = key
     }
 }
 
@@ -70,6 +72,8 @@ public enum OfferKind {
     public static let switchPhones = "switch"
     /// One or more contact cards: a single `.vcf`; `Offer.text` carries a photo-less copy for the prompt.
     public static let contact = "contact"
+    /// One batch of a phone backup to a paired computer; carries `Offer.pairProof`. Never prompts.
+    public static let backup = "backup"
 }
 
 /// Longest `Offer.text` a sender inlines (the file copy carries anything longer).
@@ -87,10 +91,12 @@ public struct Offer: Codable {
     public var trustProof: String?
     /// `OfferKind.switchPhones`: where this batch sits in the whole move.
     public var batch: BatchInfo?
+    /// Set when sender and receiver are paired ("My devices"): base64 HMAC(pairing key, "offer" ‖ binding ‖ transferId).
+    public var pairProof: String?
     public init(transferId: String, files: [FileMeta], kind: String? = nil, text: String? = nil,
-                trustId: String? = nil, trustProof: String? = nil, batch: BatchInfo? = nil) {
+                trustId: String? = nil, trustProof: String? = nil, batch: BatchInfo? = nil, pairProof: String? = nil) {
         self.transferId = transferId; self.files = files; self.kind = kind; self.text = text
-        self.trustId = trustId; self.trustProof = trustProof; self.batch = batch
+        self.trustId = trustId; self.trustProof = trustProof; self.batch = batch; self.pairProof = pairProof
     }
 }
 
@@ -138,8 +144,10 @@ public struct Accept: Codable {
     public var delta: Bool
     public var push: Bool
     public var trust: TrustGrant?
-    public init(transferId: String, delta: Bool = false, push: Bool = false, trust: TrustGrant? = nil) {
-        self.transferId = transferId; self.delta = delta; self.push = push; self.trust = trust
+    /// Answer to `Offer.pairProof`: base64 HMAC(pairing key, "accept" ‖ binding ‖ transferId).
+    public var pairProof: String?
+    public init(transferId: String, delta: Bool = false, push: Bool = false, trust: TrustGrant? = nil, pairProof: String? = nil) {
+        self.transferId = transferId; self.delta = delta; self.push = push; self.trust = trust; self.pairProof = pairProof
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
@@ -147,8 +155,9 @@ public struct Accept: Codable {
         delta = try c.decodeIfPresent(Bool.self, forKey: .delta) ?? false
         push = try c.decodeIfPresent(Bool.self, forKey: .push) ?? false
         trust = try? c.decodeIfPresent(TrustGrant.self, forKey: .trust)
+        pairProof = try c.decodeIfPresent(String.self, forKey: .pairProof)
     }
-    enum K: String, CodingKey { case transferId, delta, push, trust }
+    enum K: String, CodingKey { case transferId, delta, push, trust, pairProof }
 }
 
 public struct Decline: Codable {
@@ -175,6 +184,62 @@ public struct Done: Codable {
 public struct Cancel: Codable {
     public var reason: String?
     public init(reason: String? = nil) { self.reason = reason }
+}
+
+// MARK: control exchanges (no files)
+
+/// ANNOUNCE: "I'm here; reach me on `port`". Lets a device that joined another's private link (or any network
+/// where multicast is blocked) appear on that device's radar. The answer's `port` is 0: "the port you connected to".
+public struct Announce: Codable, Equatable {
+    public var port: Int
+    public init(port: Int) { self.port = port }
+}
+
+/// PAIR, first frame: the initiator asks to become one of the receiver's devices under `pairId` (32 hex).
+public struct PairRequest: Codable, Equatable {
+    public var pairId: String
+    public init(pairId: String) { self.pairId = pairId }
+}
+
+/// PAIR, answer: the human on the receiving side agreed (or not, or didn't answer in time).
+public struct PairReply: Codable, Equatable {
+    public var accepted: Bool
+    public init(accepted: Bool) { self.accepted = accepted }
+}
+
+/// PAIR_CHECK, both directions. Request: a fresh `nonce` (base64) and one proof per pairing the initiator holds,
+/// HMAC(key, "check-i" ‖ binding ‖ nonce). Answer: the same nonce and, if one of them is a pairing this device holds
+/// too, that pairing's HMAC(key, "check-r" ‖ binding ‖ nonce); otherwise no proofs.
+public struct PairCheck: Codable, Equatable {
+    public var nonce: String
+    public var proofs: [String]
+    public init(nonce: String, proofs: [String] = []) { self.nonce = nonce; self.proofs = proofs }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        nonce = try c.decode(String.self, forKey: .nonce)
+        proofs = try c.decodeIfPresent([String].self, forKey: .proofs) ?? []
+    }
+    enum K: String, CodingKey { case nonce, proofs }
+}
+
+/// One backed-up item as the phone remembers it: its key, whole-file BLAKE3 root and size.
+public struct VerifyItem: Codable, Equatable {
+    public var key: String
+    public var root: String
+    public var size: Int64
+    public init(key: String, root: String, size: Int64) { self.key = key; self.root = root; self.size = size }
+}
+
+/// BACKUP_VERIFY (only after a successful PAIR_CHECK on the same connection): "do you still hold these?"
+public struct VerifyRequest: Codable, Equatable {
+    public var items: [VerifyItem]
+    public init(items: [VerifyItem]) { self.items = items }
+}
+
+/// The keys of the items the receiver re-read and found intact.
+public struct VerifyReply: Codable, Equatable {
+    public var ok: [String]
+    public init(ok: [String]) { self.ok = ok }
 }
 
 extension Encodable {

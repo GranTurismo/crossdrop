@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <!-- "Connect directly": a private local-only hotspot for devices with no shared Wi-Fi -->
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- "Scan a code": join the other phone's private link from inside the app (ConnectivityManager.requestNetwork) -->
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation"
         tools:ignore="UnusedAttribute" />
@@ -47,6 +49,8 @@
         android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <!-- Switch phones and backups keep where each photo was taken: without this Android strips the EXIF location -->
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
     <application
         android:name=".CrossDropApp"

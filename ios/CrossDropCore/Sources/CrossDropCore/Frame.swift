@@ -16,6 +16,9 @@ public enum FrameType: UInt8 {
     case vaultLs = 0x10, vaultDir = 0x11, vaultStat = 0x12, vaultAttr = 0x13
     case vaultPull = 0x14, vaultData = 0x15, vaultPushInit = 0x16
     case vaultPushAck = 0x17, vaultDone = 0x18, vaultErr = 0x19, vaultAuth = 0x1A
+    /// Exchanges that carry no files, sent instead of an OFFER right after the handshake (see `ControlChannel`).
+    /// Builds that predate them fail the unknown frame before any session exists, so nothing shows on their side.
+    case announce = 0x20, pair = 0x21, pairCheck = 0x22, backupVerify = 0x23
 }
 
 /// `[u32 BE bodyLen][body]`, body = `[u8 type][payload]` or `seal(type || payload)`.

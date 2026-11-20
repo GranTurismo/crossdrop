@@ -72,6 +72,12 @@ object CdIcons {
     val Play by lazy { filled("M8 5.5v13l10.5-6.5z") }
     val Bolt by lazy { icon("M13 3L5 13.5h6L10 21l8-10.5h-6z") }
     val Contacts by lazy { icon(circle(12f, 9f, 3.5f), "M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5") }
+    /** Viewfinder: "Scan a code". */
+    val Scan by lazy { icon("M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M7 12h10") }
+    /** Two linked devices: "My devices" / pairing. */
+    val Link by lazy { icon("M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1", "M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1") }
+    /** Cloud-free backup: a box with an arrow into it. */
+    val Backup by lazy { icon("M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4", "M12 3v11M8 10l4 4 4-4") }
     val Camera by lazy { icon("M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z", circle(12f, 12.5f, 3.5f)) }
     val Note by lazy { icon("M5 6h14M5 11h14M5 16h9", stroke = 2f) }
     val Swap by lazy { icon("M7 4L3 8l4 4M3 8h13M17 12l4 4-4 4M21 16H8", stroke = 2f) }

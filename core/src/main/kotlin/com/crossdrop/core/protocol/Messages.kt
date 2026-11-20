@@ -44,6 +44,8 @@ data class FileMeta(
     val cat: String? = null,
     /** Original capture/modification time, epoch ms — kept when the receiver imports it into a gallery. */
     val mtime: Long? = null,
+    /** [OfferKind.BACKUP]: the sender's stable id for this item, so the receiver can recognise it later. */
+    val key: String? = null,
 )
 
 /** Values of [FileMeta.cat]. */
@@ -68,6 +70,8 @@ object OfferKind {
     const val SWITCH = "switch"
     /** One or more contact cards: a single `.vcf` file; [Offer.text] carries a photo-less copy for the prompt. */
     const val CONTACT = "contact"
+    /** One batch of a phone backup to a paired computer; carries [Offer.pairProof]. Never prompts. */
+    const val BACKUP = "backup"
 }
 
 /** Longest [Offer.text] a sender inlines (the file copy carries anything longer). */
@@ -90,6 +94,9 @@ data class Offer(
     val trustProof: String? = null,
     /** [OfferKind.SWITCH]: where this batch sits in the whole move. */
     val batch: BatchInfo? = null,
+    /** Set when the sender and receiver are paired ("My devices"): HMAC(pairing key, "offer" ‖ binding ‖
+     *  transferId), base64. The receiver finds which pairing it belongs to without any id on the wire. */
+    val pairProof: String? = null,
 )
 
 /** Totals of a whole "Switch phones" move, repeated on each batch's offer. */
@@ -128,6 +135,9 @@ data class Accept(
     val push: Boolean = false,
     /** Receiver lets later offers of the same kind skip its accept prompt (see [TrustGrant]). */
     val trust: TrustGrant? = null,
+    /** Answer to [Offer.pairProof]: HMAC(pairing key, "accept" ‖ binding ‖ transferId). The sender checks it
+     *  before sending a byte, so a device that only borrowed the paired device's name gets nothing. */
+    val pairProof: String? = null,
 )
 
 @Serializable
@@ -143,6 +153,45 @@ data class Done(
 
 @Serializable
 data class Cancel(val reason: String? = null)
+
+// ------------------------------------------------- control exchanges (no files) --
+
+/**
+ * ANNOUNCE: "I'm here; reach me on [port]". Lets a device that joined another's private link (or any
+ * network where multicast is blocked) appear on that device's radar. The answer's [port] is 0: "the port
+ * you connected to".
+ */
+@Serializable
+data class Announce(val port: Int)
+
+/** PAIR, first frame: the initiator asks to become one of the receiver's devices under [pairId] (32 hex). */
+@Serializable
+data class PairRequest(val pairId: String)
+
+/** PAIR, answer: the human on the receiving side agreed (or not, or didn't answer in time). */
+@Serializable
+data class PairReply(val accepted: Boolean)
+
+/**
+ * PAIR_CHECK, both directions. Request: a fresh [nonce] and one proof per pairing the initiator holds,
+ * HMAC(key, "check-i" ‖ binding ‖ nonce). Answer: the same nonce and, if one of them is a pairing this
+ * device holds too, that pairing's HMAC(key, "check-r" ‖ binding ‖ nonce); otherwise no proofs. No pairing
+ * id ever crosses the network, and a recorded answer is useless against a new nonce.
+ */
+@Serializable
+data class PairCheck(val nonce: String, val proofs: List<String> = emptyList())
+
+/** One backed-up item as the phone remembers it: its key, whole-file BLAKE3 root and size. */
+@Serializable
+data class VerifyItem(val key: String, val root: String, val size: Long)
+
+/** BACKUP_VERIFY (only after a successful PAIR_CHECK on the same connection): "do you still hold these?" */
+@Serializable
+data class VerifyRequest(val items: List<VerifyItem>)
+
+/** The keys of the items the receiver re-read and found intact. */
+@Serializable
+data class VerifyReply(val ok: List<String>)
 
 @Serializable
 data class Error(val message: String)

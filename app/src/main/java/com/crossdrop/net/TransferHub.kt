@@ -1,7 +1,13 @@
 package com.crossdrop.net
 
+import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
 import com.crossdrop.core.contacts.VCard
+import com.crossdrop.core.discovery.AnnouncedPeers
+import com.crossdrop.core.pairing.PairingStore
+import com.crossdrop.core.protocol.VerifyItem
+import com.crossdrop.core.transfer.ControlHandler
+import com.crossdrop.core.transfer.PairSecret
 import com.crossdrop.core.contacts.VContact
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.i18n.tr
@@ -69,6 +75,8 @@ data class SessionState(
     val kind: String? = null,
     /** Shown by its own screen (live camera, switch phones, text) — never opens the transfer view. */
     val quiet: Boolean = false,
+    /** Per-file BLAKE3 roots both sides agreed on, once a v2/v3 transfer completes. */
+    val roots: List<String>? = null,
 ) {
     val fraction: Float get() = when (status) {
         SessionStatus.COMPLETED -> 1f
@@ -151,6 +159,23 @@ interface SwitchReceiver {
 }
 
 /**
+ * Receiving end of a phone's backup ("My devices"): batches from a paired phone arrive without a prompt,
+ * are staged per batch, then filed by [importBatch]. [verify] answers the phone's "do you still hold
+ * these?" before it frees up space. Only computers set one; elsewhere backup offers are declined.
+ */
+interface BackupReceiver {
+    fun storeFor(pairId: String, offer: Offer): DeltaReceiver
+    fun batchFile(pairId: String, offer: Offer, meta: FileMeta): File
+    /** Runs off the transfer thread; [roots] are the agreed BLAKE3 roots (null on the v1 path). */
+    suspend fun importBatch(pairId: String, peerName: String, offer: Offer, files: List<File>, roots: List<String>?)
+    fun verify(pairId: String, items: List<VerifyItem>): List<String>
+    fun batchEnded(pairId: String, status: SessionStatus, error: String?) {}
+}
+
+/** A device asking to become one of "My devices"; both screens show [sas]. */
+class PairPrompt(val peerName: String, val sas: String, internal val answer: CompletableDeferred<Boolean>)
+
+/**
  * Receiving end of contact cards sent on their own: the `.vcf` is staged in [stagingFile] and handed
  * to [received] once whole. Platforms without an address book leave the hub's receiver unset, and the
  * card lands in the inbox like any file.
@@ -180,6 +205,20 @@ class TransferHub(
     val trust = TrustStore()
     var switchReceiver: SwitchReceiver? = null
     var contactReceiver: ContactReceiver? = null
+    var backupReceiver: BackupReceiver? = null
+
+    /** "My devices". Without it this device can't pair, and backup offers are declined. */
+    var pairings: PairingStore? = null
+
+    /** Devices that announced themselves (ANNOUNCE); shown on the radar like mDNS sightings. */
+    var announced: AnnouncedPeers? = null
+
+    private val _pairPrompt = MutableStateFlow<PairPrompt?>(null)
+    /** A pairing request waiting for the human's answer. */
+    val pairPrompt: StateFlow<PairPrompt?> = _pairPrompt
+
+    /** Backup transfer ids already accepted: a recorded session replayed verbatim must not be taken twice. */
+    private val seenBackups = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
 
     private val _sessions = MutableStateFlow<List<SessionState>>(emptyList())
     val sessions: StateFlow<List<SessionState>> = _sessions
@@ -369,15 +408,15 @@ class TransferHub(
         val sid = newId()
         val route = Route()
         val job = scope.launch {
-            engine.receiveRequest(socket) { req -> decide(sid, req, route) }.collect { ev ->
+            engine.receiveRequest(socket, control) { req -> decide(sid, req, route) }.collect { ev ->
                 if (_sessions.value.none { it.id == sid }) return@collect   // not accepted (yet)
                 reduce(sid, ev)
-                if (ev is TransferEvent.Completed) onReceived(route, ev.offer)
+                if (ev is TransferEvent.Completed) onReceived(route, ev.offer, ev.roots)
                 if (ev is TransferEvent.Failed || ev is TransferEvent.Cancelled) {
-                    if (route.kind == OfferKind.SWITCH) switchReceiver?.batchEnded(
-                        if (ev is TransferEvent.Failed) SessionStatus.FAILED else SessionStatus.CANCELLED,
-                        (ev as? TransferEvent.Failed)?.message,
-                    )
+                    val status = if (ev is TransferEvent.Failed) SessionStatus.FAILED else SessionStatus.CANCELLED
+                    val message = (ev as? TransferEvent.Failed)?.message
+                    if (route.kind == OfferKind.SWITCH) switchReceiver?.batchEnded(status, message)
+                    if (route.kind == OfferKind.BACKUP) route.pairId?.let { backupReceiver?.batchEnded(it, status, message) }
                     if (route.kind == OfferKind.CAMERA) _live.update { it?.copy(incoming = null) }
                 }
             }
@@ -393,11 +432,15 @@ class TransferHub(
         val v1Files = mutableListOf<File>()
         var store: DeltaReceiver? = null
         var switchStore: Boolean = false
+        var pairId: String? = null
     }
 
     private suspend fun decide(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
         val offer = req.offer
         route.peerName = req.peerName
+
+        // A backup batch never asks: it comes from one of "My devices" or it is refused.
+        if (offer.kind == OfferKind.BACKUP) return decideBackup(sid, req, route)
 
         trust.match(req)?.let { granted ->
             return when (offer.kind) {
@@ -533,6 +576,61 @@ class TransferHub(
         return ReceiveDecision.Accept(sink, store, grant)
     }
 
+    private fun decideBackup(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
+        val rx = backupReceiver ?: return ReceiveDecision.Reject("no backups here")
+        val store = pairings ?: return ReceiveDecision.Reject("not paired")
+        val pair = req.pairedWith(store.secrets()) ?: return ReceiveDecision.Reject("not paired")
+        if (!seenBackups.add(req.offer.transferId)) return ReceiveDecision.Reject("already received")
+        synchronized(seenBackups) { while (seenBackups.size > 4_096) seenBackups.remove(seenBackups.first()) }
+        store.seen(pair.id, req.peerName)
+        val delta = rx.storeFor(pair.id, req.offer)
+        route.kind = OfferKind.BACKUP
+        route.store = delta
+        route.pairId = pair.id
+        register(sid, req, OfferKind.BACKUP, quiet = true)
+        val sink: (FileMeta) -> OutputStream = { meta ->
+            val f = rx.batchFile(pair.id, req.offer, meta)
+            synchronized(route.v1Files) { route.v1Files += f }
+            f.parentFile?.mkdirs()
+            f.outputStream()
+        }
+        return ReceiveDecision.Accept(sink, delta, pairKey = pair.key)
+    }
+
+    // ------------------------------------------------- control (no files) --
+
+    /** What the listener does with connections that carry no files. */
+    private val control = object : ControlHandler {
+        override fun announced(name: String, instanceId: String, host: String, port: Int) {
+            this@TransferHub.announced?.add(instanceId, name, Endpoint(host, port))
+        }
+
+        override suspend fun pairRequested(name: String, sas: String): Boolean {
+            if (this@TransferHub.pairings == null) return false
+            val prompt = PairPrompt(name, sas, CompletableDeferred())
+            _pairPrompt.value?.answer?.complete(false)
+            _pairPrompt.value = prompt
+            val answer = runCatching { withTimeoutOrNull(PAIR_PROMPT_MS) { prompt.answer.await() } }.getOrNull()
+            if (_pairPrompt.value === prompt) _pairPrompt.value = null
+            return answer == true
+        }
+
+        override fun paired(pairId: String, name: String, key: ByteArray) {
+            this@TransferHub.pairings?.add(pairId, name, key)
+        }
+
+        override fun pairings(): List<PairSecret> = this@TransferHub.pairings?.secrets().orEmpty()
+
+        override fun verify(pairId: String, items: List<VerifyItem>): List<String> =
+            backupReceiver?.verify(pairId, items).orEmpty()
+    }
+
+    /** Answer exactly the pairing request the human was looking at. */
+    fun respondToPair(prompt: PairPrompt, accept: Boolean) {
+        if (_pairPrompt.value === prompt) _pairPrompt.value = null
+        prompt.answer.complete(accept)
+    }
+
     /** Files of a completed receive, parallel to `offer.files`. */
     private fun receivedFiles(route: Route, offer: Offer): List<File> {
         synchronized(route.v1Files) {
@@ -542,7 +640,7 @@ class TransferHub(
         return offer.files.map { store.targetFor(it) }
     }
 
-    private fun onReceived(route: Route, offer: Offer) {
+    private fun onReceived(route: Route, offer: Offer, roots: List<String>?) {
         when (route.kind) {
             null, OfferKind.FILES -> {
                 val files = receivedFiles(route, offer)
@@ -564,6 +662,19 @@ class TransferHub(
                         throw e
                     } catch (_: Exception) {
                         // The receiver reports its own failures; nothing more to do here.
+                    }
+                }
+            }
+            OfferKind.BACKUP -> {
+                val files = receivedFiles(route, offer)
+                val pairId = route.pairId ?: return
+                scope.launch {
+                    try {
+                        backupReceiver?.importBatch(pairId, route.peerName, offer, files, roots)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        backupReceiver?.batchEnded(pairId, SessionStatus.FAILED, e.message)
                     }
                 }
             }
@@ -616,6 +727,7 @@ class TransferHub(
                     is TransferEvent.Completed -> cur.copy(
                         status = SessionStatus.COMPLETED, offer = event.offer,
                         bytesDone = cur.bytesTotal.coerceAtLeast(cur.bytesDone), bytesPerSec = 0,
+                        roots = event.roots,
                     )
                     is TransferEvent.TrustGranted -> cur
                     is TransferEvent.DeclinedByPeer -> cur.copy(status = SessionStatus.DECLINED, bytesPerSec = 0)
@@ -629,7 +741,7 @@ class TransferHub(
         }
         observers[id]?.let { obs -> _sessions.value.firstOrNull { it.id == id }?.let { runCatching { obs(it) } } }
         ended?.let { s ->
-            if (s.kind != OfferKind.CAMERA && s.kind != OfferKind.SWITCH) runCatching { onEnded(s.direction, s) }
+            if (s.kind != OfferKind.CAMERA && s.kind != OfferKind.SWITCH && s.kind != OfferKind.BACKUP) runCatching { onEnded(s.direction, s) }
         }
     }
 
@@ -647,6 +759,8 @@ class TransferHub(
         const val LIVE_TTL_MS = 30 * 60_000L
         /** Switch phones: longest pause between batches before the receiver asks again. */
         const val SWITCH_TTL_MS = 30 * 60_000L
+        /** How long a pairing request waits for the human (the asking side waits a little longer). */
+        const val PAIR_PROMPT_MS = 70_000L
         const val MAX_LIVE_SHOTS = 60
     }
 }

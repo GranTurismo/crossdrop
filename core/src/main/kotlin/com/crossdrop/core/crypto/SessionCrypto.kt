@@ -83,6 +83,25 @@ object SessionCrypto {
         return mac.doFinal()
     }
 
+    /**
+     * The long-lived key two paired devices share ("My devices"). Both sides compute it from the session
+     * they paired over, so it never crosses the network; the humans' 6-digit code check is what rules out
+     * a device in the middle.
+     */
+    fun pairKey(shared: ByteArray, binding: ByteArray, pairId: String): ByteArray =
+        hkdf(shared, binding, "crossdrop/v1/pair/$pairId", 32)
+
+    /** HMAC-SHA256(key, label ‖ 0 ‖ binding ‖ extra): every pairing proof, each with its own [label]. */
+    fun pairProof(key: ByteArray, label: String, binding: ByteArray, extra: ByteArray = ByteArray(0)): ByteArray {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(key, "HmacSHA256"))
+        mac.update(label.toByteArray(Charsets.UTF_8))
+        mac.update(0)
+        mac.update(binding)
+        mac.update(extra)
+        return mac.doFinal()
+    }
+
     internal fun hkdf(ikm: ByteArray, salt: ByteArray, info: String, outLen: Int): ByteArray {
         val out = ByteArray(outLen)
         val hkdf = HKDFBytesGenerator(SHA256Digest())

@@ -481,22 +481,83 @@ rule, thresholds and copy in step). "Has a network" is Android `net/LocalNetwork
 `ap*`/`swlan*` interface), desktop `LocalIp` polled every 4 s, iOS `AppContainer.localNetworkUp()` (private IPv4 on `en*`/`bridge*`).
 The card also hides while a direct link is on.
 
-**Connect directly (Android only)**: `net/DirectLink` starts Android's *local-only hotspot* (`startLocalOnlyHotspot`:
+**Connect directly**: the card's "Connect directly" opens a choice, *Show a code* (Android only) or *Scan a code* (Android +
+iPhone); nothing starts until one is picked, because the phone that scans must not make a network. A Bluetooth-only radar node
+(near, not on this Wi-Fi) opens the same choice as a sheet (`RadarScreen.NotOnWifiSheet`) instead of doing nothing.
+
+*Show a code* — `net/DirectLink` starts Android's *local-only hotspot* (`startLocalOnlyHotspot`:
 random SSID/password, no internet shared, API 26+; needs `CHANGE_WIFI_STATE` + Nearby devices on 13+, or the Location permission *and* Location switched on before 13, so
 `ACCESS_FINE_LOCATION` is declared through API 32 and asked for only here, after an explanation). The phone answers a hotspot request whenever it
 likes or never, so `core/connect/DirectLinkMachine` (tested) tags every request: a 20 s start timeout, Stop that cancels a start in flight, and late
-"started"/"stopped" answers for an older request are ignored (the late hotspot is closed).
-`ui/connect/ConnectDirectScreen` shows `WifiQr.payload(...)` (`core/connect/WifiQr`, the standard `WIFI:T:WPA;S:..;P:..;;`
-text: Android and iPhone cameras offer to join, no app needed) plus name/password with copy buttons for devices that
-can't scan. While it is on the radar shows a "Direct connection is on" row; it stops on Stop, after 30 min, or when the
-system or process ends it. A device with no app then uses the normal "Send to anyone" QR over that network. iPhone/Mac/Windows
-can't create a network from an app, so they only get the guide. Debug hooks: Android `-e dev_directlink on|fail`.
-Proven on the emulator (it does create the hotspot; the QR decodes with ZXing to the same SSID/password the system
-reports). **Not proven**: two real phones, i.e. a second device joining and then discovering this one over the hotspot
-(NSD on the ap interface differs by Android version/maker). If that fails, add a gateway probe: the guest tries the
-gateway address on a fixed port that answers with this phone's listener port. Phone makers' hotspot quirks (some drop the
-phone's own Wi-Fi) need a Samsung and a Xiaomi/Oppo to test. Not built: an in-app "scan a code to join" (needs a QR decoder; the
-system camera does the job today), a Windows/Mac "Join" helper.
+"started"/"stopped" answers for an older request are ignored (the late hotspot is closed). Once the hotspot interface has an
+address, `DirectLink.findAddress` puts it in the code with our listener port (`DirectLinkMachine.located`): the QR is the standard
+`WIFI:T:WPA;S:..;P:..;` text plus CrossDrop's own field `CD:<ipv4>/<port>/<instance id>;` before `;;` (`core/connect/WifiQr`).
+Phone cameras ignore unknown fields (ZXing's and Android's parsers look up known keys; `JoinCodeTest` checks ZXing still reads the
+network), so the no-app path is unchanged; CrossDrop's scanner connects straight to the address. **Android 15+ lists the hotspot itself as a
+network with `NET_CAPABILITY_LOCAL_NETWORK`**: the address finder must not treat it as a client network (it did, and the code had no
+`CD`). While it is on the radar shows a "Direct connection is on" row; it stops on Stop, after 30 min, or when the system or process ends it.
+
+*Scan a code* — `ui/connect/ScanCodeScreen` (CameraX `ImageAnalysis` + ZXing core's `QRCodeReader`, a shipped dependency now,
+~0.25 MB in the release APK) reads any `WIFI:` code; `net/WifiJoin` joins it with a `WifiNetworkSpecifier` request (the system asks
+"Connect to device"; needs `CHANGE_NETWORK_STATE` and an app on screen — a request from `onCreate` is refused), binds the whole process to
+that network (it has no internet, so nothing would route there otherwise), then **announces** itself to the code's host (ANNOUNCE, see
+Wire protocol) every 15 s. The host adds announced devices to its radar (`core/discovery/AnnouncedPeers`, probed for liveness, 60 s TTL,
+capped at 32, listed after mDNS so a device's own advert wins); the guest adds the host the same way, so both see each other and either can
+send. Leave (radar row "Linked with …") releases the request and Android returns to the usual Wi-Fi. A code without `CD` (a router's sticker)
+just joins; discovery takes over. iPhones scan and join too, but can't host: `ios/CrossDrop/Services/WifiJoin.swift`
+(`NEHotspotConfiguration`, `joinOnce`; entitlement `com.apple.developer.networking.HotspotConfiguration` in
+`CrossDrop/CrossDrop.entitlements`, iPhone/iPad only; everything NetworkExtension is compiled out on Mac Catalyst), AVFoundation
+scanner `UI/Connect/ScanCodeScreen.swift`, announced peers `Services/AnnouncedPeers.swift`; the help card's button is "Scan a code".
+The Swift engine answers ANNOUNCE, declines PAIR and answers PAIR_CHECK with no proofs (iPhones don't keep backups).
+iOS debug launch args: `-dev_join '<code>'`, `-dev_join_skip_wifi '<code>'`, `-dev_scan YES`. `crossdrop-cli announce --to h:p --port N`
+and `recv` (prints `ANNOUNCED-FROM …`) cover it; `SwiftInteropTest` checks ANNOUNCE both ways and the pairing crypto has the same
+known-answer vectors in Kotlin `ControlTest` and Swift `ControlTests`.
+Debug hooks: Android `-e dev_directlink on|fail` (the forced code carries the device's real address/port), `-e dev_ble_peer 'Galaxy S24'`
+(a Bluetooth-only radar node: emulators have no Bluetooth peers), `-e dev_join '<code>'` (real
+join, system dialog), `-e dev_join_skip_wifi '<code>'` (skips the Wi-Fi step: emulators can't join each other's hotspot). Mac-side peer for
+emulator tests: `JAVA_TOOL_OPTIONS=-Dcrossdrop.linkProbe=1 ./gradlew :desktop:test --tests 'com.crossdrop.LinkInteropProbe' --rerun -i`
+(listens on :47000; the emulator reaches the Mac at 10.0.2.2, the probe `adb forward`s back).
+Proven on the Android 16 emulator: the real hotspot's QR carries `CD:` with its address; a real `WifiNetworkSpecifier` join of the
+emulator's own network, bind, announce to the Mac, the Mac's offer received; Leave. **Not proven**: two real phones (a guest joining the
+host's hotspot), iPhone cameras with the extra field, makers that drop the host's own Wi-Fi (Samsung, Xiaomi/Oppo).
+
+## "My devices" and phone backups
+
+A phone pairs once with a computer, then backs its photos and videos up to it whenever both are on the same network, and can free up space
+once the computer has re-checked the files. Phone → computer only (the desktop app is the target; phones decline pairing requests).
+
+- **Pairing** (`core/pairing/PairingStore`, `ControlChannel.pair`): a sealed PAIR exchange; the receiving human compares the 6-digit code
+  (both screens) and agrees (`TransferHub.pairPrompt` → shared `ui/pairing/PairPromptSheet`). Both sides derive the key from the session,
+  `HKDF(shared, salt = binding, "crossdrop/v1/pair/<pair id>")`: it never crosses the network. Stored in app-private JSON
+  (Android `filesDir/pairings.json`, desktop `support/pairings.json`, owner-only); nothing is ever advertised.
+- **Recognising it** without a stable id: `BackupRunner.find` asks every radar device PAIR_CHECK (fresh nonce, one HMAC per pairing held);
+  only the holder answers with its own proof over the nonce. Strangers learn nothing linkable; recorded answers can't be replayed.
+  A device that borrows the computer's *name* is not recognised (tested).
+- **Sending** (`app/.../net/BackupRunner.kt`, platform-free, **shared verbatim with `:desktop`** via `sharedNet`, like `TransferHub`):
+  items the ledger lacks, in batches of ≤100 items / 512 MB, offer kind `backup` with `FileMeta.key` (Android: `p:<MediaStore id>:<DATE_MODIFIED>`,
+  so an edit is a new item) and `Offer.pairProof`; the computer accepts without a prompt only for a matching pairing and proves it back in
+  `Accept.pairProof`, which the engine checks **before sending a byte**. A batch is recorded in the phone's ledger
+  (`core/backup/BackupLedger`, append-only, per pairing) only when it completed with matching BLAKE3 roots (`TransferEvent.Completed.roots`).
+- **Android** (`backup/BackupManager`, `ui/backup/BackupScreen`, Settings card): one paired computer; backs up automatically when CrossDrop
+  is open and the computer appears (at most every 15 min), or on "Back up now". **Free up space** (Android 11+): items backed up, still on the
+  phone, taken over 30 days ago → `BackupRunner.verify` (BACKUP_VERIFY after a PAIR_CHECK on the same connection: the computer re-hashes
+  every file it vouches for) → `MediaStore.createDeleteRequest` (Android's own confirmation; ≤500 per round) → ledger marks them freed.
+- **Photo locations**: Android strips EXIF GPS unless the app holds `ACCESS_MEDIA_LOCATION` and opens `MediaStore.setRequireOriginal(uri)`.
+  `media/MediaLibrary` does both (asked together with the media permissions; no separate dialog) for backups **and Switch phones** (which
+  lost locations before).
+- **Desktop** (`backup/DesktopBackupReceiver`): staging per batch in app state, then `<backup root>/<phone>/<yyyy>/<MM>/<name>` with the original
+  date (default root `~/Pictures/CrossDrop Backup`, Settings → My devices: show in Finder/Explorer, Change, Unpair). Per-pairing index
+  (`core/backup/BackupIndex`, `support/backup-<pair id>.json`): key → path, size, root; the same bytes are stored once (even within one
+  batch); `verify` refuses paths outside the folder. The phone folder name is fixed at the first backup (prefs `backup_folder_<id>`), so renaming the
+  phone doesn't start a new one. History gets one "Phone backup" entry per run.
+- Tests: `core` `ControlTest` (pair/pairCheck/verify/proofs), `BackupStoresTest`; `desktop` `LinkAndBackupTest` (pair with the code on both sides, find
+  among a name-borrowing stranger, month folders + dates + dedupe, nothing re-sent, verify drops an edited file, unpaired refused silently).
+  Emulator: `-e dev_backup_only 'Pictures/CrossDropTest/'` limits backups and freeing to one folder (never test on someone's real gallery);
+  Mac-side computer: `JAVA_TOOL_OPTIONS="-Dcrossdrop.backupProbe=1" ./gradlew :desktop:test --tests 'com.crossdrop.LinkInteropProbe' --rerun -i`
+  (pairs automatically, prints what it filed) with `-e dev_peer 10.0.2.2:47000`. Proven that way: pair, automatic backup, month folders,
+  free up space → Android's dialog → only the three test photos deleted.
+- Not built yet: iPhone as a sender (PhotoKit, like Switch phones), a background job on Android (today: only while the app is open), more
+  than one computer, other folders (WhatsApp, Downloads).
 
 ## Wire protocol
 
@@ -533,6 +594,15 @@ A dying session salvages received chunks into `.staging/`, so the retry sees a
 non-empty pool, falls back to v2 and resumes. Trade-off: no intra-file dedupe
 on push (v2 manifest path keeps it). v2 peers on either side negotiate down.
 `TransferEngine(protocolVersion=…)` exists so tests can pin older versions.
+
+**Control exchanges** (no files; sent instead of an OFFER right after the handshake, `core/transfer/Control.kt`,
+`TransferEngine.control` on the initiating side, a `ControlHandler` on the listener): `ANNOUNCE 0x20` `{port}` → `{port: 0}`
+("reach me here"); `PAIR 0x21` `{pairId}` → `{accepted}` (the receiver's human decides; key = HKDF(shared, binding, "crossdrop/v1/pair/<id>"));
+`PAIR_CHECK 0x22` `{nonce, proofs}` → `{nonce, proofs: [0 or 1]}` with HMAC(key, "check-i"/"check-r" ‖ 0 ‖ binding ‖ nonce); then any number
+of `BACKUP_VERIFY 0x23` `{items:[{key,root,size}]}` → `{ok:[key]}` on the same connection. Builds that predate these fail the unknown
+frame before any session exists, so nothing shows on their side (Kotlin hub and Swift coordinator both ignore failures before an accept).
+Pairing proofs on transfers: `Offer.pairProof` = HMAC(key, "offer" ‖ 0 ‖ binding ‖ transferId), `Accept.pairProof` the same with "accept";
+backup batches use `OfferKind.BACKUP` and `FileMeta.key`. `TransferEvent.Completed.roots` carries the agreed per-file BLAKE3 roots (v2/v3).
 
 ## Build / verify
 

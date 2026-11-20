@@ -114,6 +114,7 @@ fun Root(container: AppContainer) {
     val hasNetwork by container.localNetwork.hasNetwork.collectAsState()
     val directLink by container.directLink.state.collectAsState()
     val directLinkOn = directLink is com.crossdrop.core.connect.DirectLinkState.On
+    val joinState by container.wifiJoin.state.collectAsState()
 
     var tabName by rememberSaveable { mutableStateOf(Tab.RADAR.name) }
     // First run: a skippable welcome. The radar (and its permission prompts) waits until it is done.
@@ -121,6 +122,11 @@ fun Root(container: AppContainer) {
     val finishWelcome = { container.welcomeSeen = true; welcome = false }
     // "Can't see the other device?" help: the one-tap private link and the plain how-to.
     var connectOpen by rememberSaveable { mutableStateOf(false) }
+    var backupOpen by rememberSaveable { mutableStateOf(false) }
+    val backupState by container.backup.state.collectAsState()
+    // Opened from "Show a code" (skip the show/scan choice) rather than "Connect directly".
+    var connectShowNow by rememberSaveable { mutableStateOf(false) }
+    var scanOpen by rememberSaveable { mutableStateOf(false) }
     var guideOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(directLink) { container.localNetwork.refresh() }
     val tab = Tab.valueOf(tabName)
@@ -194,9 +200,18 @@ fun Root(container: AppContainer) {
                     nsdEnabled = nsdEnabled,
                     hasNetwork = hasNetwork,
                     directLinkOn = directLinkOn,
-                    onConnectDirectly = { connectOpen = true },
+                    onConnectDirectly = { connectShowNow = false; connectOpen = true },
                     onShowConnectGuide = { guideOpen = true },
-                    onOpenDirectLink = { connectOpen = true },
+                    onOpenDirectLink = { connectShowNow = false; connectOpen = true },
+                    onShowCode = { connectShowNow = true; connectOpen = true },
+                    onScanCode = { scanOpen = true },
+                    joinedSsid = when (val j = joinState) {
+                        is com.crossdrop.net.WifiJoin.State.Joined -> j.ssid
+                        is com.crossdrop.net.WifiJoin.State.Connecting -> j.ssid
+                        else -> null
+                    },
+                    joinedHost = (joinState as? com.crossdrop.net.WifiJoin.State.Joined)?.hostName,
+                    onLeaveLink = container.wifiJoin::leave,
                 )
                 Tab.TRANSFERS -> TransfersScreen(
                     groups = groups,
@@ -229,6 +244,8 @@ fun Root(container: AppContainer) {
                     onShowWelcome = { welcome = true },
                     vaultState = vaultHost,
                     onOpenDrive = { driveOpen = true },
+                    backup = backupState,
+                    onOpenBackup = { backupOpen = true },
                     onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
                         ({ container.coordinator.selfTransfer() }) else null,
                     onAddPeer = if (com.crossdrop.BuildConfig.DEBUG)
@@ -278,6 +295,24 @@ fun Root(container: AppContainer) {
                     nearbyNames = peers.values.filter { it.vault == null }.map { it.name },
                     onClose = { connectOpen = false },
                     onGuide = { connectOpen = false; guideOpen = true },
+                    onScan = { connectOpen = false; scanOpen = true },
+                    showNow = connectShowNow,
+                )
+            }
+            Overlay(true.takeIf { backupOpen }) {
+                BackHandler { backupOpen = false }
+                com.crossdrop.ui.backup.BackupScreen(
+                    manager = container.backup,
+                    peers = peers.values.sortedBy { it.name.lowercase() },
+                    onClose = { backupOpen = false },
+                )
+            }
+            Overlay(true.takeIf { scanOpen }) {
+                BackHandler { container.wifiJoin.dismiss(); scanOpen = false }
+                com.crossdrop.ui.connect.ScanCodeScreen(
+                    join = container.wifiJoin,
+                    onClose = { scanOpen = false },
+                    onJoined = { scanOpen = false; connectOpen = false },
                 )
             }
 

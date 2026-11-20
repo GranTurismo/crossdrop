@@ -41,6 +41,8 @@ struct RootView: View {
     @State private var welcome = !AppContainer.welcomeSeen
     /// "Can't see the other device?" how-to.
     @State private var guideOpen = false
+    /// "Scan a code": join another phone's private link (iPhone/iPad).
+    @State private var scanOpen = false
     @Environment(\.sizeCategory) private var sizeCategory
     /// Bumped when the language changes: rebuilds the views so every translated string is read again.
     @ObservedObject private var i18n = I18nModel.shared
@@ -52,6 +54,7 @@ struct RootView: View {
         }
         if UserDefaults.standard.bool(forKey: "dev_hide_transfer") { _transferHidden = State(initialValue: true) }
         if UserDefaults.standard.bool(forKey: "dev_connect_guide") { _guideOpen = State(initialValue: true) }
+        if UserDefaults.standard.bool(forKey: "dev_scan"), WifiJoin.supported { _scanOpen = State(initialValue: true) }
         #endif
     }
 
@@ -117,6 +120,12 @@ struct RootView: View {
                         .zIndex(3)
                 }
 
+                if scanOpen {
+                    ScanCodeScreen(join: container.wifiJoin, onClose: { scanOpen = false })
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(3)
+                }
+
                 if welcome {
                     WelcomeScreen(permissionNote: tr("Your device will ask to find devices on your local network. Anything else, like photos or camera, is asked only when you use it."),
                                   onFinish: finishWelcome)
@@ -138,6 +147,7 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.25), value: coordinator.incomingOffer?.id)
         .animation(.easeInOut(duration: 0.3), value: welcome)
         .animation(.easeInOut(duration: 0.3), value: guideOpen)
+        .animation(.easeInOut(duration: 0.3), value: scanOpen)
         // A newly focused group always opens the transfer view; one that ends while minimised is cleared.
         .onChange(of: coordinator.focusedGroupId) { id in if id != nil { transferHidden = false } }
         .onChange(of: coordinator.focusedGroup?.isTerminal) { done in
@@ -163,7 +173,8 @@ struct RootView: View {
     @ViewBuilder private var tabs: some View {
         ZStack {
             // The radar stays mounted (its pickers and ⌘O handler live there); hidden it stops animating.
-            RadarScreen(active: tab == .radar, onShowConnectGuide: { guideOpen = true })
+            RadarScreen(active: tab == .radar, onShowConnectGuide: { guideOpen = true },
+                        onScanCode: WifiJoin.supported ? { scanOpen = true } : nil)
                 .opacity(tab == .radar ? 1 : 0)
                 .allowsHitTesting(tab == .radar)
                 .accessibilityHidden(tab != .radar)

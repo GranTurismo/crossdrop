@@ -39,7 +39,8 @@ sealed interface TransferEvent {
         /** v2: bytes satisfied locally via delta/resume instead of the wire. */
         val bytesSkipped: Long = 0,
     ) : TransferEvent
-    data class Completed(val offer: Offer, val elapsedMs: Long) : TransferEvent
+    /** [roots]: per-file BLAKE3 roots both sides agreed on (v2/v3); null on the v1 path. */
+    data class Completed(val offer: Offer, val elapsedMs: Long, val roots: List<String>? = null) : TransferEvent
     /** The receiver accepted and let later offers of [TrustGrant.kind] skip its prompt. */
     data class TrustGranted(val grant: TrustGrant) : TransferEvent
     data object DeclinedByPeer : TransferEvent
@@ -65,6 +66,8 @@ data class SendOptions(
     val text: String? = null,
     val trust: TrustCredential? = null,
     val batch: BatchInfo? = null,
+    /** Set for a paired device ("My devices"): the offer proves the pairing and the answer must too. */
+    val pairKey: ByteArray? = null,
 )
 
 /**
@@ -84,6 +87,14 @@ class InboundRequest(
         val expected = SessionCrypto.trustProof(token, binding, offer.transferId)
         return MessageDigest.isEqual(proof, expected)
     }
+
+    /** The pairing among [held] this offer proves, or null (no proof, or a device we aren't paired with). */
+    fun pairedWith(held: List<PairSecret>): PairSecret? {
+        val proof = offer.pairProof?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
+            ?: return null
+        val tid = offer.transferId.toByteArray(Charsets.UTF_8)
+        return held.firstOrNull { MessageDigest.isEqual(proof, SessionCrypto.pairProof(it.key, "offer", binding, tid)) }
+    }
 }
 
 /** Receiver's answer to an [Offer]. */
@@ -95,6 +106,8 @@ sealed interface ReceiveDecision {
         val delta: DeltaReceiver? = null,
         /** Sent back inside the ACCEPT so later offers of the same kind can skip the prompt. */
         val grant: TrustGrant? = null,
+        /** The pairing the offer proved: the ACCEPT proves it back (the sender checks before sending). */
+        val pairKey: ByteArray? = null,
     ) : ReceiveDecision
     data class Reject(val reason: String? = null) : ReceiveDecision
 }
@@ -156,6 +169,9 @@ class TransferEngine(
                 trustId = options.trust?.id,
                 trustProof = options.trust?.let { b64(SessionCrypto.trustProof(it.token, keys.binding, transferId)) },
                 batch = options.batch,
+                pairProof = options.pairKey?.let {
+                    b64(SessionCrypto.pairProof(it, "offer", keys.binding, transferId.toByteArray(Charsets.UTF_8)))
+                },
             )
 
             // -- offer / accept
@@ -171,6 +187,16 @@ class TransferEngine(
 
             // Receiver opts in: v2 delta / v3 push only when both sides agreed.
             val accept = ansPayload.decode<Accept>()
+            options.pairKey?.let { key ->
+                // Only the paired device can answer this; anyone else (a borrowed name) gets nothing.
+                val want = SessionCrypto.pairProof(key, "accept", keys.binding, transferId.toByteArray(Charsets.UTF_8))
+                val got = accept.pairProof?.let { runCatching { unb64(it) }.getOrNull() }
+                if (got == null || !MessageDigest.isEqual(got, want)) {
+                    runCatching { io.write(FrameType.CANCEL, Cancel("not the paired device").encode()) }
+                    emit(TransferEvent.Failed(tr("This isn't your paired device")))
+                    return@flow
+                }
+            }
             accept.trust?.let { emit(TransferEvent.TrustGranted(it)) }
             if (ack.version >= 3 && accept.delta && accept.push)
                 sendPush(io, offer, files, started) { emit(it) }
@@ -384,7 +410,7 @@ class TransferEngine(
             emit(TransferEvent.Failed(tr("integrity check failed")))
             return
         }
-        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
+        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started, roots))
     }
 
     /** Advance [n] bytes forward in [input]; falls back to read-discard when
@@ -408,6 +434,34 @@ class TransferEngine(
         }
     }
 
+    // ------------------------------------------------------------ control --
+
+    /**
+     * Open an encrypted connection that carries no files (announce, pairing, recognising a paired device,
+     * backup checks), run [block] on it and close it. Throws on connection or protocol errors.
+     */
+    suspend fun <T> control(
+        endpoint: Endpoint,
+        connectTimeoutMs: Int = 5_000,
+        block: suspend ControlChannel.() -> T,
+    ): T = kotlinx.coroutines.withContext(dispatcher) {
+        Socket().use { socket ->
+            socket.connect(java.net.InetSocketAddress(endpoint.host, endpoint.port), connectTimeoutMs)
+            socket.tcpNoDelay = true
+            socket.soTimeout = CONTROL_TIMEOUT_MS
+            val io = FrameIO(socket.getInputStream(), socket.getOutputStream())
+            io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            val (ackType, ackPayload) = io.read()
+            if (ackType != FrameType.HELLO_ACK) throw ProtocolException("expected HELLO_ACK, got $ackType")
+            val ack = ackPayload.decode<HelloAck>()
+            if (ack.vaultAuth != null) throw ProtocolException("that's a drive, not a device")
+            val keys = SessionCrypto.deriveSession(identity, unb64(ack.publicKeyB64), isInitiator = true)
+            io.writeCipher = com.crossdrop.core.crypto.RecordCipher(keys.sendKey)
+            io.readCipher = com.crossdrop.core.crypto.RecordCipher(keys.recvKey)
+            ControlChannel(socket, io, keys, ack.deviceName, ack.instanceId, keys.sas).block()
+        }
+    }
+
     // ----------------------------------------------------------- receiver --
 
     /**
@@ -418,8 +472,16 @@ class TransferEngine(
     fun receive(socket: Socket, decide: suspend (peerName: String, offer: Offer) -> ReceiveDecision): Flow<TransferEvent> =
         receiveRequest(socket) { decide(it.peerName, it.offer) }
 
-    /** [receive] with the whole [InboundRequest] — sender identity, code and trust check. */
-    fun receiveRequest(socket: Socket, decide: suspend (InboundRequest) -> ReceiveDecision): Flow<TransferEvent> = flow {
+    /**
+     * [receive] with the whole [InboundRequest] — sender identity, code and trust check. A connection that
+     * opens with a control frame instead of an OFFER (announce, pairing) goes to [control]; it produces no
+     * events beyond [TransferEvent.Secured].
+     */
+    fun receiveRequest(
+        socket: Socket,
+        control: ControlHandler? = null,
+        decide: suspend (InboundRequest) -> ReceiveDecision,
+    ): Flow<TransferEvent> = flow {
         val started = System.currentTimeMillis()
         var io: FrameIO? = null
         var pushMode = false
@@ -450,9 +512,14 @@ class TransferEngine(
             socket.soTimeout = DATA_TIMEOUT_MS
             emit(TransferEvent.Secured(hello.deviceName, keys.sas))
 
-            // -- offer
-            val (offerType, offerPayload) = io.read()
-            if (offerType != FrameType.OFFER) throw ProtocolException("expected OFFER, got $offerType")
+            // -- offer (or a control exchange that carries no files)
+            val first = io.read()
+            val (offerType, offerPayload) = first
+            if (offerType != FrameType.OFFER) {
+                if (control == null) throw ProtocolException("expected OFFER, got $offerType")
+                serveControl(socket, io, keys, hello.deviceName, hello.instanceId, first, control)
+                return@flow
+            }
             val offer = offerPayload.decode<Offer>()
             val decision = decide(InboundRequest(hello.deviceName, hello.instanceId, keys.sas, offer, keys.binding))
             when (decision) {
@@ -464,8 +531,11 @@ class TransferEngine(
                 is ReceiveDecision.Accept -> {
                     val delta = negotiated >= 2 && decision.delta != null
                     val push = negotiated >= 3 && decision.delta?.canPush(offer.files) == true
+                    val pairProof = decision.pairKey?.let {
+                        b64(SessionCrypto.pairProof(it, "accept", keys.binding, offer.transferId.toByteArray(Charsets.UTF_8)))
+                    }
                     io.write(FrameType.ACCEPT,
-                        Accept(offer.transferId, delta = delta, push = push, trust = decision.grant).encode())
+                        Accept(offer.transferId, delta = delta, push = push, trust = decision.grant, pairProof = pairProof).encode())
                     pushMode = push
                 }
             }
@@ -838,7 +908,7 @@ class TransferEngine(
             emit(TransferEvent.Failed(tr("integrity check failed")))
             return
         }
-        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
+        emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started, roots))
     }
 
     /** Copy [len] bytes from a positioned [raf] into [out], hashing into

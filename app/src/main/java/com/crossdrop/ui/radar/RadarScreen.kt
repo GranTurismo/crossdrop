@@ -139,6 +139,13 @@ fun RadarScreen(
     onConnectDirectly: () -> Unit = {},
     onShowConnectGuide: () -> Unit = {},
     onOpenDirectLink: () -> Unit = {},
+    /** "Show a code" straight from the not-on-your-Wi-Fi sheet (starts this phone's private link). */
+    onShowCode: () -> Unit = onConnectDirectly,
+    onScanCode: () -> Unit = {},
+    /** This phone joined another's link by scanning its code: the network, and the phone once it answered. */
+    joinedSsid: String? = null,
+    joinedHost: String? = null,
+    onLeaveLink: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -148,6 +155,7 @@ fun RadarScreen(
     var pickingForPeer by remember { mutableStateOf<Peer?>(null) }
     var pickingAnyone by remember { mutableStateOf(false) }
     var vaultPeer by remember { mutableStateOf<Peer?>(null) }
+    var notOnWifi by remember { mutableStateOf<Peer?>(null) }
     var renaming by remember { mutableStateOf(false) }
     var permsGranted by remember { mutableStateOf(hasAll(context)) }
 
@@ -169,9 +177,12 @@ fun RadarScreen(
 
     fun tap() = view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
 
-    /** Device tap → send sheet; a vault beacon → its mount sheet. */
+    /** Device tap → send sheet; a vault beacon → its mount sheet; heard over Bluetooth only → how to link. */
     fun startSendFlow(peer: Peer) {
-        if (peer.endpoint == null) return
+        if (peer.endpoint == null) {
+            if (peer.vault == null) { tap(); notOnWifi = peer }
+            return
+        }
         tap()
         if (peer.vault != null) { vaultPeer = peer; return }
         pendingPeers = listOf(peer)
@@ -295,6 +306,7 @@ fun RadarScreen(
         ) {
             com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, onPrimary = onConnectDirectly)
             if (directLinkOn) DirectLinkRow(onOpenDirectLink)
+            if (joinedSsid != null) JoinedLinkRow(joinedSsid, joinedHost, onLeaveLink)
             SendToAnyoneCard(::startAnyoneFlow)
             drives.take(2).forEach { d -> DriveRow(d) { startSendFlow(d) } }
         }
@@ -391,6 +403,58 @@ fun RadarScreen(
             onDismiss = { vaultPeer = null },
             onMount = { vaultPeer = null; onMountVault(peer) },
         )
+    }
+
+    // ---- a phone heard over Bluetooth that isn't on this Wi-Fi
+    notOnWifi?.let { peer ->
+        NotOnWifiSheet(
+            peer = peer,
+            onDismiss = { notOnWifi = null },
+            onShowCode = { notOnWifi = null; onShowCode() },
+            onScanCode = { notOnWifi = null; onScanCode() },
+        )
+    }
+}
+
+/**
+ * The radar hears this phone over Bluetooth, but it isn't on the same Wi-Fi, so nothing can be sent yet.
+ * One of the two shows a code, the other scans it, and they link directly.
+ */
+@Composable
+private fun NotOnWifiSheet(peer: Peer, onDismiss: () -> Unit, onShowCode: () -> Unit, onScanCode: () -> Unit) {
+    CdSheet(onDismiss) {
+        SheetHeader(
+            tr("Nearby, but not on your Wi-Fi"), peer.name, CdIcons.Bluetooth, iconTint = Amber,
+            meta = { Text(tr("Link the two phones directly. No Wi-Fi or internet needed."), color = TextDim, fontSize = 13.sp) },
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BigTile(tr("Show a code"), tr("They scan it with CrossDrop or their camera"), CdIcons.Qr, true, onShowCode, Modifier.weight(1f))
+            BigTile(tr("Scan their code"), tr("They tap Connect directly, then Show a code"), CdIcons.Scan, false, onScanCode, Modifier.weight(1f))
+        }
+        NoteCard(tr("Only one of you shows a code. The link is private to your two phones and ends when you stop it."))
+        PillButton(tr("Cancel"), onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
+    }
+}
+
+/** This phone is on another phone's private link (it scanned the code); Leave goes back to the usual Wi-Fi. */
+@Composable
+private fun JoinedLinkRow(ssid: String, host: String?, onLeave: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Accent.copy(alpha = 0.08f))
+            .border(1.dp, Accent.copy(alpha = 0.3f), RoundedCornerShape(22.dp))
+            .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        CdIcon(CdIcons.Wifi, Accent, size = 18.dp)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                if (host != null) tr("Linked with {0}", host) else tr("On {0}", ssid),
+                color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            )
+            Text(tr("Private link · no internet"), color = TextDim, fontSize = 12.sp)
+        }
+        com.crossdrop.ui.ChipButton(tr("Leave"), onLeave, height = 34.dp, fontSize = 13)
     }
 }
 

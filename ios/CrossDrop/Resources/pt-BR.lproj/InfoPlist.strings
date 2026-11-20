@@ -1,4 +1,4 @@
 "NSLocalNetworkUsageDescription" = "O CrossDrop usa sua rede local para encontrar dispositivos por perto e enviar arquivos direto para eles — nada sai do seu Wi-Fi.";
-"NSCameraUsageDescription" = "A câmera do CrossDrop envia cada foto ou vídeo para os dispositivos escolhidos no momento em que você os captura.";
+"NSCameraUsageDescription" = "O CrossDrop usa a câmera para escanear o código de outro celular e para enviar as fotos e vídeos que você tira para os dispositivos que escolher.";
 "NSMicrophoneUsageDescription" = "Som dos vídeos gravados na câmera do CrossDrop.";
 "NSPhotoLibraryUsageDescription" = "Para trocar de celular, o CrossDrop lê suas fotos e vídeos e os transfere direto para o seu outro dispositivo.";

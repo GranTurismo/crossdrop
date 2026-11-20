@@ -257,14 +257,16 @@ private fun PeerNode(peer: Peer, nearest: Boolean, onTap: () -> Unit, modifier: 
         distance != null -> tr("about {0} metres away", distance.roundToInt().coerceAtLeast(1))
         else -> tr("seen over Wi-Fi")
     }
-    val spoken = tr("{0}, {1}", spokenBase, spokenDetail)
+    // Heard over Bluetooth only: tapping explains how to link the two directly (show a code / scan it).
+    val spoken = if (!reachable && vault == null) tr("{0}, {1}", name, tr("Nearby, but not on your Wi-Fi"))
+        else tr("{0}, {1}", spokenBase, spokenDetail)
 
     Column(
         modifier.width(NODE_W)
             // Unbounded ripple: a clip here would also cut the node's glow.
             .clickable(
                 interactionSource = null, indication = ripple(bounded = false, radius = 52.dp),
-                enabled = reachable, role = Role.Button, onClick = onTap,
+                enabled = reachable || vault == null, role = Role.Button, onClick = onTap,
             )
             .semantics(mergeDescendants = true) { contentDescription = spoken }
             .alpha(if (reachable) 1f else 0.6f),
