@@ -12,7 +12,7 @@ mention other platforms such as Android, so `show` and `set` both warn about tho
 import argparse, difflib, os, re, sys
 from appstore_submit import Asc, ApiError, BUNDLE_ID, EDITABLE, DRAFT, state_of
 
-PLATFORMS = ("IOS", "MAC_OS")
+PLATFORMS = ("IOS", "MAC_OS")   # `show` reads both; `set` defaults to IOS because the Mac listing text is a different, shorter one
 FIELDS = {"description": "description", "promotional_text": "promotionalText", "keywords": "keywords"}
 LIMITS = {"description": 4000, "promotionalText": 170, "keywords": 100}
 OTHER_PLATFORMS = re.compile(r"\b(android|google play|play store|chromebook|samsung|pixel)\b", re.I)
@@ -55,9 +55,9 @@ def read(dirpath, locale, file):
     return open(path, encoding="utf-8").read().strip()
 
 
-def set_listing(asc, app_id, dirpath, apply):
+def set_listing(asc, app_id, dirpath, apply, platforms):
     changed = 0
-    for platform in PLATFORMS:
+    for platform in platforms:
         editable = [v for v in versions_of(asc, app_id, platform) if state_of(v) in EDITABLE | DRAFT]
         if not editable:
             print(f"[{platform}] no editable version (nothing rejected or in draft): left alone")
@@ -101,13 +101,14 @@ def main():
     s = sub.add_parser("set")
     s.add_argument("--dir", default="store-assets/appstore")
     s.add_argument("--apply", action="store_true")
+    s.add_argument("--platforms", default="IOS", help="IOS and/or MAC_OS, comma separated (the files hold the iPhone/iPad text)")
     a = p.parse_args()
     asc = Asc(os.environ["ASC_KEY_ID"], os.environ["ASC_ISSUER_ID"], os.environ["ASC_KEY_PATH"])
     apps = asc.get("/v1/apps", **{"filter[bundleId]": BUNDLE_ID, "limit": "1"}).get("data", [])
     if not apps:
         sys.exit(f"no app with bundle id {BUNDLE_ID} in this App Store Connect account")
     try:
-        show(asc, apps[0]["id"]) if a.cmd == "show" else set_listing(asc, apps[0]["id"], a.dir, a.apply)
+        show(asc, apps[0]["id"]) if a.cmd == "show" else set_listing(asc, apps[0]["id"], a.dir, a.apply, a.platforms.split(","))
     except ApiError as e:
         sys.exit(f"App Store Connect said: {e}")
 
