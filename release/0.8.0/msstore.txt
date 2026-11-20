@@ -1,0 +1,1 @@
+No changes to the Windows app in this release. CrossDrop now also runs on Linux, alongside Mac, Android, iPhone and iPad.

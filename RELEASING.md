@@ -15,7 +15,7 @@ tools/release/release.sh v0.6.0      # checks, tags, pushes, then waits for the 
 | Windows MSI, EXE | GitHub release | live |
 | Windows MSIX | **Microsoft Store** (submitted for certification, publishes when it passes) | live |
 | macOS DMGs (Apple Silicon, Intel) | GitHub release, signed with your Developer ID and **notarized** by Apple | live |
-| Linux `.deb`, `.rpm`, `.tar.gz` (x86-64) | GitHub release (unsigned; no Linux store yet) | built by `desktop-linux.yml`; first published with the release after 0.7.0 |
+| Linux `.deb`, `.rpm`, `.tar.gz` (x86-64) | GitHub release (unsigned; no Linux store yet) | live from 0.8.0 (built by `desktop-linux.yml`) |
 | iPhone / iPad / Mac App Store builds | **App Store Connect**: uploaded and sent to **App Review**; each releases by itself after Apple approves it | live |
 
 Each store still runs its own review, so they don't go live at the same moment.
