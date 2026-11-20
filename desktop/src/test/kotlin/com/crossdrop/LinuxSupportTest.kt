@@ -10,6 +10,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 import java.net.Inet4Address
@@ -22,6 +24,9 @@ import java.nio.file.Files
  * starts the app under a virtual display.
  */
 class LinuxSupportTest {
+
+    /** The paths (`/home/me` is only absolute on POSIX) and the fake pickers (`#!/bin/sh`) are POSIX; the Linux code never runs elsewhere. */
+    @Before fun onlyOnPosixHosts() = assumeTrue("Linux logic, POSIX paths and shell scripts", File.separatorChar == '/')
 
     private val home = File("/home/me")
 

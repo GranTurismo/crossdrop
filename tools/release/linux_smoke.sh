@@ -22,8 +22,14 @@ $SUDO apt-get install -y "$deb"
 [ -x /opt/crossdrop/bin/CrossDrop ] || { echo "::error::the launcher isn't at /opt/crossdrop/bin/CrossDrop"; dpkg -L crossdrop | head -30; exit 1; }
 # the entry ships in /opt/crossdrop/lib and the post-install registers it with the desktop's menu
 [ -f /opt/crossdrop/lib/crossdrop-CrossDrop.desktop ] || { echo "::error::the package has no .desktop entry"; exit 1; }
-[ -f /usr/share/applications/crossdrop-CrossDrop.desktop ] || { echo "::error::the menu entry wasn't registered (xdg-desktop-menu)"; ls /usr/share/applications; exit 1; }
-grep -q '^Exec=/opt/crossdrop/bin/CrossDrop' /usr/share/applications/crossdrop-CrossDrop.desktop || { echo "::error::the menu entry doesn't launch CrossDrop"; exit 1; }
+# xdg-desktop-menu picks the first writable applications folder of XDG_DATA_DIRS (/usr/local/share before /usr/share)
+entry=""
+for d in /usr/local/share/applications /usr/share/applications; do
+  [ -f "$d/crossdrop-CrossDrop.desktop" ] && { entry="$d/crossdrop-CrossDrop.desktop"; break; }
+done
+[ -n "$entry" ] || { echo "::error::the menu entry wasn't registered (xdg-desktop-menu)"; ls /usr/local/share/applications /usr/share/applications 2>&1 | head; exit 1; }
+grep -q '^Exec=/opt/crossdrop/bin/CrossDrop' "$entry" || { echo "::error::the menu entry doesn't launch CrossDrop"; exit 1; }
+echo "menu entry: $entry"
 
 export HOME="$work/home"; mkdir -p "$HOME"
 log="$work/app.log"
