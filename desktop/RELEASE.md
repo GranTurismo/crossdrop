@@ -1,4 +1,4 @@
-# Shipping the desktop apps (macOS DMG, Windows MSI/EXE)
+# Shipping the desktop apps (macOS DMG, Windows MSI/EXE, Linux deb/rpm/tar.gz)
 
 Everything here is **opt-in**: with no credentials, `packageDmg` / `packageMsi` still produce the same
 unsigned installers as before. Nothing is ever published automatically.
@@ -77,10 +77,31 @@ Signing** (formerly Trusted Signing; cheap, but eligibility depends on country/o
 **SignPath Foundation** (free, open-source projects only), or a CA-issued OV/EV certificate.
 Whichever is chosen, signing is a post-build `signtool` step on the `.msi`/`.exe` in that workflow.
 
+## Linux — unsigned packages, no store yet
+
+`.github/workflows/desktop-linux.yml` builds on an Ubuntu runner (jpackage only builds a package for the OS it runs
+on): `CrossDrop-<version>-linux-x64.deb` and `.rpm` (installed to `/opt/crossdrop`, with an application-menu entry)
+and a portable `.tar.gz` of the app image (its own Java runtime, so it runs on any x86-64 distribution). The job
+runs `:core:test` and `:desktop:test` under Xvfb, then installs the `.deb` and starts the installed app: it must open
+its window, answer on its transfer port and turn a second launch away. Locally, on any Linux box with a full JDK 21:
+
+```sh
+sudo apt install fakeroot dpkg-dev rpm          # jpackage's tools
+./gradlew :desktop:packageDeb :desktop:packageRpm :desktop:createDistributable
+```
+
+jpackage gives the `.rpm` no dependencies (the `.deb` gets them computed), so `desktop/build.gradle.kts` rebuilds the
+rpm after `packageRpm` from the app image with `--linux-package-deps` (the X11 / GL / font libraries, as soname
+capabilities that Fedora and openSUSE both resolve). The workflow proves it on a clean Fedora container.
+
+Nothing is signed. A signed apt/dnf repository (or Flathub / a Snap) is the way to get updates and no
+"unsigned package" warnings; none is set up. An arm64 build would be a second runner (`ubuntu-24.04-arm`) and
+an `-arm64` name in `release.yml`'s `package` job.
+
 ## Version numbers
 
-`APP_VERSION` in `Main.kt` is the single source: the macOS bundle version and the Windows
-ProductVersion are both derived from it (`0.x.y` → `1.x.y`). Bump it for every release — Windows Installer
+`APP_VERSION` in `Main.kt` is the single source: the macOS bundle version, the Windows
+ProductVersion and the Linux package version are all derived from it (`0.x.y` → `1.x.y`). Bump it for every release — Windows Installer
 refuses to upgrade to an equal version.
 
 ## Other channels (status)

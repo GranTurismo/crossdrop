@@ -27,6 +27,7 @@
  "Address": "Adres",
  "After allowing Local Network access, or switching Wi-Fi": "Yerel Ağ erişimine izin verdikten veya Wi-Fi’yi değiştirdikten sonra",
  "After switching networks or allowing CrossDrop through Windows Firewall": "Ağı değiştirdikten veya CrossDrop’a Windows Güvenlik Duvarı’ndan izin verdikten sonra",
+ "After switching networks or allowing CrossDrop through your firewall": "Ağı değiştirdikten veya CrossDrop’a güvenlik duvarınızdan izin verdikten sonra",
  "After switching networks or approving CrossDrop under Local Network": "Ağı değiştirdikten veya CrossDrop’u Yerel Ağ altında onayladıktan sonra",
  "All": "Tümü",
  "All files delivered": "Tüm dosyalar teslim edildi",

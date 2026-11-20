@@ -31,6 +31,7 @@
  "Address": "Адрес",
  "After allowing Local Network access, or switching Wi-Fi": "После разрешения доступа к локальной сети или смены сети Wi-Fi",
  "After switching networks or allowing CrossDrop through Windows Firewall": "После смены сети или разрешения CrossDrop в брандмауэре Windows",
+ "After switching networks or allowing CrossDrop through your firewall": "После смены сети или разрешения CrossDrop в вашем брандмауэре",
  "After switching networks or approving CrossDrop under Local Network": "После смены сети или разрешения CrossDrop в разделе «Локальная сеть»",
  "All": "Все",
  "All files delivered": "Все файлы доставлены",

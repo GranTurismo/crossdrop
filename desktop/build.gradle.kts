@@ -85,7 +85,7 @@ tasks.named("processResources") { dependsOn(stageL10n) }
 tasks.named("compileKotlin") { dependsOn(syncSharedUi, syncSharedNet) }
 
 // Installers can only be built on the OS they target (jpackage needs the native
-// toolchain: hdiutil on macOS, WiX on Windows), so the packaging tasks that exist
+// toolchain: hdiutil on macOS, WiX on Windows, dpkg/rpmbuild on Linux), so the packaging tasks that exist
 // follow the machine running Gradle. Compose registers only the formats that are
 // valid for the host, so listing all of them below is safe on either OS.
 val hostIsMac = System.getProperty("os.name").startsWith("Mac")
@@ -105,6 +105,49 @@ val appPackageVersion: Provider<String> = providers
         "${maxOf(major.toInt(), 1)}.$minor.$patch"
     }
 
+// jpackage works out the .deb's dependencies from the shared libraries it ships, but gives the .rpm none (it turns
+// automatic dependencies off), so on a minimal Fedora/openSUSE the app would die with "libfontconfig.so.1: cannot
+// open shared object file". The Compose plugin has no setting for jpackage's --linux-package-deps, so after
+// packageRpm the rpm is built again from the app image (createDistributable), reusing the options Compose gave
+// jpackage (name, version, menu entry, licence…) and adding the dependencies. Soname capabilities rather than
+// package names: they resolve on Fedora and openSUSE alike. The list is what Skia (skiko) and AWT's X11 toolkit
+// link against; every desktop install already has all of them.
+val rpmLibraries = listOf(
+    "libGL.so.1", "libfontconfig.so.1", "libfreetype.so.6", "libX11.so.6", "libXext.so.6",
+    "libXi.so.6", "libXrender.so.1", "libXtst.so.6",
+)
+val packageRpmWithDeps by tasks.registering {
+    dependsOn("createDistributable")
+    val argsFile = layout.buildDirectory.file("compose/tmp/packageRpm.args.txt")
+    val appImage = layout.buildDirectory.dir("compose/binaries/main/app/CrossDrop")
+    val deps = rpmLibraries.joinToString(", ") { "$it()(64bit)" }
+    val javaHome = System.getProperty("java.home")
+    doLast {
+        val original = argsFile.get().asFile
+        check(original.isFile) { "Compose's jpackage arguments are not at $original" }
+        // Compose writes one token per line (options bare, values quoted). With --app-image the options that describe
+        // the input (jar, runtime, java options, icon, resources) are already baked into the image, and jpackage
+        // refuses them.
+        val tokens = original.readLines().map { it.trim().removeSurrounding("\"") }.filter { it.isNotEmpty() }
+        val inputOptions = setOf("--input", "--runtime-image", "--resource-dir", "--java-options", "--main-jar", "--main-class", "--icon")
+        val kept = mutableListOf<String>()
+        var i = 0
+        while (i < tokens.size) {
+            if (tokens[i] in inputOptions) i += 2 else kept += tokens[i++]
+        }
+        val dest = File(kept[kept.indexOf("--dest") + 1])
+        kept += listOf("--app-image", appImage.get().asFile.path, "--linux-package-deps", deps)
+        val patched = File(original.parentFile, "packageRpmWithDeps.args.txt")
+        patched.writeText(kept.joinToString("\n") { "\"" + it.replace("\\", "\\\\").replace("\"", "\\\"") + "\"" } + "\n")
+        dest.listFiles { f -> f.extension == "rpm" }?.forEach { it.delete() }   // jpackage won't overwrite
+        val p = ProcessBuilder("$javaHome/bin/jpackage", "@${patched.path}").redirectErrorStream(true).start()
+        val out = p.inputStream.bufferedReader().readText()
+        check(p.waitFor() == 0) { "jpackage (rpm with dependencies) failed:\n$out" }
+        println("rpm written with Requires: $deps")
+    }
+}
+tasks.matching { it.name == "packageRpm" }.configureEach { finalizedBy(packageRpmWithDeps) }
+
 compose.desktop {
     application {
         mainClass = "com.crossdrop.MainKt"
@@ -115,7 +158,7 @@ compose.desktop {
         }
 
         nativeDistributions {
-            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe)
+            targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "CrossDrop"
             // Derived from APP_VERSION in Main.kt (see appPackageVersion): macOS bundle versions
             // must start at 1.x, and the same value is the MSI/EXE ProductVersion.
@@ -140,6 +183,18 @@ compose.desktop {
                 // see appPackageVersion) upgrades in place instead of installing beside it.
                 // Generated once; NEVER change.
                 upgradeUuid = "B960A8B1-78D0-4343-B88D-123040141EAD"
+            }
+
+            linux {
+                // Debian package names must be lowercase; the app itself is still "CrossDrop".
+                packageName = "crossdrop"
+                iconFile.set(project.file("src/main/resources/icon.png"))
+                shortcut = true               // application-menu entry (the .desktop file)
+                menuGroup = "Network"
+                appCategory = "Network"
+                // jpackage writes "Maintainer: <vendor> <this>", so this is the bare address.
+                debMaintainer = "crossdrop@users.noreply.github.com"
+                rpmLicenseType = "ASL 2.0"
             }
 
             macOS {

@@ -158,8 +158,11 @@ fun SettingsScreen(
                     RowSeparator()
                     NavRow(
                         CdIcons.Radar, tr("Rescan network"),
-                        if (Platform.isWindows) tr("After switching networks or allowing CrossDrop through Windows Firewall")
-                        else tr("After switching networks or approving CrossDrop under Local Network"),
+                        when {
+                            Platform.isWindows -> tr("After switching networks or allowing CrossDrop through Windows Firewall")
+                            Platform.isLinux -> tr("After switching networks or allowing CrossDrop through your firewall")
+                            else -> tr("After switching networks or approving CrossDrop under Local Network")
+                        },
                         onRescan,
                     )
                 }

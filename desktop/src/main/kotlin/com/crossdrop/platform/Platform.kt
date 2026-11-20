@@ -9,7 +9,7 @@ import com.crossdrop.core.i18n.tr
  * the decision is testable ([of] takes the raw property value).
  */
 enum class Platform {
-    MAC, WINDOWS, OTHER;
+    MAC, WINDOWS, LINUX, OTHER;
 
     // The words below are read at call time (never cached) so they follow the UI language.
 
@@ -18,7 +18,7 @@ enum class Platform {
         get() = when (this) {
             MAC -> "Mac"
             WINDOWS -> tr("PC")
-            OTHER -> tr("computer")
+            LINUX, OTHER -> tr("computer")
         }
 
     /** The OS file manager, for "Show in …" buttons. */
@@ -26,7 +26,7 @@ enum class Platform {
         get() = when (this) {
             MAC -> "Finder"
             WINDOWS -> tr("File Explorer")
-            OTHER -> tr("file manager")
+            LINUX, OTHER -> tr("file manager")
         }
 
     /** Where the app lives while its window is closed. */
@@ -42,6 +42,7 @@ enum class Platform {
             return when {
                 n.startsWith("Mac", ignoreCase = true) -> MAC
                 n.startsWith("Windows", ignoreCase = true) -> WINDOWS
+                n.startsWith("Linux", ignoreCase = true) -> LINUX
                 else -> OTHER
             }
         }
@@ -49,5 +50,6 @@ enum class Platform {
         val current: Platform by lazy { of(System.getProperty("os.name")) }
         val isMac: Boolean get() = current == MAC
         val isWindows: Boolean get() = current == WINDOWS
+        val isLinux: Boolean get() = current == LINUX
     }
 }

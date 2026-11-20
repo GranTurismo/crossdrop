@@ -35,6 +35,7 @@
  "Address": "العنوان",
  "After allowing Local Network access, or switching Wi-Fi": "بعد السماح بالوصول إلى الشبكة المحلية أو تبديل شبكة Wi-Fi",
  "After switching networks or allowing CrossDrop through Windows Firewall": "بعد تبديل الشبكة أو السماح لـ CrossDrop عبر جدار حماية Windows",
+ "After switching networks or allowing CrossDrop through your firewall": "بعد تبديل الشبكة أو السماح لـ CrossDrop عبر جدار الحماية لديك",
  "After switching networks or approving CrossDrop under Local Network": "بعد تبديل الشبكة أو الموافقة على CrossDrop ضمن «الشبكة المحلية»",
  "All": "الكل",
  "All files delivered": "تم تسليم كل الملفات",

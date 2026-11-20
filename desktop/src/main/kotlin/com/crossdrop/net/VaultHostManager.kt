@@ -79,6 +79,12 @@ class VaultHostManager(
             "\$windows.~bt", "\$windows.~ws", "\$winreagent",
         )
 
+        private val linuxSystemDirs = listOf(
+            // /run/media (where Fedora, Arch and others mount USB sticks) stays shareable, so only its private parts are listed.
+            "/etc", "/proc", "/sys", "/dev", "/boot", "/run/user", "/run/systemd", "/run/lock", "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64",
+            "/root", "/snap", "/lost+found",
+        )
+
         /** Pure policy behind [isShareable]; [f] and [home] are already canonical. */
         internal fun isForbiddenRoot(
             f: File, home: File, support: File, platform: Platform, env: (String) -> String?,
@@ -103,6 +109,15 @@ class VaultHostManager(
                     var p: File? = f
                     while (p != null && p.parentFile?.parentFile != null) p = p.parentFile
                     if (p != null && p.name.lowercase() in windowsDriveRootSystemDirs) return true
+                }
+                Platform.LINUX -> {
+                    // Dot-folders under the home are credentials and app state (.ssh, .gnupg, .config, .mozilla…).
+                    if (f.startsWith(home) && f.relativeTo(home).invariantSeparatorsPath.substringBefore('/').startsWith(".")) return true
+                    // Other people's home folders sit beside ours (/home/*); skipped when home is /root and the like.
+                    val homes = home.parentFile
+                    if (homes?.parentFile != null && f.startsWith(homes) && !f.startsWith(home)) return true
+                    // System trees — unless our own home happens to live inside one (/root).
+                    if (linuxSystemDirs.any { val d = File(it); f.startsWith(d) && !home.startsWith(d) }) return true
                 }
                 Platform.OTHER -> Unit
             }

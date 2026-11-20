@@ -4,7 +4,7 @@ name: Release
 #
 #   git tag v0.6.0 && git push origin v0.6.0
 #
-# builds the Android bundle + APK, the Windows MSI/EXE/MSIX and both macOS DMGs, then
+# builds the Android bundle + APK, the Windows MSI/EXE/MSIX, both macOS DMGs and the Linux .deb/.rpm/.tar.gz, then
 #   - creates the GitHub release with every download and SHA256SUMS.txt,
 #   - uploads the bundle to Google Play, rolls it out to production and sends it for review,
 #   - submits the MSIX to the Microsoft Store,
@@ -150,6 +150,11 @@ jobs:
     needs: prepare
     uses: ./.github/workflows/desktop-macos.yml
     secrets: inherit
+
+  linux:
+    name: Linux
+    needs: prepare
+    uses: ./.github/workflows/desktop-linux.yml
 
   # iPhone/iPad and Mac (Catalyst) for the App Store. Signed through Apple's cloud signing with the API key, so
   # no certificate or provisioning profile lives in the repository. A tag uploads to App Store Connect (the
@@ -300,7 +305,7 @@ jobs:
   # --------------------------------------------------------------- packaging --
   package:
     name: Collect the downloads
-    needs: [prepare, android, windows, macos]
+    needs: [prepare, android, windows, macos, linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -326,6 +331,9 @@ jobs:
           pick '*CrossDrop-windows*/*.exe'      "CrossDrop-$VERSION-windows-x64.exe"
           pick '*CrossDrop-macos-arm64*/*.dmg'  "CrossDrop-$VERSION-macos-apple-silicon.dmg"
           pick '*CrossDrop-macos-x64*/*.dmg'    "CrossDrop-$VERSION-macos-intel.dmg"
+          pick '*CrossDrop-linux*/*.deb'        "CrossDrop-$VERSION-linux-x64.deb"
+          pick '*CrossDrop-linux*/*.rpm'        "CrossDrop-$VERSION-linux-x64.rpm"
+          pick '*CrossDrop-linux*/*.tar.gz'     "CrossDrop-$VERSION-linux-x64.tar.gz"
           (cd out && sha256sum -- * > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
           # GitHub release text = what's new + the shared download/install notes.
