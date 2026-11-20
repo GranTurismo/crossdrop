@@ -34,7 +34,7 @@ import java.awt.Frame
 import java.awt.SystemTray
 import java.awt.Taskbar
 
-const val APP_VERSION = "0.9.0"
+const val APP_VERSION = "0.10.0"
 
 /**
  * CrossDrop for macOS, Windows and Linux. Closing the window hides it to the menu bar /

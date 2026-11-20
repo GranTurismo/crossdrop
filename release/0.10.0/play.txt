@@ -1,0 +1,1 @@
+New: shake to connect. Two people shake their phones at the same moment and each phone opens the other's send screen, no picking from a list. Send apps to another Android phone: pick installed apps, and the other phone installs them with Android's own installer; data, accounts and purchases stay with you. Still no cloud, no account, no ads.

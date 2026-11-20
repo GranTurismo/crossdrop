@@ -1,0 +1,1 @@
+This version is mostly for phones: shake to connect (two phones shaken at the same moment open each other's send screen) and sending installed apps between Android phones. On this PC, a phone that shakes or links to you through a code now appears on the radar right away, even when your network hides it. Nothing goes over the internet.
