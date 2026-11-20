@@ -72,6 +72,8 @@ object CdIcons {
     val Play by lazy { filled("M8 5.5v13l10.5-6.5z") }
     val Bolt by lazy { icon("M13 3L5 13.5h6L10 21l8-10.5h-6z") }
     val Contacts by lazy { icon(circle(12f, 9f, 3.5f), "M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5") }
+    /** A phone with motion lines: shake to connect. */
+    val Shake by lazy { icon(rect(8f, 3f, 8f, 18f, 2f), "M4.5 8.5c-1 1.6-1 5.4 0 7M19.5 8.5c1 1.6 1 5.4 0 7M11.5 17.5h1") }
     /** Viewfinder: "Scan a code". */
     val Scan by lazy { icon("M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M7 12h10") }
     /** Two linked devices: "My devices" / pairing. */

@@ -93,6 +93,10 @@ class TransferCoordinator(
     }
 
     /** One or more local files (camera shots). [live] = part of a live camera session. */
+    /** Installed apps, every APK of each; only Android phones are offered this (they install them). */
+    fun sendApps(peers: List<Peer>, apps: List<com.crossdrop.apps.InstalledApps.App>): String =
+        hub.send(peers, { com.crossdrop.apps.InstalledApps.outgoing(apps) }, SendOptions(kind = OfferKind.APP))
+
     fun sendFiles(peers: List<Peer>, files: List<File>, live: Boolean = false): String =
         hub.send(
             peers,

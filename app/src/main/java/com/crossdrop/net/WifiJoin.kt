@@ -177,12 +177,12 @@ class WifiJoin(
         var misses = 0
         while (true) {
             val answer = runCatching {
-                engine.control(host) { announce(listenPort()); peerName to peerInstanceId }
+                engine.control(host) { announce(listenPort()); Triple(peerName, peerInstanceId, peerOs) }
             }.onFailure { Log.i(TAG, "announce to $host: ${it.message}") }.getOrNull()
             if (answer != null) {
-                val (name, id) = answer
+                val (name, id, os) = answer
                 hostId = id
-                known.add(id, name, host)
+                known.add(id, name, host, os)
                 misses = 0
                 if (first || (_state.value as? State.Joined)?.hostName != name) _state.value = State.Joined(code.ssid, name)
                 first = false

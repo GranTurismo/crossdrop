@@ -34,6 +34,8 @@ data class Peer(
      * connection, so this is opt-in via the peer's own advertisement.
      */
     val probeable: Boolean = false,
+    /** What the device runs on ([Platforms]), when it said so (TXT `os` or its handshake); null for older builds. */
+    val platform: String? = null,
 ) {
     /** Approximate distance in metres from RSSI, for radar placement. */
     val estimatedDistanceMeters: Double?

@@ -66,13 +66,20 @@ final class AnnouncedPeers {
     }
 }
 
-/// The transfer listener's answer to ANNOUNCE: hands each one from the engine's thread to the main thread.
+/// The transfer listener's answer to ANNOUNCE and SHAKE: both callbacks run on the engine's thread (hop to the main
+/// thread for UI state).
 final class AnnounceRelay: ControlHandler, @unchecked Sendable {
-    private let onAnnounce: (_ name: String, _ instanceId: String, _ host: String, _ port: Int) -> Void
-    init(_ onAnnounce: @escaping (_ name: String, _ instanceId: String, _ host: String, _ port: Int) -> Void) {
+    typealias Heard = (_ name: String, _ instanceId: String, _ host: String, _ port: Int) -> Void
+    private let onAnnounce: Heard
+    private let onShake: Heard?
+    init(_ onAnnounce: @escaping Heard, onShake: Heard? = nil) {
         self.onAnnounce = onAnnounce
+        self.onShake = onShake
     }
     func announced(name: String, instanceId: String, host: String, port: Int) {
         onAnnounce(name, instanceId, host, port)
+    }
+    func shaken(name: String, instanceId: String, host: String, port: Int) {
+        onShake?(name, instanceId, host, port)
     }
 }

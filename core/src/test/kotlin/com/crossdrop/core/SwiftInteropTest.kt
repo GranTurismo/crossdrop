@@ -153,7 +153,7 @@ class SwiftInteropTest {
         val listener = ServerSocket(0)
         var seen: List<Any>? = null
         val handler = object : com.crossdrop.core.transfer.ControlHandler {
-            override fun announced(name: String, instanceId: String, host: String, port: Int) { seen = listOf(name, instanceId, host, port) }
+            override fun announced(name: String, instanceId: String, host: String, port: Int, os: String?) { seen = listOf(name, instanceId, host, port) }
         }
         val served = async(kotlinx.coroutines.Dispatchers.IO) { engine("kotlin", 3).receiveRequest(listener.accept(), handler) { ReceiveDecision.Reject() }.toList() }
         val p = ProcessBuilder(cli, "announce", "--to", "127.0.0.1:${listener.localPort}", "--port", "43210", "--name", "iPhone", "--id", "5e1f7c11")
@@ -179,6 +179,38 @@ class SwiftInteropTest {
                 generateSequence { r.readLine() }.first { it.startsWith("ANNOUNCED-FROM") }
             }
             assertEquals("ANNOUNCED-FROM kotlin 1a2b3c4d 127.0.0.1 40999", line.trim())
+        } finally {
+            proc.destroy()
+            inbox.deleteRecursively()
+        }
+    }
+
+    /** SHAKE across languages (shake to connect between an iPhone and an Android phone). */
+    @Test
+    fun `swift shake reaches kotlin and kotlin shake reaches swift`() = runBlocking {
+        assumeTrue(cli != null)
+        // Swift → Kotlin
+        val listener = ServerSocket(0)
+        var seen: List<Any>? = null
+        val handler = object : com.crossdrop.core.transfer.ControlHandler {
+            override fun shaken(name: String, instanceId: String, host: String, port: Int, os: String?) { seen = listOf(name, instanceId, host, port) }
+        }
+        val served = async(kotlinx.coroutines.Dispatchers.IO) { engine("kotlin", 3).receiveRequest(listener.accept(), handler) { ReceiveDecision.Reject() }.toList() }
+        val p = ProcessBuilder(cli, "shake", "--to", "127.0.0.1:${listener.localPort}", "--port", "41000", "--name", "iPhone", "--id", "5e1f7c11")
+            .redirectErrorStream(true).start()
+        val out = finish(p, "s→k shake")
+        served.await()
+        listener.close()
+        assertTrue(out, out.lines().any { it.trim() == "SHOOK kotlin 1a2b3c4d" })
+        assertEquals(listOf("iPhone", "5e1f7c11", "127.0.0.1", 41000), seen)
+
+        // Kotlin → Swift
+        val inbox = Files.createTempDirectory("shake").toFile()
+        val (proc, port) = startReceiver(inbox, 3)
+        try {
+            engine("kotlin", 3).control(Endpoint("127.0.0.1", port)) { shake(42000) }
+            val line = proc.inputStream.bufferedReader().let { r -> generateSequence { r.readLine() }.first { it.startsWith("SHAKE-FROM") } }
+            assertEquals("SHAKE-FROM kotlin 1a2b3c4d 127.0.0.1 42000", line.trim())
         } finally {
             proc.destroy()
             inbox.deleteRecursively()

@@ -39,8 +39,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +58,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -126,6 +129,7 @@ fun RadarScreen(
     onCamera: (List<Peer>) -> Unit = {},
     onSendText: (List<Peer>, String) -> Unit = { _, _ -> },
     onContacts: (List<Peer>) -> Unit = {},
+    onApps: (List<Peer>) -> Unit = {},
     onSwitchPhones: (Peer) -> Unit = {},
     onShareToAnyone: (List<android.net.Uri>) -> Unit = {},
     onMountVault: (Peer) -> Unit = {},
@@ -146,6 +150,13 @@ fun RadarScreen(
     joinedSsid: String? = null,
     joinedHost: String? = null,
     onLeaveLink: () -> Unit = {},
+    /** Shake to connect: on, when we were last shaken without a match yet, and the device we just shook with. */
+    shakeEnabled: Boolean = false,
+    /** Shaking has found a device before: no need to teach it with the animated card. */
+    shakeLearned: Boolean = true,
+    shakeWaitingSince: Long = 0L,
+    shakeMatch: Peer? = null,
+    onShakeHandled: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -156,6 +167,25 @@ fun RadarScreen(
     var pickingAnyone by remember { mutableStateOf(false) }
     var vaultPeer by remember { mutableStateOf<Peer?>(null) }
     var notOnWifi by remember { mutableStateOf<Peer?>(null) }
+    /** The send sheet open because of a shake: it says so instead of "Send to". */
+    var shakenId by remember { mutableStateOf<String?>(null) }
+    // Teach shaking where it helps: once per launch, when several reachable devices show up, until it has
+    // worked once. A tap or 12 s hides it.
+    val reachableCount = peers.count { it.endpoint != null && it.vault == null }
+    var shakeHintUsed by rememberSaveable { mutableStateOf(false) }
+    var shakeHintVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(reachableCount >= 2, shakeEnabled, shakeLearned) {
+        if (reachableCount >= 2 && shakeEnabled && !shakeLearned && !shakeHintUsed) {
+            kotlinx.coroutines.delay(800)          // let the new nodes land on the radar first
+            shakeHintUsed = true
+            shakeHintVisible = true
+        }
+    }
+    LaunchedEffect(shakeHintVisible) {
+        if (shakeHintVisible) { kotlinx.coroutines.delay(12_000); shakeHintVisible = false }
+    }
+    LaunchedEffect(shakeWaitingSince) { if (shakeWaitingSince > 0) shakeHintVisible = false }
+    LaunchedEffect(shakeLearned) { if (shakeLearned) shakeHintVisible = false }
     var renaming by remember { mutableStateOf(false) }
     var permsGranted by remember { mutableStateOf(hasAll(context)) }
 
@@ -290,9 +320,28 @@ fun RadarScreen(
                 onSelfTap = { renaming = true },
             )
             // The help card says this (and more) once it appears.
-            if (devices.isEmpty() && connectHint == ConnectHint.NONE) {
-                Text(
+            var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(shakeWaitingSince) {
+                now = System.currentTimeMillis()
+                while (now - shakeWaitingSince <= com.crossdrop.core.shake.ShakeMatcher.WINDOW_MS) {
+                    kotlinx.coroutines.delay(250); now = System.currentTimeMillis()
+                }
+            }
+            val shakeWaiting = shakeEnabled && now - shakeWaitingSince <= com.crossdrop.core.shake.ShakeMatcher.WINDOW_MS
+            when {
+                shakeWaiting -> Text(
+                    tr("Now shake the other phone at the same time"),
+                    color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp)
+                        .semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite },
+                )
+                devices.isEmpty() && connectHint == ConnectHint.NONE -> Text(
                     tr("Open CrossDrop on another device on this Wi-Fi"),
+                    color = TextDim, fontSize = 12.sp,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
+                )
+                shakeEnabled && !shakeHintVisible && devices.count { it.endpoint != null } >= 2 -> Text(
+                    tr("Several devices? Shake both phones to find each other."),
                     color = TextDim, fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp),
                 )
@@ -304,6 +353,12 @@ fun RadarScreen(
             Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = shakeHintVisible && reachableCount >= 2,
+                enter = androidx.compose.animation.slideInVertically { it / 2 } + androidx.compose.animation.fadeIn() +
+                    androidx.compose.animation.expandVertically(),
+                exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically(),
+            ) { ShakeHintCard(onDismiss = { shakeHintVisible = false }) }
             com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, onPrimary = onConnectDirectly)
             if (directLinkOn) DirectLinkRow(onOpenDirectLink)
             if (joinedSsid != null) JoinedLinkRow(joinedSsid, joinedHost, onLeaveLink)
@@ -320,6 +375,17 @@ fun RadarScreen(
         })
     }
 
+    // ---- shake to connect: the device we just shook phones with gets its send sheet
+    LaunchedEffect(shakeMatch) {
+        val peer = shakeMatch ?: return@LaunchedEffect
+        onShakeHandled()
+        if (peer.endpoint == null) return@LaunchedEffect
+        notOnWifi = null; vaultPeer = null
+        shakenId = peer.instanceId
+        pendingPeers = listOf(peer)
+        pickingForPeer = peer
+    }
+
     // ---- send sheet: photo picker or generic files, to this device and any others picked
     pickingForPeer?.let { peer ->
         val d = peer.estimatedDistanceMeters
@@ -327,7 +393,7 @@ fun RadarScreen(
         var also by remember(peer.instanceId) { mutableStateOf(emptySet<String>()) }
         fun targets() = listOf(peer) + others.filter { it.instanceId in also }
         SendSheet(
-            kicker = tr("Send to"),
+            kicker = if (peer.instanceId == shakenId) tr("You shook phones with") else tr("Send to"),
             title = peer.name,
             icon = deviceIconFor(peer.name),
             meta = {
@@ -365,6 +431,14 @@ fun RadarScreen(
                     SmallTile(tr("Switch"), tr("Move phone"), CdIcons.Swap, Modifier.weight(1f)) {
                         pickingForPeer = null; pendingPeers = emptyList(); onSwitchPhones(peer)
                     }
+                }
+                // Apps only make sense on another Android phone: it is the one that can install them.
+                if (peer.platform == com.crossdrop.core.Platforms.ANDROID) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SmallTile(tr("Apps"), tr("Installed apps"), CdIcons.Apk, Modifier.weight(1f)) {
+                        val t = targets().filter { it.platform == com.crossdrop.core.Platforms.ANDROID }
+                        pickingForPeer = null; pendingPeers = emptyList(); onApps(t)
+                    }
+                    Spacer(Modifier.weight(1f))
                 }
             },
         )

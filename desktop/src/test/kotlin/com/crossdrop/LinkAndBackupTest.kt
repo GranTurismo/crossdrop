@@ -35,10 +35,14 @@ class LinkAndBackupTest {
         @JvmStatic @AfterClass fun teardown() { home.deleteRecursively() }
     }
 
-    class Node(val name: String, val root: File) {
+    class Node(
+        val name: String,
+        val root: File,
+        val instanceId: String = ByteArray(8).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) },
+        os: String? = null,
+    ) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val instanceId = ByteArray(8).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) }
-        val engine = TransferEngine(SessionIdentity(), { name }, instanceId)
+        val engine = TransferEngine(SessionIdentity(), { name }, instanceId, os = os)
         val inbox = InboxStore(File(root, "inbox"))
         val history = HistoryStore(File(root, "history.json"))
         val server = TransferServer(scope, engine) { }
@@ -157,6 +161,35 @@ class LinkAndBackupTest {
         } finally { phone.close(); mac.close(); stranger.close() }
     }
 
+    @Test fun twoPhonesShakenTogetherFindEachOther() = runBlocking {
+        val a = Node("Pixel", File(home, "shake-a")); val b = Node("Galaxy", File(home, "shake-b"))
+        val c = Node("Bystander", File(home, "shake-c"))
+        try {
+            await("listeners") { if (a.server.port != 0 && b.server.port != 0 && c.server.port != 0) Unit else null }
+            val pa = com.crossdrop.core.Peer(a.instanceId, "Pixel", a.endpoint)
+            val pb = com.crossdrop.core.Peer(b.instanceId, "Galaxy", b.endpoint)
+            val pc = com.crossdrop.core.Peer(c.instanceId, "Bystander", c.endpoint)
+            // A is shaken; a second later B is. Only B knows A (one-way discovery): the SHAKE fixes that.
+            a.coordinator.hub.shake(listOf(pb, pc), a.server.port)
+            await("A's shake reached B") { b.announced.peers.value[a.instanceId] }
+            assertEquals(null, a.coordinator.hub.shakeMatch.value)
+            delay(1_000)
+            b.coordinator.hub.shake(listOf(pa), b.server.port)
+            val onB = await("B matched") { b.coordinator.hub.shakeMatch.value }
+            val onA = await("A matched") { a.coordinator.hub.shakeMatch.value }
+            assertEquals(a.instanceId, onB.instanceId)
+            assertEquals("Pixel", onB.name)
+            assertEquals(b.instanceId, onA.instanceId)
+            // C heard A's shake but never shook: nothing happens there.
+            delay(300)
+            assertEquals(null, c.coordinator.hub.shakeMatch.value)
+            // Handled matches clear; nothing about shaking shows as a transfer.
+            a.coordinator.hub.shakeHandled(); b.coordinator.hub.shakeHandled()
+            assertEquals(null, a.coordinator.hub.shakeMatch.value)
+            assertEquals(emptyList<Any>(), a.coordinator.sessions.value + b.coordinator.sessions.value + c.coordinator.sessions.value)
+        } finally { a.close(); b.close(); c.close() }
+    }
+
     @Test fun aPhoneThatScannedTheCodeShowsUpOnTheHostAndCanBeSentTo() = runBlocking {
         val host = Node("Host phone", File(home, "host")); val guest = Node("Guest phone", File(home, "guest"))
         try {
@@ -181,5 +214,60 @@ class LinkAndBackupTest {
             await("delivered") { host.coordinator.sessions.value.lastOrNull()?.takeIf { it.status == SessionStatus.COMPLETED } }
             assertArrayEquals(payload, guest.inbox.list().single().file.readBytes())
         } finally { host.close(); guest.close() }
+    }
+
+    /** What Android's AppInbox does with an app offer, minus the installing: stage each APK, hear about the set. */
+    private class FakeAppReceiver(val dir: File) : com.crossdrop.net.AppReceiver {
+        @Volatile var got: List<Pair<String?, ByteArray>>? = null
+        @Volatile var from: String? = null
+        override fun stagingFile(offer: com.crossdrop.core.protocol.Offer, index: Int, meta: com.crossdrop.core.protocol.FileMeta) =
+            File(dir, "${offer.transferId}/$index.apk")
+        override suspend fun received(peerName: String, offer: com.crossdrop.core.protocol.Offer, files: List<File>) {
+            from = peerName
+            got = offer.files.mapIndexed { i, m -> m.pkg to files[i].readBytes() }
+        }
+    }
+
+    private fun apk(name: String, pkg: String, bytes: ByteArray) = com.crossdrop.core.transfer.OutgoingFile(
+        com.crossdrop.core.protocol.FileMeta(name, bytes.size.toLong(), "application/vnd.android.package-archive", cat = com.crossdrop.core.protocol.ItemCategory.APP, pkg = pkg),
+    ) { bytes.inputStream() }
+
+    @Test fun appsGoToAnotherAndroidPhoneWithAllTheirPiecesAndLandAsFilesElsewhere() = runBlocking {
+        val a = Node("Pixel", File(home, "apps-a"), os = com.crossdrop.core.Platforms.ANDROID)
+        val b = Node("Galaxy", File(home, "apps-b"), os = com.crossdrop.core.Platforms.ANDROID)
+        val c = Node("MacBook", File(home, "apps-c"), os = com.crossdrop.core.Platforms.MAC)
+        try {
+            await("listeners") { if (a.server.port != 0 && b.server.port != 0 && c.server.port != 0) Unit else null }
+            // A phone that reaches another through a code learns from the handshake that it is an Android phone.
+            b.engine.control(a.endpoint) { announce(b.server.port) }
+            assertEquals("android", await("B on A's radar") { a.announced.peers.value[b.instanceId] }.platform)
+            c.engine.control(a.endpoint) { announce(c.server.port) }
+            assertEquals("mac", await("C on A's radar") { a.announced.peers.value[c.instanceId] }.platform)
+
+            val rx = FakeAppReceiver(File(home, "apps-b/staging")).also { b.coordinator.hub.appReceiver = it }
+            val base1 = ByteArray(300_000) { (it * 7).toByte() }
+            val split1 = ByteArray(40_000) { (it * 3).toByte() }
+            val base2 = ByteArray(120_000) { (it * 5).toByte() }
+            val apps = { listOf(apk("Notes.apk", "com.example.notes", base1), apk("Notes - config.arm64_v8a.apk", "com.example.notes", split1), apk("Maps.apk", "org.example.maps", base2)) }
+            val pb = com.crossdrop.core.Peer(b.instanceId, "Galaxy", b.endpoint)
+            a.coordinator.hub.send(listOf(pb), apps, com.crossdrop.core.transfer.SendOptions(kind = com.crossdrop.core.protocol.OfferKind.APP))
+            val offer = await("app offer on B") { b.coordinator.incomingOffer.value }
+            assertEquals(com.crossdrop.core.protocol.OfferKind.APP, offer.kind)
+            b.coordinator.respondToOffer(true)
+            val got = await("B staged the apps") { rx.got }
+            assertEquals("Pixel", rx.from)
+            assertEquals(listOf("com.example.notes", "com.example.notes", "org.example.maps"), got.map { it.first })
+            assertArrayEquals(base1, got[0].second); assertArrayEquals(split1, got[1].second); assertArrayEquals(base2, got[2].second)
+            // Staged privately until installed: nothing in B's inbox.
+            assertEquals(0, b.inbox.list().size)
+
+            // A computer (no app receiver) just keeps the APKs as files.
+            val pc = com.crossdrop.core.Peer(c.instanceId, "MacBook", c.endpoint)
+            a.coordinator.hub.send(listOf(pc), apps, com.crossdrop.core.transfer.SendOptions(kind = com.crossdrop.core.protocol.OfferKind.APP))
+            await("app offer on C") { c.coordinator.incomingOffer.value }
+            c.coordinator.respondToOffer(true)
+            val names = await("C filed them") { c.inbox.list().map { it.file.name }.toSet().takeIf { it.size == 3 } }
+            assertEquals(setOf("Notes.apk", "Notes - config.arm64_v8a.apk", "Maps.apk"), names)
+        } finally { a.close(); b.close(); c.close() }
     }
 }

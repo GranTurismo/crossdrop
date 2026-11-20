@@ -11,7 +11,12 @@ import CrossDropCore
 //   crossdrop-cli announce --to <host:port> --port N
 //       → tells the device at host:port that this one listens on N (ANNOUNCE); prints
 //         "ANNOUNCED <name> <instanceId>" with the other device's HELLO_ACK identity, exits 0
-// `recv` answers ANNOUNCE too, printing "ANNOUNCED-FROM <name> <instanceId> <host> <port>" (no session event).
+//   crossdrop-cli shake --to <host:port> [--port N]
+//       → tells the device at host:port that this one was just shaken (SHAKE), listening on N (default 0: "didn't
+//         say"); prints "SHOOK <name> <instanceId>" with the other device's HELLO_ACK identity, exits 0
+// `recv` answers ANNOUNCE too, printing "ANNOUNCED-FROM <name> <instanceId> <host> <port>" (no session event), and
+// SHAKE, printing "SHAKE-FROM <name> <instanceId> <host> <port>". Run `shake` with recv's --id and --port to play the
+// other phone: the device can then reach it back.
 // --id HEX sets this end's per-launch instance id (hex, as discovery and announced peers expect).
 setvbuf(stdout, nil, _IOLBF, 0)
 
@@ -35,7 +40,7 @@ func flag(_ name: String) -> Bool {
 }
 let each = flag("--each")
 let grantTrust = flag("--grant")
-guard let mode = args.first else { print("usage: crossdrop-cli recv|send|announce ..."); exit(2) }
+guard let mode = args.first else { print("usage: crossdrop-cli recv|send|announce|shake ..."); exit(2) }
 args.removeFirst()
 if mode.hasPrefix("vault-") { runVaultCli(mode, args) }
 
@@ -153,16 +158,33 @@ case "announce":
         print("FAILED \(error)")
         exitCode = 1
     }
+case "shake":
+    guard let to = announceTo, let colon = to.lastIndex(of: ":"), let port = Int(to[to.index(after: colon)...]) else {
+        print("usage: crossdrop-cli shake --to <host:port> [--port N]"); exit(2)
+    }
+    var host = String(to[..<colon])
+    if host.hasPrefix("[") && host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+    do {
+        let answer = try engine.shake(host: host, port: port, listenPort: announcePort ?? 0)
+        print("SHOOK \(answer.name) \(answer.instanceId)")
+        exitCode = 0
+    } catch {
+        print("FAILED \(error)")
+        exitCode = 1
+    }
 default:
     print("unknown mode"); exit(2)
 }
 usleep(200_000)
 exit(exitCode)
 
-/// `recv`'s answer to ANNOUNCE: print who announced and where they listen.
+/// `recv`'s answer to ANNOUNCE and SHAKE: print who it was and where they listen.
 final class PrintAnnounces: ControlHandler {
     func announced(name: String, instanceId: String, host: String, port: Int) {
         print("ANNOUNCED-FROM \(name) \(instanceId) \(host) \(port)")
+    }
+    func shaken(name: String, instanceId: String, host: String, port: Int) {
+        print("SHAKE-FROM \(name) \(instanceId) \(host) \(port)")
     }
 }
 

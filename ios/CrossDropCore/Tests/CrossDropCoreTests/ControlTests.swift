@@ -10,6 +10,16 @@ final class ControlTests: XCTestCase {
             lock.lock(); seen.append((name, instanceId, host, port)); lock.unlock()
         }
         var calls: [(String, String, String, Int)] { lock.lock(); defer { lock.unlock() }; return seen }
+        private var shakes: [(String, String, String, Int)] = []
+        func shaken(name: String, instanceId: String, host: String, port: Int) {
+            lock.lock(); shakes.append((name, instanceId, host, port)); lock.unlock()
+        }
+        var shook: [(String, String, String, Int)] { lock.lock(); defer { lock.unlock() }; return shakes }
+    }
+
+    /// A handler that only takes announcements: SHAKE reaches the protocol's default (nothing happens) and is answered.
+    final class AnnounceOnly: ControlHandler {
+        func announced(name: String, instanceId: String, host: String, port: Int) {}
     }
 
     /// A listener whose every connection goes through `receive` with `control`; collects what each one emitted and
@@ -105,6 +115,62 @@ final class ControlTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(t0), TransferEngine.controlConnectTimeout + 1)
     }
 
+    // MARK: shake
+
+    func testShakeReachesTheHandlerAndIsAnswered() throws {
+        let rec = Recorder()
+        let host = try Host(control: rec)
+        let answer = try phone().shake(host: "127.0.0.1", port: host.port, listenPort: 43210)
+        host.waitDone()
+        XCTAssertEqual(answer.name, "MacBook")
+        XCTAssertEqual(answer.instanceId, "b0b0b0b0b0b0b0b0")
+        XCTAssertEqual(rec.shook.count, 1)
+        let c = rec.shook[0]
+        XCTAssertEqual(c.0, "Pixel 9")
+        XCTAssertEqual(c.1, "a1a1a1a1a1a1a1a1")
+        XCTAssertEqual(c.2, "127.0.0.1")
+        XCTAssertEqual(c.3, 43210)
+        XCTAssertTrue(rec.calls.isEmpty, "a shake is not an announcement")
+        XCTAssertTrue(onlySecured(host.events), "a shake must not look like a transfer: \(host.events)")
+        XCTAssertEqual(host.decided, 0)
+    }
+
+    /// Unlike ANNOUNCE, a shake without a usable port still counts: the device just can't be called back by it.
+    func testShakeWithoutAUsablePortStillCounts() throws {
+        let rec = Recorder()
+        let host = try Host(control: rec)
+        XCTAssertNoThrow(try phone().shake(host: "127.0.0.1", port: host.port, listenPort: 0))
+        host.waitDone()
+        XCTAssertNoThrow(try phone().shake(host: "127.0.0.1", port: host.port, listenPort: 70_000))
+        host.waitDone()
+        XCTAssertEqual(rec.shook.map(\.3), [0, 0])
+        // A SHAKE that says nothing at all (`{}`) reads as port 0 too.
+        try phone().control(host: "127.0.0.1", port: host.port) { ch -> Void in
+            try ch.io.write(.shake, Array("{}".utf8))
+            let (t, p) = try ch.io.read()
+            XCTAssertEqual(t, .shake)
+            XCTAssertEqual(try p.decodeJSON(Shake.self).port, 0)
+        }
+        host.waitDone()
+        XCTAssertEqual(rec.shook.map(\.3), [0, 0, 0])
+    }
+
+    func testAHandlerWithoutShakeStillAnswersIt() throws {
+        let host = try Host(control: AnnounceOnly())
+        XCTAssertNoThrow(try phone().shake(host: "127.0.0.1", port: host.port, listenPort: 4000))
+        host.waitDone()
+        XCTAssertTrue(onlySecured(host.events), "\(host.events)")
+    }
+
+    /// Builds without the frame (no handler here) fail it before any session exists, so the shaker just moves on.
+    func testWithoutAHandlerAShakeIsRefused() throws {
+        let host = try Host(control: nil)
+        XCTAssertThrowsError(try phone().shake(host: "127.0.0.1", port: host.port, listenPort: 4000))
+        host.waitDone()
+        guard case .failed(let msg)? = host.events.last else { return XCTFail("expected a failure: \(host.events)") }
+        XCTAssertTrue(msg.contains("expected OFFER"), msg)
+    }
+
     // MARK: pairing frames (this build keeps no pairings)
 
     func testPairRequestIsDeclined() throws {
@@ -197,6 +263,10 @@ final class ControlTests: XCTestCase {
         XCTAssertEqual(FrameType.pair.rawValue, 0x21)
         XCTAssertEqual(FrameType.pairCheck.rawValue, 0x22)
         XCTAssertEqual(FrameType.backupVerify.rawValue, 0x23)
+        XCTAssertEqual(FrameType.shake.rawValue, 0x24)
+        XCTAssertEqual(try Array(#"{"port":4000}"#.utf8).decodeJSON(Shake.self).port, 4000)
+        XCTAssertEqual(try Array(#"{}"#.utf8).decodeJSON(Shake.self).port, 0)
+        XCTAssertEqual(String(decoding: try Shake(port: 0).encodeBytes(), as: UTF8.self), #"{"port":0}"#)   // Kotlin encodes defaults
     }
 
     // MARK: crypto

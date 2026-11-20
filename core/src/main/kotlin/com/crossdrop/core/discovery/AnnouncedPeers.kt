@@ -41,7 +41,7 @@ class AnnouncedPeers(
     }
 
     /** Adds or refreshes a device. Ignores ids and names no CrossDrop build would send. */
-    fun add(instanceId: String, name: String, endpoint: Endpoint) {
+    fun add(instanceId: String, name: String, endpoint: Endpoint, platform: String? = null) {
         if (!ID.matches(instanceId) || endpoint.port !in 1..65535) return
         val now = clock()
         _peers.update { cur ->
@@ -53,6 +53,7 @@ class AnnouncedPeers(
                 sources = setOf(DiscoverySource.NSD),
                 lastSeenMs = now,
                 probeable = true,
+                platform = platform?.takeIf { it.length <= 16 } ?: cur[instanceId]?.platform,
             )
             while (fresh.size > max) fresh.remove(fresh.values.minBy { it.lastSeenMs }.instanceId)
             fresh

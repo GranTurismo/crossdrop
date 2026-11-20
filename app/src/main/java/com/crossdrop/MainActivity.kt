@@ -68,6 +68,8 @@ class MainActivity : ComponentActivity() {
                 )
             }, 1_500)
         }
+        // -e dev_shake 1 — this phone "is shaken" 3 s after launch (emulators can't be shaken by hand).
+        if (intent?.hasExtra("dev_shake") == true) android.os.Handler(mainLooper).postDelayed({ container.shakeNow() }, 3_000)
         // -e dev_ble_peer 'Galaxy S24' — a phone the radar only hears over Bluetooth (tap it: show/scan sheet).
         intent?.getStringExtra("dev_ble_peer")?.let { container.injectNearbyPeer(it) }
         // -e dev_backup_only 'Pictures/CrossDropTest/' — backups (and freeing up space) see that folder only.

@@ -6,6 +6,7 @@ import com.crossdrop.core.contacts.VCard
 import com.crossdrop.core.discovery.AnnouncedPeers
 import com.crossdrop.core.pairing.PairingStore
 import com.crossdrop.core.protocol.VerifyItem
+import com.crossdrop.core.shake.ShakeMatcher
 import com.crossdrop.core.transfer.ControlHandler
 import com.crossdrop.core.transfer.PairSecret
 import com.crossdrop.core.contacts.VContact
@@ -172,6 +173,17 @@ interface BackupReceiver {
     fun batchEnded(pairId: String, status: SessionStatus, error: String?) {}
 }
 
+/**
+ * Receiving end of installed apps sent from another Android phone: each APK is staged in [stagingFile] and the
+ * whole set handed to [received] once it arrived (grouped by `FileMeta.pkg`), where the person installs them.
+ * Only Android sets one; elsewhere an app offer lands in the inbox as `.apk` files.
+ */
+interface AppReceiver {
+    fun stagingFile(offer: Offer, index: Int, meta: FileMeta): File
+    /** Runs off the transfer thread; [files] are parallel to `offer.files`. */
+    suspend fun received(peerName: String, offer: Offer, files: List<File>)
+}
+
 /** A device asking to become one of "My devices"; both screens show [sas]. */
 class PairPrompt(val peerName: String, val sas: String, internal val answer: CompletableDeferred<Boolean>)
 
@@ -206,6 +218,7 @@ class TransferHub(
     var switchReceiver: SwitchReceiver? = null
     var contactReceiver: ContactReceiver? = null
     var backupReceiver: BackupReceiver? = null
+    var appReceiver: AppReceiver? = null
 
     /** "My devices". Without it this device can't pair, and backup offers are declined. */
     var pairings: PairingStore? = null
@@ -216,6 +229,29 @@ class TransferHub(
     private val _pairPrompt = MutableStateFlow<PairPrompt?>(null)
     /** A pairing request waiting for the human's answer. */
     val pairPrompt: StateFlow<PairPrompt?> = _pairPrompt
+
+    /** Shake to connect: our shakes against SHAKE messages from the radar. */
+    val shakes = ShakeMatcher()
+    private val _shakeMatch = MutableStateFlow<ShakeMatcher.Match?>(null)
+    /** The device we just shook phones with, until the UI has handled it ([shakeHandled]). */
+    val shakeMatch: StateFlow<ShakeMatcher.Match?> = _shakeMatch
+
+    /**
+     * This device was shaken: tell every device on the radar (each checks for its own shake), and match any
+     * SHAKE that arrived just before ours. Devices that can't shake (computers) or predate shaking ignore it.
+     */
+    fun shake(peers: List<Peer>, listenPort: Int) {
+        shakes.local()?.let { _shakeMatch.value = it }
+        for (p in peers) {
+            val ep = p.endpoint ?: continue
+            if (p.vault != null) continue
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching { withTimeoutOrNull(3_000) { engine.control(ep, connectTimeoutMs = 1_500) { shake(listenPort) } } }
+            }
+        }
+    }
+
+    fun shakeHandled() { _shakeMatch.value = null }
 
     /** Backup transfer ids already accepted: a recorded session replayed verbatim must not be taken twice. */
     private val seenBackups = java.util.Collections.synchronizedSet(LinkedHashSet<String>())
@@ -477,6 +513,7 @@ class TransferHub(
                 acceptSwitch(sid, req, route, g)
             }
             offer.kind == OfferKind.CONTACT && contactReceiver != null -> acceptContact(sid, req, route)
+            offer.kind == OfferKind.APP && appReceiver != null -> acceptApps(sid, req, route)
             else -> acceptFiles(sid, req, route)
         }
     }
@@ -543,6 +580,20 @@ class TransferHub(
         return ReceiveDecision.Accept(sink, delta = null)
     }
 
+    private fun acceptApps(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
+        val rx = appReceiver ?: return acceptFiles(sid, req, route)
+        route.kind = OfferKind.APP
+        register(sid, req, OfferKind.APP, quiet = false)
+        // Staged privately (never the shared inbox) until the person installs them; the stream path keeps it simple.
+        // The stream path opens files one after another in offer order, so the count so far is this file's index.
+        val sink: (FileMeta) -> OutputStream = { meta ->
+            val f = synchronized(route.v1Files) { rx.stagingFile(req.offer, route.v1Files.size, meta).also { route.v1Files += it } }
+            f.parentFile?.mkdirs()
+            f.outputStream()
+        }
+        return ReceiveDecision.Accept(sink, delta = null)
+    }
+
     private fun acceptCamera(
         sid: String, req: InboundRequest, route: Route, grantId: String,
         grant: com.crossdrop.core.protocol.TrustGrant?,
@@ -601,8 +652,14 @@ class TransferHub(
 
     /** What the listener does with connections that carry no files. */
     private val control = object : ControlHandler {
-        override fun announced(name: String, instanceId: String, host: String, port: Int) {
-            this@TransferHub.announced?.add(instanceId, name, Endpoint(host, port))
+        override fun announced(name: String, instanceId: String, host: String, port: Int, os: String?) {
+            this@TransferHub.announced?.add(instanceId, name, Endpoint(host, port), os)
+        }
+
+        override fun shaken(name: String, instanceId: String, host: String, port: Int, os: String?) {
+            // Make sure we can reach it back, even if mDNS never showed it here.
+            if (port > 0) this@TransferHub.announced?.add(instanceId, name, Endpoint(host, port), os)
+            shakes.remote(instanceId, name)?.let { _shakeMatch.value = it }
         }
 
         override suspend fun pairRequested(name: String, sas: String): Boolean {
@@ -662,6 +719,18 @@ class TransferHub(
                         throw e
                     } catch (_: Exception) {
                         // The receiver reports its own failures; nothing more to do here.
+                    }
+                }
+            }
+            OfferKind.APP -> appReceiver?.let { rx ->
+                val files = receivedFiles(route, offer)
+                scope.launch {
+                    try {
+                        rx.received(route.peerName, offer, files)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        // The receiver reports its own failures.
                     }
                 }
             }

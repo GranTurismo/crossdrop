@@ -43,6 +43,16 @@ Everything the app does happens entirely on your local network or on-device.
   open, to read another phone's code. CrossDrop then joins the private Wi-Fi link
   in the code (your phone asks you first) and connects to that phone. The link has
   no internet and ends when you leave it.
+- **Shake to connect** — while the radar is on screen, CrossDrop reads the
+  phone's motion sensor to notice a shake, then tells the devices already on your
+  radar that this phone was just shaken. Nothing about the movement is stored or
+  sent; turn it off in Settings.
+- **Sharing apps (Android)** — when you tap "Apps", CrossDrop lists the apps
+  shown in your launcher, on your phone only, so you can pick which to send. The
+  other phone gets the app's installation files and nothing else: no data,
+  accounts or purchases. Received apps wait in CrossDrop's private storage until
+  you install each one through Android's own installer, which asks you first;
+  whatever you don't install is deleted when you tap Done.
 - **My devices (pairing)** — when you pair a phone with your computer, both
   people see the same 6-digit code and must agree. The two devices then keep a
   shared secret key in their own app storage so they can recognise each other
@@ -81,6 +91,7 @@ Everything the app does happens entirely on your local network or on-device.
 | Media location (Android) | So that photos you move or back up keep where they were taken. Without it, Android removes the location from the copy. CrossDrop doesn't read or store your location. |
 | Photo library (full access) | For "Switch phones", to move your whole gallery to your other device, and for backups to your own paired computer. "Free up space" deletes photos only after you confirm in Android's dialog. |
 | Add to photo library | To save photos and videos you receive in a phone move, and the shots you take in CrossDrop's camera. |
+| Install apps (Android) | To install apps another Android phone sent you, through Android's installer, when you tap "Install". Android asks you to allow this once. CrossDrop never installs anything by itself. |
 | Contacts (read and write) | For "Switch phones" (copy your address book to your other device, add contacts moved to this one) and for sending contacts: to list them so you can pick who to send (Android; iPhone uses the system picker instead), and to add contacts someone sent you when you tap "Add to contacts". Duplicates are skipped. |
 
 ## Contact

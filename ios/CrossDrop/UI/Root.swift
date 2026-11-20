@@ -173,7 +173,7 @@ struct RootView: View {
     @ViewBuilder private var tabs: some View {
         ZStack {
             // The radar stays mounted (its pickers and ⌘O handler live there); hidden it stops animating.
-            RadarScreen(active: tab == .radar, onShowConnectGuide: { guideOpen = true },
+            RadarScreen(active: tab == .radar, covered: radarCovered, onShowConnectGuide: { guideOpen = true },
                         onScanCode: WifiJoin.supported ? { scanOpen = true } : nil)
                 .opacity(tab == .radar ? 1 : 0)
                 .allowsHitTesting(tab == .radar)
@@ -193,6 +193,14 @@ struct RootView: View {
     }
 
     // MARK: overlays
+
+    /// Something this view shows sits over the radar (the radar adds its own pickers and the full-screen hosts that
+    /// observe their own models). Shake to connect only listens while nothing does.
+    private var radarCovered: Bool {
+        (coordinator.focusedGroup != nil && !transferHidden) || container.cameraTargets != nil
+            || (coordinator.live != nil && !liveHidden) || container.switchTarget != nil || container.driveOpen
+            || coordinator.incomingOffer != nil || sheets.item != nil || guideOpen || scanOpen || welcome
+    }
 
     @ViewBuilder private var overlays: some View {
         if let g = coordinator.focusedGroup, !transferHidden {

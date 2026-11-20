@@ -375,6 +375,8 @@ root guards (the same MOVE/COPY-onto-root data-loss bug was fixed in Kotlin `Fil
   ContactShare.kt`, Swift `ContactCards`; the hub's `ContactReceiver` stages the file and adds it to the
   address book: Android `contacts/ContactInbox`, iOS `Services/ContactShare.swift`; desktop has no receiver,
   so the card lands in the inbox). Any send whose items are all `.vcf` becomes a contact offer.
+  `app` (installed Android apps, see "Share apps"; `FileMeta.pkg` groups each app's APKs; the hub's `AppReceiver`
+  stages them, only Android sets one, so elsewhere they land in the inbox as `.apk` files).
   `FileMeta.cat` / `mtime` and `Offer.batch` carry what each item is and the move's totals. All optional
   JSON: older peers ignore them.
 - Trust grants (`core/transfer/TrustStore.kt`, Swift `TrustStore`): a receiver accepting a camera/switch
@@ -416,7 +418,7 @@ the merged sightings with it.
 - A probe is a bare connect-and-close, so **listeners must treat EOF before HELLO as nothing**
   (`TransferEngine.receive` in Kotlin and Swift; the vault listeners already did). Older builds
   would surface it as a failed transfer, hence it is opt-in: only peers whose TXT carries
-  `probe=1` are probed (`_crossdrop._tcp.` TXT is `id`, `name`, `probe`); vault beacons are always
+  `probe=1` are probed (`_crossdrop._tcp.` TXT is `id`, `name`, `probe`, `os`); vault beacons are always
   probeable. Peers on older builds simply keep the old "until the mDNS record expires" behaviour.
 - `core/discovery/PeerMerge.kt`: `mergePeers` folds sightings per `instanceId` letting the one with
   an endpoint (NSD) speak for identity — a BLE sighting must not rename a peer to "Nearby device".
@@ -521,6 +523,35 @@ Proven on the Android 16 emulator: the real hotspot's QR carries `CD:` with its 
 emulator's own network, bind, announce to the Mac, the Mac's offer received; Leave. **Not proven**: two real phones (a guest joining the
 host's hotspot), iPhone cameras with the extra field, makers that drop the host's own Wi-Fi (Samsung, Xiaomi/Oppo).
 
+## Shake to connect
+
+Two people shake their phones at the same moment and each phone opens the other's send sheet ("You shook phones
+with …"). Over the network, so Android ↔ iPhone works; both must be on each other's radar (same Wi-Fi or a link).
+Computers can't shake: they answer SHAKE and add the sender to their radar, nothing more.
+
+- **Gesture** (`core/shake/ShakeGesture`, Swift twin with the same numbers): accelerometer magnitude incl. gravity above
+  13.5 m/s² for ≥ 3/4 of the samples over ≥ half of a 500 ms span (≥ 4 samples), 1.5 s cooldown. Walking, a single bump and
+  lying still don't count (`ShakeTest`). Android `shake/ShakeSensor` reads the sensor only while `Root` shows the radar with
+  nothing on top and the activity is resumed (and Settings → Shake to connect is on, pref `shake_enabled`).
+- **Signal**: `TransferHub.shake(peers, listenPort)` sends SHAKE (0x24, `{port}`) to every reachable device on the radar; the
+  listener notes the *arrival* time on its own clock and adds the sender to `AnnouncedPeers` (fixes one-way discovery).
+- **Match** (`core/shake/ShakeMatcher`): our shake vs. their SHAKE's arrival within 2.5 s, whichever comes second; closest wins,
+  each used once; no clock sync needed. `TransferHub.shakeMatch` → `Root` waits ≤ 4 s for that device on the radar, haptic,
+  `RadarScreen` opens its send sheet. A shake with no match shows "Now shake the other phone at the same time"; 2+ reachable
+  devices show "Several devices? Shake both phones to find each other."
+- **Teaching it**: until shaking has matched once on this device (pref `shake_learned`, set by the first match), 2+ reachable
+  devices also bring up an animated card (`ui/radar/ShakeHint.kt`: two phones shake, then a mint ring links them; 2.6 s loop)
+  once per launch, for 12 s or until tapped or the person shakes. Reuses the two strings above.
+- **iOS** (twin): `ios/CrossDrop/Services/ShakeSensor.swift` (CoreMotion raw accelerometer ×9.81, not on Mac Catalyst),
+  `TransferCoordinator.shake(_:listenPort:)`, Swift `ShakeMatcher`/`ShakeGesture` (uptime clock); launch arg `-dev_shake YES`;
+  `crossdrop-cli shake --to h:p --port N` and `recv` (prints `SHAKE-FROM …`).
+- Tests: `ShakeTest` (core), `LinkAndBackupTest.twoPhonesShakenTogetherFindEachOther` (two hubs + a bystander). Emulator:
+  `-e dev_shake 1` shakes 3 s after launch; `adb emu sensor set acceleration 22:0:9.8` / `-22:0:9.8` in a loop drives the real
+  sensor path; Mac-side partner: `JAVA_TOOL_OPTIONS=-Dcrossdrop.shakeProbe=1 ./gradlew :desktop:test --tests
+  'com.crossdrop.LinkInteropProbe' --rerun -i` with `-e dev_peer 10.0.2.2:47000` (it shakes back the moment the emulator's SHAKE
+  arrives). Proven that way on Android 16: both sides match, the sheet opens. **Not proven**: two real phones (how hard people
+  shake, Wi-Fi latency), iPhone ↔ Android on hardware.
+
 ## "My devices" and phone backups
 
 A phone pairs once with a computer, then backs its photos and videos up to it whenever both are on the same network, and can free up space
@@ -558,6 +589,37 @@ once the computer has re-checked the files. Phone → computer only (the desktop
   free up space → Android's dialog → only the three test photos deleted.
 - Not built yet: iPhone as a sender (PhotoKit, like Switch phones), a background job on Android (today: only while the app is open), more
   than one computer, other folders (WhatsApp, Downloads).
+
+## Share apps (Android ↔ Android)
+
+The send sheet shows an **Apps** tile only when the device is an Android phone: the one platform that can install
+what it gets. Devices now say what they run on (`core/Platforms`: `android`/`ios`/`mac`/`windows`/`linux`): TXT `os`
+on `_crossdrop._tcp.` (Android NSD, desktop JmDNS) and `Hello.os`/`HelloAck.os` in the handshake, which is how a peer
+reached through a code or a shake (`AnnouncedPeers`, `ControlHandler.announced/shaken(…, os)`) gets its `Peer.platform`.
+iOS doesn't send it yet: unknown means no tile. Older builds ignore the field (`ignoreUnknownKeys`; Swift's decoder too).
+
+- **Sending** (`apps/InstalledApps`, `ui/apps/AppPickerScreen`): lists launchable, non-system apps through a launcher
+  `<queries>` intent (no `QUERY_ALL_PACKAGES`), with search. Each app goes as its base APK plus every split
+  (`ApplicationInfo.splitSourceDirs`: language, density, CPU), named `<label>.apk` / `<label> - <split>.apk` (only
+  `A-Za-z0-9._ -` survive the receiving inbox), `FileMeta.pkg` = package, offer kind `app`. The files are read when the
+  offer is accepted: an app updated or removed in between fails that send.
+- **Receiving** (`apps/AppInbox`, `ui/apps/ReceivedAppsScreen`): the prompt groups pieces into apps ("wants to send you
+  an app", "Receive"). Accepted APKs are staged in `filesDir/apps-in/<transfer id>/` (never the shared inbox), then the
+  screen lists each app as read *from the APK itself* (label, icon, version, package; nothing the sender claims) with
+  Install / Update / Reinstall (re-checked on resume). Install = one `PackageInstaller` session with all the pieces;
+  Android's own confirmation follows (`STATUS_PENDING_USER_ACTION`). Needs `REQUEST_INSTALL_PACKAGES` and the person's
+  "Install unknown apps" switch: the screen shows a card that opens it. "Done" deletes the batch; a new receive sweeps
+  leftovers older than 10 min; launch clears it all.
+- **Google Play**: `REQUEST_INSTALL_PACKAGES` is allowed for file sharing / transfer and phone transfer, but needs the
+  Permissions Declaration in Play Console before the first release that has it.
+- Tests: `LinkAndBackupTest.appsGoToAnotherAndroidPhoneWithAllTheirPiecesAndLandAsFilesElsewhere` (platform learnt from
+  the handshake, pieces grouped and staged in order, a computer keeps them as files), `ControlTest` (os both ways).
+  Emulator, single device: `-e dev_peer 127.0.0.1:0` puts this phone's own listener on the radar, so it can send an app to
+  itself. Use a throwaway app (a code-free APK with a language split, built with `aapt2 link --split`, signed with the
+  debug key, `adb install-multiple`), search the picker before screenshotting (it lists the person's real apps), and
+  uninstall it and reset `appops set com.crossdrop.debug REQUEST_INSTALL_PACKAGES default` afterwards. Proven that way on
+  Android 16: grouped prompt, staging, allow card → system switch, fresh install of base + split through Android's
+  dialog, Open. **Not proven**: two real phones, large Play apps (asset packs / Play Feature Delivery are not sent).
 
 ## Wire protocol
 
@@ -598,7 +660,7 @@ on push (v2 manifest path keeps it). v2 peers on either side negotiate down.
 **Control exchanges** (no files; sent instead of an OFFER right after the handshake, `core/transfer/Control.kt`,
 `TransferEngine.control` on the initiating side, a `ControlHandler` on the listener): `ANNOUNCE 0x20` `{port}` → `{port: 0}`
 ("reach me here"); `PAIR 0x21` `{pairId}` → `{accepted}` (the receiver's human decides; key = HKDF(shared, binding, "crossdrop/v1/pair/<id>"));
-`PAIR_CHECK 0x22` `{nonce, proofs}` → `{nonce, proofs: [0 or 1]}` with HMAC(key, "check-i"/"check-r" ‖ 0 ‖ binding ‖ nonce); then any number
+`SHAKE 0x24` `{port}` → `{port: 0}` (shake to connect, see above); `PAIR_CHECK 0x22` `{nonce, proofs}` → `{nonce, proofs: [0 or 1]}` with HMAC(key, "check-i"/"check-r" ‖ 0 ‖ binding ‖ nonce); then any number
 of `BACKUP_VERIFY 0x23` `{items:[{key,root,size}]}` → `{ok:[key]}` on the same connection. Builds that predate these fail the unknown
 frame before any session exists, so nothing shows on their side (Kotlin hub and Swift coordinator both ignore failures before an accept).
 Pairing proofs on transfers: `Offer.pairProof` = HMAC(key, "offer" ‖ 0 ‖ binding ‖ transferId), `Accept.pairProof` the same with "accept";

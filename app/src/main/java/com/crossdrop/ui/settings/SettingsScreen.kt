@@ -91,6 +91,8 @@ fun SettingsScreen(
     onRename: (String) -> Unit,
     onSetNsd: (Boolean) -> Unit,
     onSetBle: (Boolean) -> Unit,
+    shakeEnabled: Boolean = true,
+    onSetShake: (Boolean) -> Unit = {},
     inboxStats: () -> Pair<Int, Long>,
     onWipeInbox: () -> Unit,
     onClearHistory: () -> Unit,
@@ -165,6 +167,11 @@ fun SettingsScreen(
                     RowSeparator()
                     ToggleRow(
                         "Bluetooth LE", tr("Shows how close each device is"), bleEnabled, onSetBle, icon = CdIcons.Bluetooth,
+                    )
+                    RowSeparator()
+                    ToggleRow(
+                        tr("Shake to connect"), tr("Shake two phones at the same time to find each other"),
+                        shakeEnabled, onSetShake, icon = CdIcons.Shake,
                     )
                 }
 

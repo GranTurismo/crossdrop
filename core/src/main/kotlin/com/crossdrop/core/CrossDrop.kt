@@ -2,6 +2,15 @@ package com.crossdrop.core
 
 import java.util.UUID
 
+/** Values of [CrossDrop.TXT_OS] and of `Hello.os`: what a device runs on. */
+object Platforms {
+    const val ANDROID = "android"
+    const val IOS = "ios"
+    const val MAC = "mac"
+    const val WINDOWS = "windows"
+    const val LINUX = "linux"
+}
+
 /** Constants shared by every transport layer (and the future Rust core). */
 object CrossDrop {
     /** mDNS/NSD service type for LAN discovery. */
@@ -15,6 +24,9 @@ object CrossDrop {
      * closes without sending anything — peers may then use one as a liveness probe.
      */
     const val TXT_PROBE = "probe"
+
+    /** TXT key on [NSD_SERVICE_TYPE]: the advertiser's platform, one of [Platforms]. Absent on older builds. */
+    const val TXT_OS = "os"
 
     /** BLE 5.0 advertisement service UUID — full 128-bit, app-owned. */
     val BLE_SERVICE_UUID: UUID = UUID.fromString("cd0d5e55-7a11-4c0f-9e2b-3f1a2b3c4d5e")

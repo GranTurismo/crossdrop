@@ -24,6 +24,8 @@ class ManualDiscovery : PeerDiscovery {
             endpoint = Endpoint(host, port),
             sources = setOf(DiscoverySource.NSD),
             lastSeenMs = System.currentTimeMillis(),
+            // Hand-added peers are the other emulator in Android tests.
+            platform = com.crossdrop.core.Platforms.ANDROID,
         ))
     }
 

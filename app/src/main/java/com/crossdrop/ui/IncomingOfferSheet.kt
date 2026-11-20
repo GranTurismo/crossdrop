@@ -108,6 +108,8 @@ fun IncomingOfferSheet(
     val cards = offer.contacts
     val contact = kind == OfferKind.CONTACT
     val contactCount = cards.size.coerceAtLeast(1)
+    val apps = remember(offer) { if (kind == OfferKind.APP) appGroups(files) else emptyList() }
+    val app = apps.isNotEmpty()
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
     val startedAt = remember(offer) { System.currentTimeMillis() }
@@ -146,6 +148,7 @@ fun IncomingOfferSheet(
                             when {
                                 text != null -> if (isLink) tr("Incoming link") else tr("Incoming text")
                                 contact -> if (contactCount == 1) tr("Incoming contact") else tr("Incoming contacts")
+                                app -> if (apps.size == 1) tr("Incoming app") else tr("Incoming apps")
                                 camera -> tr("Live camera")
                                 switch -> tr("Switch phones")
                                 else -> tr("Incoming files")
@@ -169,6 +172,7 @@ fun IncomingOfferSheet(
                                 text != null ->
                                     if (isLink) tr("{0} sent you a link", offer.peerName) else tr("{0} sent you some text", offer.peerName)
                                 contact -> trPlural(contactCount, "{0} sent you a contact", "{0} sent you {n} contacts", offer.peerName)
+                                app -> trPlural(apps.size, "{0} wants to send you an app", "{0} wants to send you {n} apps", offer.peerName)
                                 camera -> tr("{0} wants to share their camera", offer.peerName)
                                 switch -> tr("{0} wants to move to this device", offer.peerName)
                                 else -> trPlural(files.size, "{0} wants to send you a file", "{0} wants to send you {n} files", offer.peerName)
@@ -209,6 +213,8 @@ fun IncomingOfferSheet(
                         }
                     } else if (switch) {
                         SwitchSummary(offer)
+                    } else if (app) {
+                        AppList(apps)
                     } else GlassCard(
                         Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline,
                         contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
@@ -269,6 +275,7 @@ fun IncomingOfferSheet(
                                 switch -> tr("Start moving")
                                 contact && addsToContacts -> tr("Add to contacts")
                                 contact -> tr("Save")
+                                app -> tr("Receive")
                                 else -> tr("Accept")
                             }, { onRespond(true) }, Modifier.weight(1.5f),
                             style = PillStyle.Accent, height = 62.dp, fontSize = 16,
@@ -278,6 +285,55 @@ fun IncomingOfferSheet(
                 }
             }
         }
+    }
+}
+
+/** One row per app (its base APK and splits counted together), named as the sender called it. */
+private class AppGroup(val name: String, val bytes: Long)
+
+private fun appGroups(files: List<com.crossdrop.core.protocol.FileMeta>): List<AppGroup> =
+    files.groupBy { it.pkg ?: it.name }.values.map { parts ->
+        AppGroup(parts.first().name.removeSuffix(".apk"), parts.sumOf { it.size })
+    }
+
+@Composable
+private fun AppList(apps: List<AppGroup>) {
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 28.dp, fill = Glass, border = Hairline,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp),
+    ) {
+        apps.take(4).forEachIndexed { i, a ->
+            if (i > 0) RowSeparator()
+            Row(
+                Modifier.fillMaxWidth().padding(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(
+                    Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)).background(GlassMid),
+                    contentAlignment = Alignment.Center,
+                ) { CdIcon(CdIcons.Apk, Accent, size = 22.dp) }
+                Text(
+                    a.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                )
+                Text(formatBytes(a.bytes), style = monoStyle(12, TextDim))
+            }
+        }
+        if (apps.size > 4) {
+            RowSeparator(color = HairlineSoft)
+            Text(
+                tr("+ {0} more", apps.size - 4),
+                color = TextDim, fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+            )
+        }
+        RowSeparator(color = HairlineSoft)
+        Text(
+            tr("Nothing installs by itself: you install each app afterwards, through Android's own installer."),
+            color = TextDim, fontSize = 13.sp, lineHeight = 18.sp,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
+        )
     }
 }
 

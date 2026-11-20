@@ -29,8 +29,8 @@ flagships (Pixel 10, Galaxy S24–S26, a few Xiaomi/OnePlus/OPPO/HONOR/vivo).
 | 6 | Back up my phone to my computer, then free up space | A weekly reason to open the app; no cloud, no subscription | L | **building** |
 | 7 | Collect everyone's photos | Every use puts the app in front of 5–10 new people | M | idea |
 | 8 | TVs on the radar | "Wow" moment; nothing to install on the TV | M | idea |
-| 9 | Share apps, and pass CrossDrop on offline | The loop that grew SHAREit/Xender | M | idea (policy check first) |
-| 10 | Shake to connect | Solves "which Galaxy is you?"; a 3-second demo clip | S | idea |
+| 9 | Share apps, and pass CrossDrop on offline | The loop that grew SHAREit/Xender | M | **apps built** (Android ↔ Android); passing CrossDrop on: idea |
+| 10 | Shake to connect | Solves "which Galaxy is you?"; a 3-second demo clip | S | **built** (Android, iPhone) |
 | 11 | Scan to computer (document → PDF) | Daily use for students and offices | S–M | idea |
 | 12 | Appear in every Android's built-in share menu | Phones without the app can still send | L | idea (protocol risk) |
 
@@ -50,6 +50,14 @@ flagships (Pixel 10, Galaxy S24–S26, a few Xiaomi/OnePlus/OPPO/HONOR/vivo).
   the computer's name, an edited file failing the re-check), Android emulator against a Mac-side computer with three
   throwaway photos (paired, backed up, filed by month, freed through Android's dialog). Not built: iPhone sender,
   Android background job, several computers.
+- **10. Shake to connect — built on Android and iPhone**, over the network so iPhone ↔ Android works; an animated card teaches it.
+  Shake within 2.5 s of each other → each phone opens the other's send sheet. Verified: gesture/matcher/exchange tests,
+  two-hub test, Android emulator (real sensor path + a Mac partner that shakes back). Not verified: two real phones.
+- **9. Share apps — built for Android ↔ Android** (the first half of the idea; handing CrossDrop itself over is not built).
+  "Apps" tile in the send sheet only for Android phones (devices now say what they run on); the receiver installs each app
+  through Android's installer, splits included. Verified: two-hub test (pieces grouped and staged privately; a computer
+  keeps them as files), Android 16 emulator sending a throwaway base + split app to itself and installing it fresh. Not
+  verified: two real phones, big Play apps (games with asset packs). Needs the Play Console declaration before release.
 - Wire protocol: ANNOUNCE / PAIR / PAIR_CHECK / BACKUP_VERIFY frames and pairing proofs (AGENTS.md → Wire protocol).
   Older builds ignore them silently.
 
@@ -230,18 +238,20 @@ installed there.
 Send an installed app to a friend's phone, and let any phone hand over CrossDrop itself without the
 internet (the receiver scans a code, the browser downloads the APK from the sender).
 
-- APK serving reuses the QR share (`HttpShareServer`) over the direct link (idea 5).
-- Installing on the receiver needs `REQUEST_INSTALL_PACKAGES`, and listing apps needs
-  `QUERY_ALL_PACKAGES`: both need a Play declaration and P2P sharing must be the app's core purpose.
-  **Check the policy before building.** Split APKs (most Play apps) need bundling into one `.apks`
-  and an installer session on the receiver.
+- **Apps: built, Android ↔ Android** (AGENTS.md → Share apps). Listing uses a launcher `<queries>` instead of
+  `QUERY_ALL_PACKAGES` (no declaration for that); installing needs `REQUEST_INSTALL_PACKAGES`, which Google Play
+  allows for file sharing and phone transfer, with a Permissions Declaration in Play Console. Splits travel as
+  separate files and install in one `PackageInstaller` session (no `.apks` bundle needed).
+- Passing CrossDrop on offline: not built. APK serving would reuse the QR share (`HttpShareServer`) over the
+  direct link (idea 5); the receiver's browser downloads it and Android asks to allow the browser as a source.
 
 ## 10. Shake to connect
 
 Two people shake their phones at the same moment; each radar highlights the other.
 
-- Accelerometer peak → the BLE advert carries a short-lived "shook at t" flag; the other phone matches
-  timestamps within ~1.5 s. Android only (iOS has no BLE layer). A delight and a demo clip, not a need.
+- Built over the network instead of Bluetooth (so iPhones take part): a shaken phone sends SHAKE to every device on its
+  radar; each matches it against its own shake within 2.5 s on its own clock (no clock sync). Needs both phones on each
+  other's radar (same Wi-Fi or a link from idea 5). See AGENTS.md → Shake to connect.
 
 ## 11. Scan to computer
 

@@ -25,6 +25,41 @@ import java.nio.file.Files
  */
 class LinkInteropProbe {
     /**
+     * Shake to connect against an emulator (`-Dcrossdrop.shakeProbe=1`): the Mac listens on :47000 and plays a
+     * phone shaken at the same moment — when the emulator's SHAKE arrives it shakes back at once (through an adb
+     * forward), so both sides should match. Launch the emulator with `-e dev_peer 10.0.2.2:47000 -e dev_shake 1`.
+     */
+    @Test fun macShakesBack() = runBlocking {
+        assumeTrue(System.getProperty("crossdrop.shakeProbe") == "1")
+        val home = Files.createTempDirectory("crossdrop-shake-probe").toFile()
+        System.setProperty("crossdrop.home", File(home, "support").path)
+        // The emulator knows the Mac only as its hand-added peer (`-e dev_peer`), whose radar id is this; real
+        // discovery uses the device's own id, so taking it here is what makes the match land on a radar node.
+        val mac = LinkAndBackupTest.Node("Mac shaker", File(home, "mac"), instanceId = "manual-10.0.2.2:47000")
+        val listener = ServerSocket(47_000)
+        mac.server.stop()
+        mac.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            while (true) { val s = runCatching { listener.accept() }.getOrNull() ?: break; mac.coordinator.hub.onInboundSocket(s) }
+        }
+        println("PROBE shaker listening on 10.0.2.2:47000")
+        val emu = withTimeoutOrNull(180_000) {
+            var p = mac.announced.peers.value.values.firstOrNull()
+            while (p == null) { delay(50); p = mac.announced.peers.value.values.firstOrNull() }
+            p
+        } ?: error("no SHAKE within 3 minutes")
+        val port = emu.endpoint!!.port
+        println("PROBE shake from ${emu.name} (port $port): shaking back")
+        ProcessBuilder("adb", "forward", "tcp:$port", "tcp:$port").start().waitFor()
+        mac.coordinator.hub.shake(listOf(emu.copy(endpoint = Endpoint("127.0.0.1", port))), 47_000)
+        println("PROBE match on the Mac: ${mac.coordinator.hub.shakeMatch.value}")
+        delay(8_000)
+        ProcessBuilder("adb", "forward", "--remove", "tcp:$port").start().waitFor()
+        listener.close(); mac.close()
+        home.deleteRecursively()
+        Unit
+    }
+
+    /**
      * The Mac as a paired backup computer for an emulator (`-Dcrossdrop.backupProbe=1`): listens on :47000,
      * agrees to the first pairing request, files what arrives, answers re-checks, and prints what it holds
      * every 10 s for [minutes]. The emulator reaches it at 10.0.2.2:47000 (`-e dev_peer 10.0.2.2:47000`).

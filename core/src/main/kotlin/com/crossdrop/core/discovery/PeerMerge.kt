@@ -25,6 +25,7 @@ private fun combine(a: Peer, b: Peer): Peer {
         lastSeenMs = maxOf(lead.lastSeenMs, other.lastSeenMs),
         vault = lead.vault ?: other.vault,
         probeable = lead.probeable || other.probeable,
+        platform = lead.platform ?: other.platform,
     )
 }
 

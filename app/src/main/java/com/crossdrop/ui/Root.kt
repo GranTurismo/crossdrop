@@ -60,6 +60,7 @@ import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.di.AppContainer
 import com.crossdrop.net.isTerminal
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.crossdrop.service.TransferService
 import com.crossdrop.ui.inbox.InboxScreen
@@ -115,6 +116,10 @@ fun Root(container: AppContainer) {
     val directLink by container.directLink.state.collectAsState()
     val directLinkOn = directLink is com.crossdrop.core.connect.DirectLinkState.On
     val joinState by container.wifiJoin.state.collectAsState()
+    val shakeMatch by container.coordinator.hub.shakeMatch.collectAsState()
+    val shakeEnabled by container.shakeEnabled.collectAsState()
+    val shakeWaitingSince by container.shakeWaitingSince.collectAsState()
+    val shakeLearned by container.shakeLearned.collectAsState()
 
     var tabName by rememberSaveable { mutableStateOf(Tab.RADAR.name) }
     // First run: a skippable welcome. The radar (and its permission prompts) waits until it is done.
@@ -140,6 +145,8 @@ fun Root(container: AppContainer) {
     var cameraShots by remember { mutableStateOf(emptyList<com.crossdrop.ui.camera.CameraShot>()) }
     var switchTarget by remember { mutableStateOf<com.crossdrop.core.Peer?>(null) }
     var contactTargets by remember { mutableStateOf<List<com.crossdrop.core.Peer>?>(null) }
+    var appTargets by remember { mutableStateOf<List<com.crossdrop.core.Peer>?>(null) }
+    val appsIn by container.appInbox.state.collectAsState()
     // A contact offer accepted while CrossDrop can't write contacts yet: answered after the permission dialog.
     var contactOfferWaiting by remember { mutableStateOf<com.crossdrop.net.IncomingOffer?>(null) }
     val contactsPermission = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -170,6 +177,45 @@ fun Root(container: AppContainer) {
 
     BackHandler(enabled = tab != Tab.RADAR) { tabName = Tab.RADAR.name }
 
+    // ---- shake to connect: the accelerometer runs only while the radar itself is on screen
+    val view = androidx.compose.ui.platform.LocalView.current
+    val overlayUp = welcome || guideOpen || connectOpen || scanOpen || backupOpen || driveOpen ||
+        (focused != null && !transferHidden) || cameraTargets != null || (live != null && !liveHidden) ||
+        contactTargets != null || appTargets != null || appsIn != null || switchTarget != null || (switchIn != null && !switchInHidden) ||
+        shareState != null || vaultUi != null || incomingOffer != null
+    val shakeActive = shakeEnabled && tab == Tab.RADAR && !overlayUp
+    val lifecycle = androidx.compose.ui.platform.LocalLifecycleOwner.current.lifecycle
+    androidx.compose.runtime.DisposableEffect(shakeActive, lifecycle) {
+        val sensor = com.crossdrop.shake.ShakeSensor(context) { container.shakeNow() }
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e ->
+            when (e) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> if (shakeActive) sensor.start()
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> sensor.stop()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        if (shakeActive && lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.RESUMED)) sensor.start()
+        onDispose { lifecycle.removeObserver(observer); sensor.stop() }
+    }
+    // A match: the other device's send sheet opens. It may take a moment to appear on the radar (a device
+    // that wasn't there is added by its SHAKE and shown after its first liveness check).
+    var shakePeer by remember { mutableStateOf<com.crossdrop.core.Peer?>(null) }
+    LaunchedEffect(shakeMatch) {
+        val m = shakeMatch ?: return@LaunchedEffect
+        view.performHapticFeedback(
+            if (android.os.Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.CONFIRM
+            else android.view.HapticFeedbackConstants.LONG_PRESS,
+        )
+        val peer = kotlinx.coroutines.withTimeoutOrNull(4_000) {
+            container.peers.first { all -> all[m.instanceId]?.endpoint != null }[m.instanceId]
+        }
+        container.coordinator.hub.shakeHandled()
+        container.shakeWaitingSince.value = 0L
+        container.markShakeLearned()
+        if (peer != null) { tabName = Tab.RADAR.name; shakePeer = peer }
+    }
+
     val navInset = 66.dp + 18.dp + 16.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     CompositionLocalProvider(LocalNavInset provides navInset) {
@@ -188,6 +234,7 @@ fun Root(container: AppContainer) {
                         container.coordinator.sendText(targets, text)
                     },
                     onContacts = { targets -> contactTargets = targets },
+                    onApps = { targets -> appTargets = targets },
                     onSwitchPhones = { peer -> container.switchSender.close(); switchTarget = peer },
                     onShareToAnyone = { uris ->
                         TransferService.start(container.contextForService())
@@ -212,6 +259,11 @@ fun Root(container: AppContainer) {
                     },
                     joinedHost = (joinState as? com.crossdrop.net.WifiJoin.State.Joined)?.hostName,
                     onLeaveLink = container.wifiJoin::leave,
+                    shakeEnabled = shakeEnabled,
+                    shakeLearned = shakeLearned,
+                    shakeWaitingSince = shakeWaitingSince,
+                    shakeMatch = shakePeer,
+                    onShakeHandled = { shakePeer = null },
                 )
                 Tab.TRANSFERS -> TransfersScreen(
                     groups = groups,
@@ -231,6 +283,8 @@ fun Root(container: AppContainer) {
                     port = listenerPort,
                     nsdEnabled = nsdEnabled,
                     bleEnabled = bleEnabled,
+                    shakeEnabled = shakeEnabled,
+                    onSetShake = container::setShakeEnabled,
                     onRename = container::setDeviceName,
                     onSetNsd = container::setNsdEnabled,
                     onSetBle = container::setBleEnabled,
@@ -394,6 +448,20 @@ fun Root(container: AppContainer) {
                 )
             }
 
+            // ---- installed apps: pick some, send them to Android phones
+            Overlay(appTargets) { targets ->
+                BackHandler { appTargets = null }
+                com.crossdrop.ui.apps.AppPickerScreen(
+                    target = if (targets.size == 1) targets.first().name else trPlural(targets.size, "1 device", "{n} devices"),
+                    onSend = { apps ->
+                        appTargets = null
+                        TransferService.start(container.contextForService())
+                        container.coordinator.sendApps(targets, apps)
+                    },
+                    onClose = { appTargets = null },
+                )
+            }
+
             // ---- switch phones: this phone → another device
             Overlay(switchTarget) { peer ->
                 BackHandler { if (switchOut?.finished != false) { container.switchSender.close(); switchTarget = null } }
@@ -462,6 +530,12 @@ fun Root(container: AppContainer) {
                     onClose = container.vaultExplorer::close,
                     onUnlock = container.vaultExplorer::unlock,
                 )
+            }
+
+            // ---- apps another phone sent, to install one by one
+            Overlay(appsIn) { _ ->
+                BackHandler { container.appInbox.dismiss() }
+                com.crossdrop.ui.apps.ReceivedAppsScreen(container.appInbox, onDone = container.appInbox::dismiss)
             }
 
             // ---- contact cards that just arrived

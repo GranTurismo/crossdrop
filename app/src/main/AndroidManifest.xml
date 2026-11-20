@@ -51,6 +51,16 @@
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <!-- Switch phones and backups keep where each photo was taken: without this Android strips the EXIF location -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
+    <!-- Apps sent from another Android phone: the person installs each one through Android's installer -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- Sending apps lists only the ones in the launcher: no "see all apps" (QUERY_ALL_PACKAGES) permission -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:name=".CrossDropApp"
