@@ -266,8 +266,9 @@ class LinkAndBackupTest {
             a.coordinator.hub.send(listOf(pc), apps, com.crossdrop.core.transfer.SendOptions(kind = com.crossdrop.core.protocol.OfferKind.APP))
             await("app offer on C") { c.coordinator.incomingOffer.value }
             c.coordinator.respondToOffer(true)
-            val names = await("C filed them") { c.inbox.list().map { it.file.name }.toSet().takeIf { it.size == 3 } }
-            assertEquals(setOf("Notes.apk", "Notes - config.arm64_v8a.apk", "Maps.apk"), names)
+            // The last file can still be a `.part` while it lands: wait for the finished names, not a count.
+            val filed = setOf("Notes.apk", "Notes - config.arm64_v8a.apk", "Maps.apk")
+            await("C filed them") { c.inbox.list().map { it.file.name }.toSet().takeIf { it == filed } }
         } finally { a.close(); b.close(); c.close() }
     }
 }
