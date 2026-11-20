@@ -18,7 +18,13 @@ enum class FrameType(val code: Int) {
     /** LAN vault: browse/stat/pull/push + PIN auth (see core/vault/). */
     VAULT_LS(0x10), VAULT_DIR(0x11), VAULT_STAT(0x12), VAULT_ATTR(0x13),
     VAULT_PULL(0x14), VAULT_DATA(0x15), VAULT_PUSH_INIT(0x16),
-    VAULT_PUSH_ACK(0x17), VAULT_DONE(0x18), VAULT_ERR(0x19), VAULT_AUTH(0x1A);
+    VAULT_PUSH_ACK(0x17), VAULT_DONE(0x18), VAULT_ERR(0x19), VAULT_AUTH(0x1A),
+    /**
+     * Exchanges that carry no files, sent instead of an OFFER right after the handshake (see
+     * [com.crossdrop.core.transfer.ControlChannel]). Builds that predate them fail the unknown frame
+     * before any session exists, so nothing shows on their side.
+     */
+    ANNOUNCE(0x20), PAIR(0x21), PAIR_CHECK(0x22), BACKUP_VERIFY(0x23);
 
     companion object {
         private val byCode = entries.associateBy { it.code }

@@ -213,10 +213,10 @@ public final class TransferEngine {
     static let dataTimeout: TimeInterval = 60
     static let deltaTimeout: TimeInterval = 600
 
-    private let identity: SessionIdentity
-    private let deviceName: () -> String
-    private let instanceId: String
-    private let version: Int
+    let identity: SessionIdentity
+    let deviceName: () -> String
+    let instanceId: String
+    let version: Int
     private let gate = ReceiveGate(limit: Limits.maxConcurrentReceives)
 
     public init(identity: SessionIdentity, deviceName: @escaping () -> String, instanceId: String,
@@ -440,8 +440,10 @@ public final class TransferEngine {
         receive(socket: s, cancel: cancel, decideRequest: { decide($0.peerName, $0.offer) }, emit: emit)
     }
 
-    /// `receive` with the whole `InboundRequest` — sender identity, code and trust check.
-    public func receive(socket s: TCPSocket, cancel: CancelToken = CancelToken(),
+    /// `receive` with the whole `InboundRequest` — sender identity, code and trust check. A connection that opens
+    /// with a control frame instead of an OFFER (announce, pairing) goes to `control`; it produces no events beyond
+    /// `.secured` (without a handler it fails as "expected OFFER", like builds that predate those frames).
+    public func receive(socket s: TCPSocket, cancel: CancelToken = CancelToken(), control: ControlHandler? = nil,
                         decideRequest decide: @escaping (InboundRequest) -> ReceiveDecision,
                         emit: @escaping (TransferEvent) -> Void) {
         let started = Date()
@@ -476,8 +478,14 @@ public final class TransferEngine {
             let peerName = TransferEngine.displayName(hello.deviceName)
             emit(.secured(peerName: peerName, sas: keys.sas))
 
+            // -- offer (or a control exchange that carries no files)
             let (offerType, offerPayload) = try fio.read()
-            guard offerType == .offer else { throw ProtocolError("expected OFFER, got \(offerType)") }
+            if offerType != .offer {
+                guard let control else { throw ProtocolError("expected OFFER, got \(offerType)") }
+                try serveControl(s, fio, keys, peerName: peerName, peerInstanceId: hello.instanceId,
+                                 first: (offerType, offerPayload), handler: control)
+                return
+            }
             let offer = try offerPayload.decodeJSON(Offer.self)
             _ = try TransferEngine.validate(offer)
 

@@ -1,4 +1,4 @@
 "NSLocalNetworkUsageDescription" = "CrossDrop, yakındaki cihazları bulmak ve dosyaları onlara doğrudan göndermek için yerel ağını kullanır — hiçbir şey Wi-Fi ağından dışarı çıkmaz.";
-"NSCameraUsageDescription" = "CrossDrop’un kamerası, çektiğin her fotoğrafı veya videoyu çektiğin anda seçtiğin cihazlara gönderir.";
+"NSCameraUsageDescription" = "CrossDrop kamerayı başka bir telefonun kodunu taramak ve çektiğiniz fotoğraf ve videoları seçtiğiniz cihazlara göndermek için kullanır.";
 "NSMicrophoneUsageDescription" = "CrossDrop’un kamerasında kaydettiğin videolar için ses.";
 "NSPhotoLibraryUsageDescription" = "Telefon değiştirmek için CrossDrop fotoğraflarını ve videolarını okur ve doğrudan diğer cihazına taşır.";

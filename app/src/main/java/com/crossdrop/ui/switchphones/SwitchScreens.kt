@@ -84,9 +84,8 @@ import com.crossdrop.ui.theme.monoStyle
 import com.crossdrop.ui.transfer.formatBytes
 import kotlinx.coroutines.launch
 
-private fun mediaPermissions(): Array<String> =
-    if (Build.VERSION.SDK_INT >= 33) arrayOf(Manifest.permission.READ_MEDIA_IMAGES, Manifest.permission.READ_MEDIA_VIDEO)
-    else arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+/** Reading the library, plus the photos' locations (asked together: no separate dialog). */
+private fun mediaPermissions(): Array<String> = com.crossdrop.media.MediaLibrary.readPermissions()
 
 private fun granted(context: Context, vararg p: String) =
     p.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
@@ -123,7 +122,7 @@ fun SwitchSendScreen(
         plan = sender.plan(includeContacts = granted(context, Manifest.permission.READ_CONTACTS))
     }
     val p = plan
-    val mediaOk = granted(context, *mediaPermissions()) || p?.partialMedia == true
+    val mediaOk = com.crossdrop.media.MediaLibrary.canReadLibrary(context) || p?.partialMedia == true
     val contactsOk = granted(context, Manifest.permission.READ_CONTACTS)
 
     Box(Modifier.fillMaxSize()) {

@@ -73,6 +73,8 @@ enum CdIcons {
     // actions & glyphs
     static let qr = CdIcon(.rect(3, 3, 7, 7, 1), .rect(14, 3, 7, 7, 1), .rect(3, 14, 7, 7, 1),
                            d("M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"), stroke: 1.8)
+    /// Viewfinder: "Scan a code".
+    static let scan = CdIcon(d("M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M7 12h10"))
     static let arrowRight = CdIcon(d("M5 12h14M13 6l6 6-6 6"), stroke: 2.2, mirrors: true)
     static let arrowUp = CdIcon(d("M12 19V5M6 11l6-6 6 6"), stroke: 2.2)
     static let arrowDown = CdIcon(d("M12 5v14M6 13l6 6 6-6"), stroke: 2.2)

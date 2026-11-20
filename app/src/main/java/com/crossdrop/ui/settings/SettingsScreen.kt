@@ -97,6 +97,8 @@ fun SettingsScreen(
     onShowWelcome: () -> Unit = {},
     vaultState: com.crossdrop.net.VaultHostManager.State? = null,
     onOpenDrive: () -> Unit = {},
+    backup: com.crossdrop.backup.BackupManager.State? = null,
+    onOpenBackup: () -> Unit = {},
     onSelfTest: (() -> Unit)?,
     onAddPeer: ((String, Int) -> Unit)?,
     refreshSignal: Any?,
@@ -168,6 +170,7 @@ fun SettingsScreen(
 
                 // ------------------------------------------- wireless drive --
                 DriveCard(vaultState, onOpenDrive)
+                BackupCard(backup, onOpenBackup)
 
                 // -------------------------------------------------- storage --
                 SectionLabel(tr("Storage"), Modifier.padding(top = 4.dp))
@@ -287,6 +290,37 @@ private fun NavRow(icon: ImageVector, title: String, subtitle: String, onClick: 
             Text(subtitle, color = TextDim, fontSize = 12.sp)
         }
         CdIcon(CdIcons.ChevronRight, TextDim, size = 18.dp)
+    }
+}
+
+/** "Back up to a computer": what it does before pairing; then the computer and how far the backup is. */
+@Composable
+private fun BackupCard(state: com.crossdrop.backup.BackupManager.State?, onOpen: () -> Unit) {
+    val device = state?.device
+    GlassCard(
+        Modifier.fillMaxWidth(), radius = 28.dp, border = if (device != null) Accent.copy(alpha = 0.3f) else com.crossdrop.ui.theme.Hairline,
+        contentPadding = PaddingValues(18.dp), onClick = onOpen,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Box(
+                Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Accent.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) { CdIcon(CdIcons.Backup, Accent, size = 24.dp) }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(tr("Back up to a computer"), style = displayStyle(17, tracking = -0.02f))
+                val run = state?.run
+                Text(
+                    when {
+                        device == null -> tr("Photos and videos to your own computer. No cloud.")
+                        run != null && run.itemsTotal > 0 -> tr("Backing up {0} of {1}", run.itemsDone, run.itemsTotal)
+                        state.counts?.pending == 0 -> tr("Everything is on {0}", device.name)
+                        else -> tr("Paired with {0}", device.name)
+                    },
+                    color = TextDim, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                )
+            }
+            CdIcon(CdIcons.ChevronRight, TextDim, size = 20.dp)
+        }
     }
 }
 

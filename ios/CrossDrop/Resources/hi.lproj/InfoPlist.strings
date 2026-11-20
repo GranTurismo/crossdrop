@@ -1,4 +1,4 @@
 "NSLocalNetworkUsageDescription" = "CrossDrop आस-पास के डिवाइस ढूंढने और उन्हें सीधे फ़ाइलें भेजने के लिए आपके लोकल नेटवर्क का इस्तेमाल करता है — कुछ भी आपके Wi-Fi से बाहर नहीं जाता।";
-"NSCameraUsageDescription" = "CrossDrop का कैमरा हर फ़ोटो या वीडियो लेते ही आपके चुने हुए डिवाइस पर भेज देता है।";
+"NSCameraUsageDescription" = "CrossDrop कैमरे का इस्तेमाल दूसरे फ़ोन का कोड स्कैन करने और आपकी ली गई फ़ोटो और वीडियो आपके चुने डिवाइस पर भेजने के लिए करता है।";
 "NSMicrophoneUsageDescription" = "CrossDrop के कैमरे में रिकॉर्ड किए गए वीडियो के लिए आवाज़।";
 "NSPhotoLibraryUsageDescription" = "फ़ोन बदलने के लिए CrossDrop आपकी फ़ोटो और वीडियो पढ़ता है और उन्हें सीधे आपके दूसरे डिवाइस पर पहुंचा देता है।";

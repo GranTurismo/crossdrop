@@ -94,6 +94,11 @@ fun SettingsScreen(
     onShowWelcome: () -> Unit = {},
     vaultState: com.crossdrop.net.VaultHostManager.State? = null,
     onOpenDrive: () -> Unit = {},
+    myDevices: List<com.crossdrop.core.pairing.PairedDevice> = emptyList(),
+    lastBackups: Map<String, com.crossdrop.backup.DesktopBackupReceiver.Summary> = emptyMap(),
+    backupFolder: java.io.File? = null,
+    onUnpair: (String) -> Unit = {},
+    onChangeBackupFolder: () -> Unit = {},
     refreshSignal: Any?,
 ) {
     var renaming by remember { mutableStateOf(false) }
@@ -169,6 +174,7 @@ fun SettingsScreen(
 
                 // ------------------------------------------- wireless drive --
                 DriveCard(vaultState, onOpenDrive)
+                MyDevicesCard(myDevices, lastBackups, backupFolder, onUnpair, onChangeBackupFolder)
 
                 // -------------------------------------------------- storage --
                 SectionLabel(tr("Storage"), Modifier.padding(top = 4.dp))
@@ -271,6 +277,74 @@ private fun NavRow(icon: ImageVector, title: String, subtitle: String, onClick: 
 }
 
 /** Accent call-to-action while off; a live status card (pulsing dot) while the drive is on. */
+/**
+ * "My devices": phones paired with this computer. Each backs up into its own folder; Unpair stops that
+ * (the files stay). Hidden until something is paired: pairing starts on the phone.
+ */
+@Composable
+private fun MyDevicesCard(
+    devices: List<com.crossdrop.core.pairing.PairedDevice>,
+    last: Map<String, com.crossdrop.backup.DesktopBackupReceiver.Summary>,
+    folder: java.io.File?,
+    onUnpair: (String) -> Unit,
+    onChangeFolder: () -> Unit,
+) {
+    if (devices.isEmpty()) return
+    var unpairing by remember { mutableStateOf<com.crossdrop.core.pairing.PairedDevice?>(null) }
+    SectionLabel(tr("My devices"), Modifier.padding(top = 6.dp))
+    com.crossdrop.ui.GroupCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
+        devices.forEachIndexed { i, d ->
+            if (i > 0) RowSeparator()
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                CdIcon(com.crossdrop.ui.radar.deviceIconFor(d.name), TextPrimary, size = 22.dp)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(d.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val s = last[d.id]
+                    Text(
+                        if (s != null) tr("Last backup {0}", relativeTime(s.lastAt))
+                        else tr("Backs up to this computer"),
+                        color = TextDim, fontSize = 12.sp,
+                    )
+                }
+                com.crossdrop.ui.ChipButton(tr("Unpair"), { unpairing = d }, height = 32.dp, fontSize = 12)
+            }
+        }
+    }
+    if (folder != null) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(tr("Backups go to"), color = TextDim, fontSize = 12.sp)
+                Text(folder.path, style = monoStyle(12, TextSecondary), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            com.crossdrop.ui.ChipButton(com.crossdrop.platform.Platform.current.fileManager, {
+                folder.mkdirs(); com.crossdrop.platform.SystemActions.reveal(folder)
+            }, height = 32.dp, fontSize = 12)
+            com.crossdrop.ui.ChipButton(tr("Change"), onChangeFolder, height = 32.dp, fontSize = 12)
+        }
+    }
+    unpairing?.let { d ->
+        ConfirmDialog(
+            title = tr("Unpair {0}?", d.name),
+            text = tr("{0} can no longer back up here. Its photos and videos stay in the backup folder.", d.name),
+            confirmLabel = tr("Unpair"),
+            onConfirm = { unpairing = null; onUnpair(d.id) },
+            onDismiss = { unpairing = null },
+        )
+    }
+}
+
+private fun relativeTime(at: Long): String {
+    val mins = ((System.currentTimeMillis() - at) / 60_000).coerceAtLeast(0).toInt()
+    val hours = mins / 60
+    val days = hours / 24
+    return when {
+        mins < 1 -> tr("just now")
+        mins < 60 -> trPlural(mins, "1 min ago", "{n} min ago")
+        hours < 24 -> trPlural(hours, "1 hour ago", "{n} hours ago")
+        else -> trPlural(days, "1 day ago", "{n} days ago")
+    }
+}
+
 @Composable
 private fun DriveCard(state: com.crossdrop.net.VaultHostManager.State?, onOpen: () -> Unit) {
     if (state == null) {

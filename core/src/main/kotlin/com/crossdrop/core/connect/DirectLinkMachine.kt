@@ -6,9 +6,17 @@ import kotlinx.coroutines.flow.StateFlow
 sealed interface DirectLinkState {
     data object Off : DirectLinkState
     data object Starting : DirectLinkState
-    data class On(val ssid: String, val password: String?, val security: String) : DirectLinkState {
-        /** What the QR code holds: phone cameras read it and offer to join. */
-        val qr: String get() = WifiQr.payload(ssid, password, security)
+    data class On(
+        val ssid: String,
+        val password: String?,
+        val security: String,
+        /** This phone's address on the private network and its transfer listener, once known. */
+        val host: String? = null,
+        val port: Int = 0,
+        val instanceId: String? = null,
+    ) : DirectLinkState {
+        /** What the QR code holds: phone cameras read it and offer to join; CrossDrop also reads [host]. */
+        val qr: String get() = WifiQr.payload(ssid, password, security, host, port, instanceId)
     }
     data class Failed(val reason: DirectLinkFailure) : DirectLinkState
 }
@@ -49,6 +57,14 @@ class DirectLinkMachine {
     @Synchronized fun failed(request: Int, reason: DirectLinkFailure) {
         if (request != token || _state.value !is DirectLinkState.Starting) return
         _state.value = DirectLinkState.Failed(reason)
+    }
+
+    /** The hotspot's address became known: the code now also tells CrossDrop where to connect. */
+    @Synchronized fun located(request: Int, host: String, port: Int, instanceId: String): Boolean {
+        val on = _state.value as? DirectLinkState.On ?: return false
+        if (request != token) return false
+        _state.value = on.copy(host = host, port = port, instanceId = instanceId)
+        return true
     }
 
     /** The system ended a running hotspot (the user turned on their own, Wi-Fi went off, …). */

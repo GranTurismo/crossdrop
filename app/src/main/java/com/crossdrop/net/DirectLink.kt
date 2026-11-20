@@ -31,7 +31,13 @@ import kotlin.time.Duration.Companion.seconds
  * The phone answers a request whenever it likes, or never; [DirectLinkMachine] keeps stale answers
  * (after a timeout, a Stop, or a newer request) from changing anything.
  */
-class DirectLink(private val context: Context, private val scope: CoroutineScope) {
+class DirectLink(
+    private val context: Context,
+    private val scope: CoroutineScope,
+    /** Our transfer listener and per-launch id: CrossDrop's scanner reads them from the code. */
+    private val listenPort: () -> Int = { 0 },
+    private val instanceId: String? = null,
+) {
 
     private val machine = DirectLinkMachine()
     val state: StateFlow<DirectLinkState> = machine.state
@@ -40,6 +46,7 @@ class DirectLink(private val context: Context, private val scope: CoroutineScope
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var startTimeout: Job? = null
     private var autoStop: Job? = null
+    private var locate: Job? = null
 
     /** The runtime permission still needed to create the network, or null when we have it. */
     fun missingPermission(): String? {
@@ -73,6 +80,8 @@ class DirectLink(private val context: Context, private val scope: CoroutineScope
                     synchronized(this@DirectLink) { reservation = r }
                     autoStop?.cancel()
                     autoStop = scope.launch { delay(AUTO_STOP); stop() }
+                    locate?.cancel()
+                    locate = scope.launch { findAddress(request) }
                 }
 
                 override fun onStopped() {
@@ -103,10 +112,50 @@ class DirectLink(private val context: Context, private val scope: CoroutineScope
     fun stop() {
         startTimeout?.cancel(); startTimeout = null
         autoStop?.cancel(); autoStop = null
+        locate?.cancel(); locate = null
         machine.stop()
         val r = synchronized(this) { reservation.also { reservation = null } }
         runCatching { r?.close() }
     }
+
+    /**
+     * The hotspot interface gets its address a moment after the system says "started". Once it has one,
+     * the code also carries it (with our listener port), so CrossDrop on the other phone connects straight
+     * here instead of hoping discovery works on a hotspot.
+     */
+    private suspend fun findAddress(request: Int) {
+        repeat(20) {
+            val ip = hotspotIpv4()
+            val port = listenPort()
+            if (ip != null && port > 0 && instanceId != null) {
+                machine.located(request, ip, port, instanceId)
+                return
+            }
+            delay(500)
+        }
+    }
+
+    /**
+     * Our IPv4 on the hotspot: a private address on an interface that isn't one of the networks we use as a
+     * client (our own Wi-Fi, mobile data). Makers name it ap0, swlan0, wlan1… From Android 15 the hotspot is
+     * itself listed as a network, marked LOCAL_NETWORK; it must not count as a client network.
+     */
+    @Suppress("DEPRECATION")
+    private fun hotspotIpv4(): String? = runCatching {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        val clientIfaces = cm.allNetworks.filter { n ->
+            Build.VERSION.SDK_INT < 35 ||
+                cm.getNetworkCapabilities(n)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK) != true
+        }.mapNotNull { cm.getLinkProperties(it)?.interfaceName }.toSet()
+        val candidates = java.net.NetworkInterface.getNetworkInterfaces().toList()
+            .filter { it.isUp && !it.isLoopback && it.name !in clientIfaces }
+            .flatMap { i ->
+                i.inetAddresses.toList().filterIsInstance<java.net.Inet4Address>()
+                    .filter { it.isSiteLocalAddress }.map { i.name to it.hostAddress }
+            }
+        candidates.firstOrNull { (n, _) -> n.startsWith("ap") || n.startsWith("swlan") }?.second
+            ?: candidates.firstOrNull { (n, _) -> n.startsWith("wlan") }?.second
+    }.getOrNull()
 
     /** Debug builds only: shows a state without a hotspot (emulators can't make one). */
     fun forceStateForDebug(s: DirectLinkState) = machine.force(s)

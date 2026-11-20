@@ -38,6 +38,8 @@ struct RadarScreen: View {
     @Environment(\.navInset) private var navInset
     var active = true
     var onShowConnectGuide: () -> Void = {}
+    /// "Scan a code" (iPhone/iPad): join another phone's private link. Nil where the device can't (Mac).
+    var onScanCode: (() -> Void)? = nil
     @StateObject private var connectHint = ConnectHintModel()
     @State private var pickingLanguage = I18n.devFlag("dev_language_sheet")
 
@@ -72,7 +74,8 @@ struct RadarScreen: View {
                 .padding(.top, 8)
 
                 VStack(spacing: 10) {
-                    if connectHint.hint != .none { ConnectHelpCard(hint: connectHint.hint, onGuide: onShowConnectGuide) }
+                    if connectHint.hint != .none { ConnectHelpCard(hint: connectHint.hint, onGuide: onShowConnectGuide, onScan: onScanCode) }
+                    JoinedLinkRow(join: container.wifiJoin)
                     SendToAnyoneCard { startAnyoneFlow() }
                     ForEach(drives.prefix(2)) { d in DriveRow(peer: d) { startSendFlow(d) } }
                 }

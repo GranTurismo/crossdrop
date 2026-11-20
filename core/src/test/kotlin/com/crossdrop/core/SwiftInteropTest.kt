@@ -145,4 +145,43 @@ class SwiftInteropTest {
         assertEquals(1_800_000L, last.bytesSkipped)
         assertArrayEquals(a.readBytes(), File(inbox, "doc.bin").readBytes())
     }
+
+    /** ANNOUNCE across languages: an iPhone that scanned an Android phone's code, and the other way round. */
+    @Test
+    fun `swift announces itself to kotlin`() = runBlocking {
+        assumeTrue(cli != null)
+        val listener = ServerSocket(0)
+        var seen: List<Any>? = null
+        val handler = object : com.crossdrop.core.transfer.ControlHandler {
+            override fun announced(name: String, instanceId: String, host: String, port: Int) { seen = listOf(name, instanceId, host, port) }
+        }
+        val served = async(kotlinx.coroutines.Dispatchers.IO) { engine("kotlin", 3).receiveRequest(listener.accept(), handler) { ReceiveDecision.Reject() }.toList() }
+        val p = ProcessBuilder(cli, "announce", "--to", "127.0.0.1:${listener.localPort}", "--port", "43210", "--name", "iPhone", "--id", "5e1f7c11")
+            .redirectErrorStream(true).start()
+        val out = finish(p, "s→k announce")
+        val events = served.await()
+        listener.close()
+        assertTrue(out, out.lines().any { it.trim() == "ANNOUNCED kotlin 1a2b3c4d" })
+        assertEquals(listOf("iPhone", "5e1f7c11", "127.0.0.1", 43210), seen)
+        assertTrue("no transfer events", events.none { it is TransferEvent.Failed || it is TransferEvent.Completed })
+    }
+
+    @Test
+    fun `kotlin announces itself to swift`() = runBlocking {
+        assumeTrue(cli != null)
+        val inbox = Files.createTempDirectory("ann").toFile()
+        val (proc, port) = startReceiver(inbox, 3)
+        try {
+            val (name, id) = engine("kotlin", 3).control(Endpoint("127.0.0.1", port)) { announce(40999); peerName to peerInstanceId }
+            assertEquals("swift-cli", name)
+            assertEquals("5e1f7c11", id)
+            val line = proc.inputStream.bufferedReader().let { r ->
+                generateSequence { r.readLine() }.first { it.startsWith("ANNOUNCED-FROM") }
+            }
+            assertEquals("ANNOUNCED-FROM kotlin 1a2b3c4d 127.0.0.1 40999", line.trim())
+        } finally {
+            proc.destroy()
+            inbox.deleteRecursively()
+        }
+    }
 }

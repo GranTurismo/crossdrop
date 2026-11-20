@@ -109,6 +109,32 @@ class AppContainer {
     val switchReceiver = com.crossdrop.switchphones.DesktopSwitchReceiver(coordinator.hub, history)
         .also { coordinator.hub.switchReceiver = it }
 
+    /** "My devices": phones paired with this computer. */
+    val pairings = com.crossdrop.core.pairing.PairingStore(java.io.File(AppDirs.support, "pairings.json"))
+        .also { coordinator.hub.pairings = it }
+
+    /** Where phone backups go (each phone in its own folder); Settings can move it. */
+    val backupRoot: java.io.File
+        get() = prefs.getString("backup_root")?.let { java.io.File(it) }
+            ?: java.io.File(System.getProperty("user.home"), "Pictures/CrossDrop Backup")
+
+    fun setBackupRoot(dir: java.io.File) = prefs.putString("backup_root", dir.path)
+
+    /** Paired phones back up here without asking. */
+    val backups = com.crossdrop.backup.DesktopBackupReceiver(
+        pairings, history, root = { backupRoot }, stateDir = AppDirs.support,
+        folderNames = object : com.crossdrop.backup.DesktopBackupReceiver.FolderNames {
+            override fun get(pairId: String) = prefs.getString("backup_folder_$pairId")
+            override fun put(pairId: String, name: String) = prefs.putString("backup_folder_$pairId", name)
+        },
+    ).also { coordinator.hub.backupReceiver = it }
+
+    /** Unpair a device: it can no longer back up here (its files stay where they are). */
+    fun unpair(id: String) {
+        pairings.remove(id)
+        backups.forget(id)
+    }
+
     /** Files or text waiting for the user to pick devices (drag-and-drop, Open With, Send to…). */
     val pending = MutableStateFlow<com.crossdrop.ui.radar.Pending?>(null)
 
@@ -132,7 +158,11 @@ class AppContainer {
     private val mdns = MdnsDiscovery(hub, deviceName::value, instanceId)
     private val vaultDiscovery = VaultDiscovery(hub) { vaultHost.vaultId }
 
-    private val discoveries: List<PeerDiscovery> = listOf(mdns, vaultDiscovery)
+    /** Devices that announced themselves (a phone that joined the same link, a network that blocks mDNS). */
+    val announced = com.crossdrop.core.discovery.AnnouncedPeers(scope).also { coordinator.hub.announced = it }
+
+    // After mDNS: for a device seen both ways, its own advert speaks for it.
+    private val discoveries: List<PeerDiscovery> = listOf(mdns, vaultDiscovery, announced)
 
     // --------------------------------------------------- discovery toggle --
 

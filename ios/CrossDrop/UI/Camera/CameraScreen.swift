@@ -132,7 +132,8 @@ extension CameraModel: AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordi
     }
 }
 
-private struct PreviewLayer: UIViewRepresentable {
+/// Full-bleed camera preview (also the "Scan a code" viewfinder).
+struct PreviewLayer: UIViewRepresentable {
     let session: AVCaptureSession
     final class Host: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }

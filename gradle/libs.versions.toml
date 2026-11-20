@@ -13,6 +13,7 @@ jmdns = "3.5.9"
 slf4j = "2.0.16"
 jna = "5.17.0"
 camerax = "1.5.3"
+zxing = "3.5.3"
 
 [libraries]
 # Desktop: common BackHandler (Esc = back). Already a transitive runtime dep of Compose Desktop.
@@ -43,6 +44,8 @@ camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.r
 camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "camerax" }
 camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
+# In-app QR scanner ("Scan a code"): decoder only, no ZXing Android UI.
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 # Windows keep-awake (SetThreadExecutionState) in :desktop; unused on macOS.
 jna = { group = "net.java.dev.jna", name = "jna", version.ref = "jna" }
 

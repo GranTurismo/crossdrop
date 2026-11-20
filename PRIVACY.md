@@ -1,6 +1,6 @@
 # CrossDrop Privacy Policy
 
-**Last updated:** November 2026 (language list and "Connect directly")
+**Last updated:** November 2026 (scanning a code, "My devices" and backups to your computer)
 
 ## The short version
 
@@ -39,6 +39,21 @@ Everything the app does happens entirely on your local network or on-device.
   receives a card adds it to its address book when you tap "Add to contacts"
   (people already there are skipped); a computer saves it as a `.vcf` file in
   CrossDrop's inbox.
+- **Scanning a code** — "Scan a code" uses the camera only while that screen is
+  open, to read another phone's code. CrossDrop then joins the private Wi-Fi link
+  in the code (your phone asks you first) and connects to that phone. The link has
+  no internet and ends when you leave it.
+- **My devices (pairing)** — when you pair a phone with your computer, both
+  people see the same 6-digit code and must agree. The two devices then keep a
+  shared secret key in their own app storage so they can recognise each other
+  later. It is never sent over the network or advertised, and a device that is
+  not paired learns nothing from the check. Unpair at any time in Settings.
+- **Backups to your computer** — a paired phone copies its photos and videos to
+  that computer over your local network, encrypted like every transfer, and never
+  anywhere else. The computer keeps them in a folder you can see and move. The
+  phone remembers which photos the computer confirmed. **Free up space** deletes
+  phone copies only after the computer has re-checked each file, and only after
+  you confirm in Android's own dialog.
 - **Accept once** — when you accept a live camera feed or a phone move, the two
   devices share a one-time secret so the following photos or batches don't ask
   again. It lives only in memory, ends when you close the viewer, finish the
@@ -46,7 +61,7 @@ Everything the app does happens entirely on your local network or on-device.
 
 ## What CrossDrop does not do
 
-- No data collection, sharing, or sale — nothing leaves your device.
+- No data collection, sharing, or sale — nothing leaves your local network, and nothing ever reaches us.
 - No tracking, analytics, crash-reporting SDKs, or advertising.
 - No account, sign-in, email, or personal identifiers required.
 - No internet connectivity is used or needed.
@@ -60,8 +75,11 @@ Everything the app does happens entirely on your local network or on-device.
 | Change Wi-Fi state (Android) | "Connect directly": creates a temporary private Wi-Fi link (no internet is shared) so a device with no shared Wi-Fi can join it by scanning a QR code. It stops when you stop it or after 30 minutes. |
 | Notifications | Show transfer progress and completion, and offers that arrive while the app isn't open. |
 | Photos / files (system pickers) | You choose exactly which files to send, each time. |
-| Camera, microphone | Only while CrossDrop's camera screen is open: to take the photos and videos you send (the microphone records video sound). |
-| Photo library (full access) | Only for "Switch phones", to move your whole gallery to your other device. |
+| Camera, microphone | Only while CrossDrop's camera screen is open: to take the photos and videos you send (the microphone records video sound). The camera is also used on the "Scan a code" screen, to read another phone's code. |
+| Change network state (Android) | "Scan a code": join the other phone's private Wi-Fi link from inside the app. Android asks you before joining. |
+| Hotspot configuration (iPhone) | "Scan a code": join the other phone's private Wi-Fi link. iOS asks you before joining. |
+| Media location (Android) | So that photos you move or back up keep where they were taken. Without it, Android removes the location from the copy. CrossDrop doesn't read or store your location. |
+| Photo library (full access) | For "Switch phones", to move your whole gallery to your other device, and for backups to your own paired computer. "Free up space" deletes photos only after you confirm in Android's dialog. |
 | Add to photo library | To save photos and videos you receive in a phone move, and the shots you take in CrossDrop's camera. |
 | Contacts (read and write) | For "Switch phones" (copy your address book to your other device, add contacts moved to this one) and for sending contacts: to list them so you can pick who to send (Android; iPhone uses the system picker instead), and to add contacts someone sent you when you tap "Add to contacts". Duplicates are skipped. |
 

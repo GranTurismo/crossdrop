@@ -60,7 +60,7 @@ targets:
         NSBonjourServices:
           - _crossdrop._tcp
           - _crossdrop-vault._tcp
-        NSCameraUsageDescription: CrossDrop's camera sends each photo or video to the devices you picked the moment you take it.
+        NSCameraUsageDescription: CrossDrop uses the camera to scan another phone's code, and to send the photos and videos you take to the devices you pick.
         NSMicrophoneUsageDescription: Sound for the videos you record in CrossDrop's camera.
         NSPhotoLibraryUsageDescription: To switch phones, CrossDrop reads your photos and videos and moves them straight to your other device.
         NSPhotoLibraryAddUsageDescription: CrossDrop saves photos and videos it receives — and the ones you take in its camera — to your library.
@@ -84,6 +84,8 @@ targets:
         SUPPORTS_MACCATALYST: YES
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        # iPhone/iPad: Hotspot Configuration ("Scan a code" joins another phone's private link).
+        CODE_SIGN_ENTITLEMENTS[sdk=iphone*]: CrossDrop/CrossDrop.entitlements
         CODE_SIGN_ENTITLEMENTS[sdk=macosx*]: CrossDrop/CrossDrop-Mac.entitlements
         ENABLE_HARDENED_RUNTIME[sdk=macosx*]: YES
   # Share → CrossDrop from any app (iPhone, iPad, Mac): finds devices and sends from inside the extension.

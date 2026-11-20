@@ -1,12 +1,282 @@
 # CrossDrop: feature ideas
 
 Ideas agreed as worth building, with what the code already gives us and what is missing.
-Noted 2026-11-16 against release 0.4.0; all four were built on 2026-11-17 (see Status).
+
+- **Round 1** (noted 2026-11-16 against 0.4.0, all built 2026-11-17): send to several devices, Switch
+  phones, instant camera, share from any app. Sections 1–4.
+- **Round 2** (noted 2026-11-20 against 0.8.0): ideas meant to make people *love* the app, not just use it
+  once. Sections 5–12, plus small delights and what we decided not to do. **5 and 6 are being built.**
 
 Related: [CROSSDROP.md](CROSSDROP.md) (what exists today), [AGENTS.md](AGENTS.md) (architecture
 and wire protocol).
 
+### Why round 2 looks the way it does
+
+Play Console (28 days to 2026-11-16): 75 installs but only 10 first opens and 11 monthly active
+devices. Top countries: India, Egypt, Indonesia, Iran, where many people have mobile data and no home
+Wi-Fi. The radar needs a shared Wi-Fi and it already *sees* phones over Bluetooth that it can't reach
+(tapping such a phone did nothing). Our reading, not measured: the first experience often ends at an
+empty radar. And nothing brings people back: a transfer is a one-off. So round 2 is ordered as
+1) never a dead end, 2) a reason to come back weekly, 3) every use shows the app to new people.
+
+Competitors move too: LocalSend 1.18 (Aug 2026) added "receive via link" (browser → device),
+auto-accept from favourites and a CLI; Quick Share ↔ AirDrop works, but only on a short list of
+flagships (Pixel 10, Galaxy S24–S26, a few Xiaomi/OnePlus/OPPO/HONOR/vivo).
+
+| # | Idea | Why people would love it | Size | State |
+| --- | --- | --- | --- | --- |
+| 5 | Works anywhere (no Wi-Fi, no internet) | The empty radar disappears; first use works in a park | M | **building** |
+| 6 | Back up my phone to my computer, then free up space | A weekly reason to open the app; no cloud, no subscription | L | **building** |
+| 7 | Collect everyone's photos | Every use puts the app in front of 5–10 new people | M | idea |
+| 8 | TVs on the radar | "Wow" moment; nothing to install on the TV | M | idea |
+| 9 | Share apps, and pass CrossDrop on offline | The loop that grew SHAREit/Xender | M | idea (policy check first) |
+| 10 | Shake to connect | Solves "which Galaxy is you?"; a 3-second demo clip | S | idea |
+| 11 | Scan to computer (document → PDF) | Daily use for students and offices | S–M | idea |
+| 12 | Appear in every Android's built-in share menu | Phones without the app can still send | L | idea (protocol risk) |
+
+### Round 2 status (2026-11-20, uncommitted)
+
+- **5. Works anywhere — built on Android, desktop and iPhone** (iPhone scans and joins; it can't host). Connect directly asks *Show a code* /
+  *Scan a code*; the code carries the host's address (`CD:` field); Android scans with CameraX + ZXing, joins with
+  `WifiNetworkSpecifier` and ANNOUNCEs itself; Bluetooth-only radar nodes open the same choice; "Linked with …" row
+  with Leave. Verified: JVM tests (code format, ZXing still reads the network, announce through the real hub),
+  Android 16 emulator against a Mac-side peer (real hotspot code carries `CD:`; real join → announce → offer received;
+  Leave); iPhone simulator with a Swift CLI host (announce both ways, "Linked with …" row, host leaving), Kotlin⇄Swift
+  interop tests for ANNOUNCE in both directions. Not verified: two real phones, the real iPhone join
+  (`NEHotspotConfiguration`) and camera scan, iPhone cameras with the extra field.
+- **6. Backup to a computer — built for Android → desktop.** Pairing with the 6-digit code ("My devices"), automatic
+  backup while CrossDrop is open, month folders, re-check before "Free up space", unpair on both sides; photos now
+  keep their GPS location (also fixes Switch phones). Verified: JVM/desktop tests end to end (incl. a stranger using
+  the computer's name, an edited file failing the re-check), Android emulator against a Mac-side computer with three
+  throwaway photos (paired, backed up, filed by month, freed through Android's dialog). Not built: iPhone sender,
+  Android background job, several computers.
+- Wire protocol: ANNOUNCE / PAIR / PAIR_CHECK / BACKUP_VERIFY frames and pairing proofs (AGENTS.md → Wire protocol).
+  Older builds ignore them silently.
+
 ---
+
+## 5. Works anywhere: no shared Wi-Fi needed
+
+Two phones with no Wi-Fi in common (a park, mobile data only, a guest network that hides devices)
+connect in two taps: one shows a code, the other scans it **inside CrossDrop**, and they are on each
+other's radar.
+
+### How it should behave
+
+- "Can't see the other device?" → **Connect directly** asks one question: *Show a code* (this phone
+  makes the private link; Android only) or *Scan a code* (Android and iPhone).
+- *Scan a code* opens the camera. Scanning the other phone's code joins its private link (Android asks
+  once: "Connect to AndroidShare_1234?"; iPhone asks "Join network?") and the other phone appears on
+  the radar within a couple of seconds. **Both** directions work: the phone that showed the code sees
+  the scanner on its radar too, so either side can send.
+- Scanning any ordinary Wi-Fi code (a router's sticker) joins that network the same way; then normal
+  discovery takes over.
+- Tapping a phone the radar only hears over Bluetooth (it is near but not on your Wi-Fi) no longer
+  does nothing: a sheet says so and offers *Show a code* / *Scan their code*.
+- The guest leaves the link with **Leave** on the radar's "Connected to …" row, or by closing
+  CrossDrop; its phone then goes back to its usual Wi-Fi. Phone cameras without CrossDrop keep
+  working exactly as before (join the network, then "Send to anyone").
+
+### What exists today
+
+- Android hosts a local-only hotspot (`net/DirectLink`) and shows a standard `WIFI:` QR
+  (`core/connect/WifiQr`). Proven on the emulator only.
+- The guest side relied on mDNS over the hotspot interface, which is **unproven** (NSD on the AP
+  interface differs by Android version and maker) and is not needed if the guest knows the address.
+- In-app camera code (CameraX / AVFoundation) exists; there is no QR *decoder* (ZXing is test-only).
+- The radar already shows Bluetooth-only peers, but `RadarScreen.startSendFlow` returns on them.
+
+### What has to change
+
+- **The code carries the host's address.** The `WIFI:` text gets one extra field,
+  `CD:<ipv4>/<port>/<instance id>;`, before the closing `;;`. Phone cameras ignore unknown fields
+  (ZXing and Android's own parser match known keys only), so the zero-app path is unchanged; CrossDrop
+  reads the field and connects straight to the host without mDNS. The host's address is the IPv4 of its
+  hotspot interface, found after the hotspot starts (the QR is enriched when it appears).
+- **ANNOUNCE (new frame 0x20).** The guest connects to the host, does the normal encrypted handshake
+  and sends `Announce{port}`; the host answers with its own. The host adds the guest to its radar as an
+  *announced peer* (`core/discovery/AnnouncedPeers`, probed for liveness like mDNS peers, capped, dropped
+  when it stops re-announcing). The guest re-announces every 15 s while joined. Older builds fail the
+  unknown frame silently (no session was created, so nothing shows).
+- **Android guest:** `net/WifiJoin` requests the network with `WifiNetworkSpecifier` (local-only, no
+  internet; the system shows its own confirmation), binds the process to it while joined, connects and
+  announces, and releases it on Leave. In-app scanner = CameraX `ImageAnalysis` + ZXing core's QR
+  reader (a shipped dependency now: about 0.3 MB after R8; checked against the 15 MB budget).
+- **iPhone guest:** `NEHotspotConfiguration` (joinOnce) + AVFoundation's built-in QR detection, then
+  the same connect + announce. Needs the Hotspot Configuration entitlement. iPhones can't host.
+- **Desktop:** nothing to scan with; it accepts announcements (shared hub), so a Mac/PC that joins a
+  phone's link by name is still reachable once it sends, and phones reach it through the code's address.
+
+### Decisions (easy to change)
+
+- Announcements are accepted on any network, not only on a hotspot: any device on the network could
+  already advertise any name over mDNS, and this also rescues networks that block multicast.
+- No auto-send on join; joining only makes the devices visible to each other.
+
+### Not verified until real hardware
+
+- Two real phones: guest joins the host's hotspot and both radars show each other (emulators can't
+  join each other's hotspot; the connect + announce part is tested between emulators and with JVM
+  tests by skipping the Wi-Fi step, `-e dev_join_skip_wifi`).
+- iPhone camera with the extra `CD:` field (expected to ignore it; not checked on a device).
+- Makers that drop the host's own Wi-Fi when the hotspot starts (Samsung, Xiaomi/Oppo).
+
+---
+
+## 6. Back up my phone to my computer, then free up space
+
+The phone's photos and videos copy themselves to *your* computer whenever both are on the same
+network, organised by month, at full quality and with their dates and locations. Once the computer
+has confirmed every byte, the phone offers to free up space by deleting copies older than a month.
+No cloud, no account, no subscription.
+
+### How it should behave
+
+- **Pair once ("My devices").** Settings → *Back up to a computer* → pick the computer on the radar.
+  Both screens show the same 6-digit code; the computer asks "Pair with Pixel 9?". From then on the
+  two recognise each other even though their network identities rotate on every launch.
+- **Back up.** The first run sends everything; later runs only what is new. It starts by itself when
+  CrossDrop is opened and the computer is on the radar (and from *Back up now*); progress shows on the
+  backup screen and as a quiet row on the radar. The computer files them under
+  `Pictures/CrossDrop Backup/<phone>/<year>/<month>/` with original dates, skipping what it already has.
+- **Free up space.** The backup screen says "1 240 photos and videos (8.4 GB) older than 30 days are
+  safely on Gogita's MacBook" → *Free up 8.4 GB*. CrossDrop first asks the computer to re-check each
+  file (it must be on the network and every file must still hash to what was sent), then Android's own
+  delete confirmation appears. Nothing is ever deleted that the computer didn't just re-confirm.
+- **Unpair** from either side (Settings → My devices). An unpaired device can't back up to you and
+  its backup offers are declined without a prompt.
+
+### What exists today
+
+- Switch phones already reads the whole library (`switchphones/SwitchSender`), sends it in batches of
+  ≤100 items / 512 MB with a resume ledger, and the desktop files it (`DesktopSwitchReceiver`).
+- v2/v3 transfers end with per-file BLAKE3 roots both sides compare, so a finished batch *is* proof
+  that the computer holds exactly those bytes.
+- Trust between devices is memory-only (`TrustStore`) by design; identities rotate per launch.
+
+### What has to change
+
+- **Pairing (`core/pairing/`).** A new sealed `PAIR` exchange after the normal handshake; the human
+  check is the existing 6-digit code. Both sides derive the pairing key from the session —
+  `HKDF(shared secret, salt = session binding, "crossdrop/v1/pair/<pair id>")` — so the key never
+  crosses the network. Stored per device (`PairingStore`, JSON in app storage; never in cloud backups).
+- **Recognising a paired device without a stable id.** Nothing new is advertised. The phone asks each
+  device on the radar `PAIR_CHECK{nonce, proofs}`, one HMAC per pairing it holds, each bound to the
+  session and the nonce; a device that holds one of the keys answers with its own proof over the same
+  nonce. Strangers learn nothing linkable (a proof is random-looking and different every session) and
+  a recorded answer can't be replayed (fresh nonce).
+- **Backup offers.** `Offer.kind = backup`, `FileMeta.key` (the phone's stable item id) and
+  `Offer.pairProof`; the computer accepts without a prompt only when the proof matches a pairing, and
+  answers with `Accept.pairProof` over the transfer id, which the phone **checks before sending a byte**
+  (a device that merely uses the computer's name gets nothing). Unpaired backup offers are declined
+  silently.
+- **Ledger (`core/backup/BackupLedger`).** Append-only file per pairing on the phone: item key, size,
+  BLAKE3 root, when. Written only after a batch completes with matching roots.
+- **Verify before delete (`BACKUP_VERIFY`, new frame).** Phone sends keys + roots + a nonce; the
+  computer re-hashes each file from its backup index and answers with the keys it still holds intact,
+  plus a proof over the nonce. Only those are offered for deletion
+  (`MediaStore.createDeleteRequest`, Android 11+; the system asks the user).
+- **Locations.** Android strips GPS from photos read without `ACCESS_MEDIA_LOCATION` +
+  `MediaStore.setRequireOriginal`; both are added (this also fixes Switch phones, which lost
+  locations until now).
+- **Desktop receiver.** `backup/DesktopBackupReceiver`: staging per batch → month folders → index
+  (`backup-<pair id>.json`: key → path, size, root) used for dedupe and for verification.
+
+### Decisions (easy to change)
+
+- Phone → computer only for now (the desktop app is the backup target; iPhone as a sender comes after
+  Android, through PhotoKit like Switch phones).
+- Photos and videos only (no WhatsApp/other folders yet). Default "free up" age: 30 days.
+- Starts automatically only while CrossDrop is open (Android also gets a background job later: a
+  `JobScheduler` job on unmetered networks that looks for the paired computer and sends what's new).
+
+### Risks
+
+- Deleting is the one destructive thing CrossDrop does. Guarded by: computer re-hash right before
+  deleting, mutual pairing proofs bound to a fresh nonce, Android's own confirmation dialog, and a
+  minimum age.
+- Play's photo/video permission declaration already covers full library access (Switch phones); the
+  backup use must be added to the declaration text.
+
+---
+
+## 7. Collect everyone's photos
+
+At a wedding, trip or party, one person shows a code; everyone scans it — with CrossDrop or just the
+phone's browser — adds their photos at full quality and leaves with the whole set. Every use shows
+the app to 5–10 people who don't have it.
+
+- **First step: "Receive from anyone"** (browser → this device). `HttpShareServer` is GET-only today;
+  it needs a small upload page and a `POST` path (the Wireless Drive's `VaultHttp` already has
+  multipart upload, Range and a jail to reuse). LocalSend shipped this in 1.18.
+- Then: an album session = upload + download in the same page; duplicates dropped by BLAKE3; the host
+  sees who added what; "Download all" as a ZIP (exists for shares).
+- Open questions: cap per guest? moderation (host removes a photo)? how long the album lives.
+
+## 8. TVs on the radar
+
+Smart TVs appear on the radar; tap one, pick a video or photos, and it plays on the TV with nothing
+installed there.
+
+- Many Samsung, LG and Sony sets are DLNA/UPnP renderers: discover with SSDP, then tell the TV to play
+  a URL our Wireless Drive server already serves with Range (`VaultHttp`). Needs an SSDP client, a SOAP
+  `AVTransport` call and media-format checks (TVs refuse what they can't decode).
+- Google TV / Fire TV sticks don't render DLNA reliably: a small CrossDrop TV app (Android TV,
+  `LEANBACK_LAUNCHER`) receives like any device and opens the file. Also a store listing in the TV
+  category, where "send files to TV" apps have large audiences.
+
+## 9. Share apps, and pass CrossDrop on offline
+
+Send an installed app to a friend's phone, and let any phone hand over CrossDrop itself without the
+internet (the receiver scans a code, the browser downloads the APK from the sender).
+
+- APK serving reuses the QR share (`HttpShareServer`) over the direct link (idea 5).
+- Installing on the receiver needs `REQUEST_INSTALL_PACKAGES`, and listing apps needs
+  `QUERY_ALL_PACKAGES`: both need a Play declaration and P2P sharing must be the app's core purpose.
+  **Check the policy before building.** Split APKs (most Play apps) need bundling into one `.apks`
+  and an installer session on the receiver.
+
+## 10. Shake to connect
+
+Two people shake their phones at the same moment; each radar highlights the other.
+
+- Accelerometer peak → the BLE advert carries a short-lived "shook at t" flag; the other phone matches
+  timestamps within ~1.5 s. Android only (iOS has no BLE layer). A delight and a demo clip, not a need.
+
+## 11. Scan to computer
+
+Point the phone at a page; a cropped, flattened PDF lands on the computer.
+
+- Builds on the live camera's accept-once trust. Android: ML Kit document scanner (Play services,
+  check size/privacy) or our own edge detection; iOS: VisionKit `VNDocumentCameraViewController`.
+
+## 12. Appear in every Android's built-in share menu
+
+Phones that never installed CrossDrop could send to a Mac, Linux PC or iPhone running CrossDrop
+through Android's Quick Share.
+
+- NearDrop / rquickshare show receiving works on the same Wi-Fi (Android wants a BLE broadcast before
+  it shows a non-Google device). Large build (UKEY2 handshake, protobuf frames) and Google may change
+  the protocol at any time. Desktop-first.
+
+## Small delights (cheap, any time)
+
+- A shareable transfer receipt card: "4.2 GB in 58 s · 0 MB of mobile data used".
+- A lifetime counter in Settings: "moved without the internet: 38 GB".
+
+## Decided against (for now)
+
+- **Internet relay / cloud transfer**: costs money per byte and breaks "nothing leaves your network".
+- **Chat**: a different product; keeps the app small and focused.
+
+## Also noted
+
+- Other GitHub projects are also called "CrossDrop" (PlutoHDDev/CrossDrop, built on NearDrop;
+  medformatik/crossdrop), which hurts searchability.
+
+---
+
+# Round 1
 
 ## Status (2026-11-17)
 

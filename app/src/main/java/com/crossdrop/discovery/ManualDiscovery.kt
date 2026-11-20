@@ -43,6 +43,15 @@ class ManualDiscovery : PeerDiscovery {
         ))
     }
 
+    /** A phone heard over Bluetooth only (near, not on this Wi-Fi): no address, so it can't be sent to. */
+    fun addNearby(name: String) {
+        val id = "0000" + name.hashCode().toUInt().toString(16).padStart(8, '0')
+        _peers.value = _peers.value + (id to Peer(
+            instanceId = id, name = name, endpoint = null,
+            sources = setOf(DiscoverySource.BLE), rssi = -62, lastSeenMs = System.currentTimeMillis(),
+        ))
+    }
+
     fun removeAll() {
         _peers.value = emptyMap()
     }

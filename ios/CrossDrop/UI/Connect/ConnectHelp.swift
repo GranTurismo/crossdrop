@@ -52,10 +52,12 @@ final class ConnectHintModel: ObservableObject {
 }
 
 /// "Can't see the other device?" — shown on the radar when the hint says so.
-/// An iPhone can't create a network for others, so the only action is the plain how-to.
+/// An iPhone can't create a network for others, but it can join one: `onScan` ("Scan a code", iPhone/iPad only) reads
+/// the other phone's private-link code; `onGuide` opens the plain how-to.
 struct ConnectHelpCard: View {
     let hint: ConnectHint
     let onGuide: () -> Void
+    var onScan: (() -> Void)? = nil
 
     private var title: String { hint == .noNetwork ? tr("You're not on Wi-Fi") : tr("Can't see the other device?") }
     private var message: String {
@@ -73,7 +75,12 @@ struct ConnectHelpCard: View {
                 }
                 Spacer(minLength: 0)
             }
-            ChipButton(text: tr("Show me how"), height: 38, fontSize: 14, action: onGuide)
+            HStack(spacing: 8) {
+                if let onScan {
+                    ChipButton(text: tr("Scan a code"), fg: CD.onAccent, bg: CD.accent, height: 38, fontSize: 14, action: onScan)
+                }
+                ChipButton(text: tr("Show me how"), height: 38, fontSize: 14, action: onGuide)
+            }
         }
         .accessibilityElement(children: .contain)
     }

@@ -57,10 +57,29 @@ class MainActivity : ComponentActivity() {
         if (intent?.hasExtra("dev_skip_welcome") == true) container.welcomeSeen = true
         // -e dev_directlink on|fail — shows the "Connect directly" states without a hotspot (emulators can't make one).
         intent?.getStringExtra("dev_directlink")?.let {
-            container.directLink.forceStateForDebug(
-                if (it == "on") com.crossdrop.core.connect.DirectLinkState.On("AndroidShare_4821", "k9Qm-x2Lp", "WPA")
-                else com.crossdrop.core.connect.DirectLinkState.Failed(com.crossdrop.core.connect.DirectLinkFailure.BUSY),
-            )
+            // The code carries this device's real address and port, so another emulator can "scan" it.
+            android.os.Handler(mainLooper).postDelayed({
+                container.directLink.forceStateForDebug(
+                    if (it == "on") com.crossdrop.core.connect.DirectLinkState.On(
+                        "AndroidShare_4821", "k9Qm-x2Lp", "WPA",
+                        com.crossdrop.net.LocalIp.wifiIpv4(), container.listenerPort.value, container.instanceId,
+                    )
+                    else com.crossdrop.core.connect.DirectLinkState.Failed(com.crossdrop.core.connect.DirectLinkFailure.BUSY),
+                )
+            }, 1_500)
+        }
+        // -e dev_ble_peer 'Galaxy S24' — a phone the radar only hears over Bluetooth (tap it: show/scan sheet).
+        intent?.getStringExtra("dev_ble_peer")?.let { container.injectNearbyPeer(it) }
+        // -e dev_backup_only 'Pictures/CrossDropTest/' — backups (and freeing up space) see that folder only.
+        intent?.getStringExtra("dev_backup_only")?.let { container.backup.debugOnlyPath = it }
+        // -e dev_join '<WIFI:… code>' joins for real (system dialog); dev_join_skip_wifi skips the Wi-Fi step
+        // (emulators can't join each other's hotspot) and goes straight to connect + announce.
+        // Android only takes a join request from an app on screen: wait until we are.
+        intent?.getStringExtra("dev_join")?.let { com.crossdrop.core.connect.WifiQr.parse(it) }?.let { code ->
+            android.os.Handler(mainLooper).postDelayed({ container.wifiJoin.join(code) }, 2_000)
+        }
+        intent?.getStringExtra("dev_join_skip_wifi")?.let { com.crossdrop.core.connect.WifiQr.parse(it) }?.let { code ->
+            android.os.Handler(mainLooper).postDelayed({ container.wifiJoin.connectForDebug(code) }, 1_500)
         }
         android.util.Log.i("DevPeer", "extras=${intent?.extras?.keySet()?.joinToString()} dev_peer=${intent?.getStringExtra("dev_peer")}")
         // Comma-separated for several peers: -e dev_peer 10.0.2.2:5001,10.0.2.2:5002

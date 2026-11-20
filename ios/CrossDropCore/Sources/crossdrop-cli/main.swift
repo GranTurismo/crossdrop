@@ -8,6 +8,11 @@ import CrossDropCore
 //   crossdrop-cli send <host> <port> [--version N] [--name NAME] [--kind K] [--text T] [--cat C] [--each] <file>...
 //       → sends files, exits 0 on completion; --each sends one offer per file in sequence (live
 //         camera / switch batches), reusing any trust grant the receiver returns
+//   crossdrop-cli announce --to <host:port> --port N
+//       → tells the device at host:port that this one listens on N (ANNOUNCE); prints
+//         "ANNOUNCED <name> <instanceId>" with the other device's HELLO_ACK identity, exits 0
+// `recv` answers ANNOUNCE too, printing "ANNOUNCED-FROM <name> <instanceId> <host> <port>" (no session event).
+// --id HEX sets this end's per-launch instance id (hex, as discovery and announced peers expect).
 setvbuf(stdout, nil, _IOLBF, 0)
 
 var args = Array(CommandLine.arguments.dropFirst())
@@ -21,18 +26,21 @@ let kind = opt("--kind")
 let textOpt = opt("--text")
 let cat = opt("--cat")
 let count = opt("--count").flatMap(Int.init) ?? 1
+let announceTo = opt("--to")
+let announcePort = opt("--port").flatMap(Int.init)
+let cliInstanceId = opt("--id") ?? "5e1f7c11"
 func flag(_ name: String) -> Bool {
     guard let i = args.firstIndex(of: name) else { return false }
     args.remove(at: i); return true
 }
 let each = flag("--each")
 let grantTrust = flag("--grant")
-guard let mode = args.first else { print("usage: crossdrop-cli recv|send ..."); exit(2) }
+guard let mode = args.first else { print("usage: crossdrop-cli recv|send|announce ..."); exit(2) }
 args.removeFirst()
 if mode.hasPrefix("vault-") { runVaultCli(mode, args) }
 
 let engine = TransferEngine(identity: SessionIdentity(), deviceName: { deviceName },
-                            instanceId: "5w1f7c11", protocolVersion: version)
+                            instanceId: cliInstanceId, protocolVersion: version)
 let done = DispatchSemaphore(value: 0)
 var exitCode: Int32 = 1
 var heldGrant: TrustGrant?
@@ -60,9 +68,10 @@ case "recv":
     try? FileManager.default.createDirectory(at: inbox, withIntermediateDirectories: true)
     let store = FileDeltaStore(inboxDir: inbox)
     let listener = TCPListener()
+    let announces = PrintAnnounces()
     try listener.start { sock, _ in
         Thread.detachNewThread {
-            engine.receive(socket: sock, decideRequest: { req in
+            engine.receive(socket: sock, control: announces, decideRequest: { req in
                 let offer = req.offer
                 print("OFFER \(offer.files.map { "\($0.name):\($0.size):\($0.cat ?? "-")" }.joined(separator: ","))")
                 print("KIND \(offer.kind ?? "-") TEXT \(offer.text.map { "\($0.count)ch" } ?? "-") BATCH \(offer.batch.map { "\($0.index)/\($0.count) p\($0.photos) v\($0.videos) c\($0.contacts)" } ?? "-") FROM \(req.peerName)")
@@ -129,11 +138,33 @@ case "send":
         }
     }
     done.wait()
+case "announce":
+    guard let to = announceTo, let colon = to.lastIndex(of: ":"), let port = Int(to[to.index(after: colon)...]),
+          let listenPort = announcePort else {
+        print("usage: crossdrop-cli announce --to <host:port> --port N"); exit(2)
+    }
+    var host = String(to[..<colon])
+    if host.hasPrefix("[") && host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+    do {
+        let answer = try engine.announce(host: host, port: port, listenPort: listenPort)
+        print("ANNOUNCED \(answer.name) \(answer.instanceId)")
+        exitCode = 0
+    } catch {
+        print("FAILED \(error)")
+        exitCode = 1
+    }
 default:
     print("unknown mode"); exit(2)
 }
 usleep(200_000)
 exit(exitCode)
+
+/// `recv`'s answer to ANNOUNCE: print who announced and where they listen.
+final class PrintAnnounces: ControlHandler {
+    func announced(name: String, instanceId: String, host: String, port: Int) {
+        print("ANNOUNCED-FROM \(name) \(instanceId) \(host) \(port)")
+    }
+}
 
 final class FileSink: OutputSink {
     private let handle: FileHandle

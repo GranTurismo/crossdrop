@@ -113,6 +113,43 @@ public final class TCPSocket {
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &w, socklen_t(MemoryLayout<timeval>.size))
     }
 
+    /// The other end's numeric address. An IPv4 peer on a dual-stack socket (`::ffff:a.b.c.d`) comes back as plain
+    /// IPv4, like Java's `Socket.inetAddress`; IPv6 has no `%scope`. Nil once closed or when the kernel can't tell.
+    public func remoteAddress() -> String? {
+        guard (try? begin()) != nil else { return nil }
+        defer { end() }
+        var ss = sockaddr_storage()
+        var len = socklen_t(MemoryLayout<sockaddr_storage>.size)
+        let rc = withUnsafeMutablePointer(to: &ss) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getpeername(fd, $0, &len) }
+        }
+        guard rc == 0 else { return nil }
+        return TCPSocket.numericHost(ss)
+    }
+
+    static func numericHost(_ ss: sockaddr_storage) -> String? {
+        var ss = ss
+        switch Int32(ss.ss_family) {
+        case AF_INET:
+            let a = withUnsafePointer(to: &ss) { $0.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr } }
+            let v = UInt32(bigEndian: a)
+            return "\(v >> 24).\((v >> 16) & 0xFF).\((v >> 8) & 0xFF).\(v & 0xFF)"
+        case AF_INET6:
+            let bytes: [UInt8] = withUnsafePointer(to: &ss) {
+                $0.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { p in withUnsafeBytes(of: p.pointee.sin6_addr) { Array($0) } }
+            }
+            if bytes[0..<10].allSatisfy({ $0 == 0 }) && bytes[10] == 0xFF && bytes[11] == 0xFF {
+                return "\(bytes[12]).\(bytes[13]).\(bytes[14]).\(bytes[15])"
+            }
+            var addr = withUnsafePointer(to: &ss) { $0.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee.sin6_addr } }
+            var buf = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+            guard inet_ntop(AF_INET6, &addr, &buf, socklen_t(buf.count)) != nil else { return nil }
+            return String(cString: buf)
+        default:
+            return nil
+        }
+    }
+
     // MARK: I/O
 
     private func begin() throws {

@@ -100,6 +100,9 @@ fun Root(container: AppContainer) {
     val vaultUi by container.vaultExplorer.state.collectAsState()
     val vaultHost by container.vaultHost.state.collectAsState()
     val incomingOffer by container.coordinator.incomingOffer.collectAsState()
+    val pairPrompt by container.coordinator.hub.pairPrompt.collectAsState()
+    val pairedDevices by container.pairings.devices.collectAsState()
+    val lastBackups by container.backups.last.collectAsState()
     val deviceName by container.deviceName.collectAsState()
     val nsdEnabled by container.nsdEnabled.collectAsState()
     val listenerPort by container.listenerPort.collectAsState()
@@ -204,6 +207,13 @@ fun Root(container: AppContainer) {
                         onShowWelcome = { welcome = true },
                         vaultState = vaultHost,
                         onOpenDrive = { driveOpen = true },
+                        myDevices = pairedDevices,
+                        lastBackups = lastBackups,
+                        backupFolder = container.backupRoot,
+                        onUnpair = container::unpair,
+                        onChangeBackupFolder = {
+                            com.crossdrop.platform.SystemActions.pickFolder(title = tr("Choose where backups go"))?.let(container::setBackupRoot)
+                        },
                         refreshSignal = listOf(doneCount, inboxTick, historyTick),
                     )
                 }
@@ -307,6 +317,11 @@ fun Root(container: AppContainer) {
                 onClose = container.vaultExplorer::close,
                 onUnlock = container.vaultExplorer::unlock,
             )
+        }
+
+        // ---- a device asks to pair ("My devices"); answered only by its buttons
+        Overlay(pairPrompt, fade = true) { p ->
+            com.crossdrop.ui.pairing.PairPromptSheet(p, onAnswer = { yes -> container.coordinator.hub.respondToPair(p, yes) })
         }
 
         // ---- inbound offer — always on top; answered only by its buttons

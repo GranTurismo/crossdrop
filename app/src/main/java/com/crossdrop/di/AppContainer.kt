@@ -71,7 +71,7 @@ class AppContainer(private val app: Context) {
     val localNetwork = com.crossdrop.net.LocalNetworkMonitor(app)
 
     /** "Connect directly": a private Wi-Fi network this phone makes for a device that has none to share. */
-    val directLink = com.crossdrop.net.DirectLink(app, scope)
+    val directLink = com.crossdrop.net.DirectLink(app, scope, { listenerPort.value }, instanceId)
 
     val identity = SessionIdentity()
     val engine = TransferEngine(identity, deviceName::value, instanceId)
@@ -91,6 +91,12 @@ class AppContainer(private val app: Context) {
 
     val server = TransferServer(scope, engine, onBound = ::onListenerBound)
     val coordinator = TransferCoordinator(scope, app, engine, server, inbox, history)
+
+    /** Devices known by address: ones that announced themselves to us, and the phone whose code we scanned. */
+    val announced = com.crossdrop.core.discovery.AnnouncedPeers(scope).also { coordinator.hub.announced = it }
+
+    /** "Scan a code": join another phone's private link (or any Wi-Fi code) and connect to it. */
+    val wifiJoin = com.crossdrop.net.WifiJoin(app, scope, engine, { listenerPort.value }, announced)
 
     /** "Switch phones": this phone's library out, or another phone's library in. */
     val switchSender = com.crossdrop.switchphones.SwitchSender(scope, app, coordinator.hub, history)
@@ -130,6 +136,7 @@ class AppContainer(private val app: Context) {
         add(nsdDiscovery)
         add(vaultDiscovery)
         add(bleDiscovery)
+        add(announced)     // after mDNS: for a device seen both ways, its own advert speaks for it
         manualDiscovery?.let { add(it) }
     }
 
@@ -162,6 +169,9 @@ class AppContainer(private val app: Context) {
         manualDiscovery?.add(name ?: "$host:$port", host, port)
     }
 
+    /** Debug: a phone heard over Bluetooth only (emulators have no Bluetooth peers). */
+    fun injectNearbyPeer(name: String) { manualDiscovery?.addNearby(name) }
+
     /** Debug: place a vault beacon on the radar (self-vaults are filtered). */
     fun injectVaultPeer(host: String, port: Int) {
         val resolved = if (port == 0) vaultHost.state.value?.port ?: 0 else port
@@ -178,6 +188,18 @@ class AppContainer(private val app: Context) {
             .stateIn(scope, SharingStarted.Eagerly, emptyMap())
         PeerLiveness(scope, sighted).peers
     }
+
+    /**
+     * "My devices": the computer this phone backs up to. Phones don't keep backups, so the hub isn't given
+     * the store: a pairing request from someone else is declined without a prompt.
+     */
+    val pairings = com.crossdrop.core.pairing.PairingStore(java.io.File(app.filesDir, "pairings.json"))
+
+    /** "Back up to a computer": photos and videos to the paired computer, and freeing up space after. */
+    val backup = com.crossdrop.backup.BackupManager(
+        scope, app, coordinator.hub, engine, pairings, peers, history,
+        keepAlive = { com.crossdrop.service.TransferService.start(app) },
+    )
 
     /** Context accessor for places (Root UI) that need it for intents/services. */
     fun contextForService(): Context = app
