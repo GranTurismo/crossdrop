@@ -227,6 +227,21 @@ def process(asc, app_id, platform, a, text, log):
         except ApiError as e:
             log(f"  What's New not set for {locale}: {e}")
 
+    # a version Apple rejected is still locked inside its old submission (UNRESOLVED_ISSUES): a new submission would be
+    # refused with 409 "cannot be reviewed". Mark its rejected item resolved and send that same submission again.
+    for sub in asc.get(f"/v1/apps/{app_id}/reviewSubmissions", **{"filter[platform]": platform, "filter[state]": "UNRESOLVED_ISSUES", "limit": "5"}).get("data", []):
+        items = asc.get(f"/v1/reviewSubmissions/{sub['id']}/items", include="appStoreVersion").get("data", [])
+        mine = [i for i in items if ((i.get("relationships", {}).get("appStoreVersion") or {}).get("data") or {}).get("id") == vid]
+        if not mine:
+            continue
+        for i in mine:
+            if i["attributes"].get("state") == "REJECTED":
+                asc.call("PATCH", f"/v1/reviewSubmissionItems/{i['id']}", {"data": {
+                    "type": "reviewSubmissionItems", "id": i["id"], "attributes": {"resolved": True}}})
+                log("  marked Apple's rejection as resolved")
+        asc.call("PATCH", f"/v1/reviewSubmissions/{sub['id']}", {"data": {"type": "reviewSubmissions", "id": sub["id"], "attributes": {"submitted": True}}})
+        return f"{platform}: {a.version} ({a.build}) resubmitted to App Review after the rejection (releases automatically after approval)"
+
     # one draft submission per platform: reuse an unsubmitted one, else open a new one
     subs = asc.get(f"/v1/apps/{app_id}/reviewSubmissions", **{"filter[platform]": platform, "filter[state]": "READY_FOR_REVIEW", "limit": "5"}).get("data", [])
     if subs:
