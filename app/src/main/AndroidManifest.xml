@@ -40,6 +40,11 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- RECORD_AUDIO (video sound) would otherwise make a microphone required and drop mic-less devices. -->
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <!-- The Wi-Fi permissions (and the location one Connect directly needs on Android 12 and older) would otherwise
+         make Wi-Fi and location hardware required: CrossDrop also works over Ethernet (desktops, TVs, Chromebooks),
+         and only "Connect directly" needs Wi-Fi itself. Play flags a required Wi-Fi as restricting availability. -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
+    <uses-feature android:name="android.hardware.location" android:required="false" />
 
     <!-- Switch phones: the whole gallery and address book move to another device -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />

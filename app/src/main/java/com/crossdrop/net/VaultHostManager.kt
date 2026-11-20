@@ -109,9 +109,10 @@ class VaultHostManager(
         server = srv
         vaultId = id
 
-        wifiLock = (context.getSystemService(Context.WIFI_SERVICE) as WifiManager)
-            .createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "crossdrop-drive")
-            .apply { setReferenceCounted(false); acquire() }
+        // No Wi-Fi hardware (an Ethernet-only device): nothing to keep awake.
+        wifiLock = (context.getSystemService(Context.WIFI_SERVICE) as? WifiManager)
+            ?.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "crossdrop-drive")
+            ?.apply { setReferenceCounted(false); acquire() }
         wakeLock = (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "crossdrop:drive")
             .apply { acquire(DRIVE_WAKE_TIMEOUT_MS) }

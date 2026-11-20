@@ -42,7 +42,8 @@ class DirectLink(
     private val machine = DirectLinkMachine()
     val state: StateFlow<DirectLinkState> = machine.state
 
-    private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    /** Null on a device without Wi-Fi (Wi-Fi is an optional feature in the manifest): no hotspot to make there. */
+    private val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
     private var reservation: WifiManager.LocalOnlyHotspotReservation? = null
     private var startTimeout: Job? = null
     private var autoStop: Job? = null
@@ -63,6 +64,7 @@ class DirectLink(
 
     @SuppressLint("MissingPermission")
     fun start() {
+        val wifi = wifi ?: run { machine.refuse(DirectLinkFailure.OTHER); return }
         if (missingPermission() != null) { machine.refuse(DirectLinkFailure.PERMISSION); return }
         if (locationBlocked()) { machine.refuse(DirectLinkFailure.LOCATION_OFF); return }
         val request = machine.begin() ?: return

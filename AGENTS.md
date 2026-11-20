@@ -610,8 +610,11 @@ iOS doesn't send it yet: unknown means no tile. Older builds ignore the field (`
   Android's own confirmation follows (`STATUS_PENDING_USER_ACTION`). Needs `REQUEST_INSTALL_PACKAGES` and the person's
   "Install unknown apps" switch: the screen shows a card that opens it. "Done" deletes the batch; a new receive sweeps
   leftovers older than 10 min; launch clears it all.
-- **Google Play**: `REQUEST_INSTALL_PACKAGES` is allowed for file sharing / transfer and phone transfer, but needs the
-  Permissions Declaration in Play Console before the first release that has it.
+- **Google Play**: `REQUEST_INSTALL_PACKAGES` is allowed for file sharing / transfer and phone transfer, with a
+  Permissions Declaration in Play Console (declared for 0.10.0: core purpose "file sharing, transfer or management",
+  usage "App functionality", a feature description and a demo video link). Play only offers that form once a bundle
+  with the permission is uploaded *through the Console*: the API refuses the upload first ("hasn't been declared"), so
+  a release that adds a sensitive permission is finished by hand (upload in Console → declare → save → submit).
 - Tests: `LinkAndBackupTest.appsGoToAnotherAndroidPhoneWithAllTheirPiecesAndLandAsFilesElsewhere` (platform learnt from
   the handshake, pieces grouped and staged in order, a computer keeps them as files), `ControlTest` (os both ways).
   Emulator, single device: `-e dev_peer 127.0.0.1:0` puts this phone's own listener on the radar, so it can send an app to
@@ -619,7 +622,9 @@ iOS doesn't send it yet: unknown means no tile. Older builds ignore the field (`
   debug key, `adb install-multiple`), search the picker before screenshotting (it lists the person's real apps), and
   uninstall it and reset `appops set com.crossdrop.debug REQUEST_INSTALL_PACKAGES default` afterwards. Proven that way on
   Android 16: grouped prompt, staging, allow card → system switch, fresh install of base + split through Android's
-  dialog, Open. **Not proven**: two real phones, large Play apps (asset packs / Play Feature Delivery are not sent).
+  dialog, Open. Also proven between two fresh emulators that found each other by real mDNS (2026-11-20; that run is
+  the demo video for the Play declaration). **Not proven**: two real phones, large Play apps (asset packs / Play
+  Feature Delivery are not sent).
 
 ## Wire protocol
 
@@ -678,8 +683,11 @@ Requires Android SDK at `~/Library/Android/sdk` (local.properties). Java 21 OK.
 
 ## Emulator testing
 
-Two emulators can share one virtual Wi-Fi subnet — unicast TCP crosses,
-multicast mDNS does **not** (netsim limitation — discovery needs real HW):
+Two emulators can share one virtual Wi-Fi subnet — unicast TCP crosses, and on the Android 36.1
+image (seen 2026-11-20) multicast mDNS crosses too: two fresh AVDs started this way found each other on
+the radar with no `dev_peer` (older images didn't, hence the `dev_peer` hooks). Name them with
+`adb shell settings put global device_name "…"` (CrossDrop falls back to it). `screenrecord` can't encode
+the Pixel 9 Pro's 1280x2856 natively and silently squashes to 720x1280: pass `--size 720x1606`.
 
 ```sh
 emulator -avd Pixel_9_Pro   -wifi-server-port 51230   # A: wlan0 = 10.0.2.16

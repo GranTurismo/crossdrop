@@ -84,12 +84,14 @@ class MainActivity : ComponentActivity() {
             android.os.Handler(mainLooper).postDelayed({ container.wifiJoin.connectForDebug(code) }, 1_500)
         }
         android.util.Log.i("DevPeer", "extras=${intent?.extras?.keySet()?.joinToString()} dev_peer=${intent?.getStringExtra("dev_peer")}")
-        // Comma-separated for several peers: -e dev_peer 10.0.2.2:5001,10.0.2.2:5002
-        intent?.getStringExtra("dev_peer")?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }?.forEach { peer ->
+        // Comma-separated for several peers: -e dev_peer 10.0.2.2:5001,10.0.2.2:5002; a radar name goes first: 'Leo@10.0.2.17:5001'
+        intent?.getStringExtra("dev_peer")?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }?.forEach { entry ->
+            val name = entry.substringBefore('@', "").takeIf { it.isNotBlank() }
+            val peer = entry.substringAfter('@')
             val host = peer.substringBefore(':')
             val port = peer.substringAfter(':', "0").toIntOrNull() ?: 0
             android.os.Handler(mainLooper).postDelayed(
-                { container.injectPeer(null, host, port) }, 1500)
+                { container.injectPeer(name, host, port) }, 1500)
         }
         intent?.getStringExtra("dev_send")?.takeIf { it.isNotBlank() }?.let { peer ->
             val host = peer.substringBefore(':')
