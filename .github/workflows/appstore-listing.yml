@@ -1,0 +1,48 @@
+name: App Store listing
+
+# Reads (show) or updates (set) the App Store text of the rejected/draft version through tools/release/appstore_listing.py.
+# "show" only prints. "set" without "apply" only prints what would change; with "apply" it writes
+# store-assets/appstore/<locale>/{description,promotional_text,keywords}.txt into App Store Connect.
+# Afterwards run "App Store submit" (submit on) to send the version to review again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "show = print the live listing; set = write the files in store-assets/appstore"
+        type: choice
+        options: [show, set]
+        default: show
+      apply:
+        description: "With set: really write (off = print what would change)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  listing:
+    name: App Store listing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      APPSTORE_KEY_ID: ${{ secrets.APPSTORE_KEY_ID }}
+      APPSTORE_ISSUER_ID: ${{ secrets.APPSTORE_ISSUER_ID }}
+      APPSTORE_KEY_P8: ${{ secrets.APPSTORE_KEY_P8 }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run
+        run: |
+          set -euo pipefail
+          [ -n "$APPSTORE_KEY_P8" ] || { echo "::error::the App Store Connect key isn't configured"; exit 1; }
+          KEY="$RUNNER_TEMP/AuthKey_$APPSTORE_KEY_ID.p8"
+          printf '%s' "$APPSTORE_KEY_P8" > "$KEY"; chmod 600 "$KEY"
+          trap 'rm -f "$KEY"' EXIT
+          args=("${{ inputs.action }}")
+          if [ "${{ inputs.action }}" = set ]; then
+            args+=(--dir store-assets/appstore)
+            [ "${{ inputs.apply }}" = true ] && args+=(--apply)
+          fi
+          ASC_KEY_ID="$APPSTORE_KEY_ID" ASC_ISSUER_ID="$APPSTORE_ISSUER_ID" ASC_KEY_PATH="$KEY" \
+            python3 tools/release/appstore_listing.py "${args[@]}"
