@@ -478,6 +478,59 @@ final class TransferCoordinator: ObservableObject {
         offer.resolve(accept: accept, reason: accept ? nil : "declined")
     }
 
+    // MARK: shake to connect
+
+    /// Our shakes against SHAKE messages from the radar (the Kotlin hub's `shakes`). Thread-safe: a SHAKE is noted on
+    /// the engine thread it arrived on, so its time is when it landed.
+    nonisolated let shakes = ShakeMatcher()
+    /// The device we just shook phones with, until the radar has opened its sheet (`shakeHandled`). One the radar
+    /// never shows (it left, or never appeared) goes stale after `shakeMatchTTL`.
+    @Published private(set) var shakeMatch: ShakeMatcher.Match?
+    /// This device was shaken and no device has answered yet: the radar says "now shake the other phone".
+    @Published private(set) var shakeWaiting = false
+    /// How long a match waits for its device to be on the radar (a SHAKE can land a moment before the device does).
+    nonisolated static let shakeMatchTTL: TimeInterval = 5
+
+    /// This device was shaken: tell every device on the radar (each checks for its own shake), and match any SHAKE that
+    /// arrived just before ours. Devices that can't shake (computers) or predate shaking ignore it; failures are dropped.
+    func shake(_ peers: [Peer], listenPort: Int) {
+        if let m = shakes.local() { shookWith(m) } else {
+            shakeWaiting = true
+            // Each shake clears its own hint once the window is over, unless a later shake is still waiting.
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(ShakeMatcher.windowMs) / 1000 + 0.05) { [weak self] in
+                guard let self else { return }
+                self.shakeWaiting = self.shakes.waitingSince() != nil
+            }
+        }
+        let engine = self.engine
+        for p in peers where p.vault == nil {
+            guard let host = p.host, p.port > 0 else { continue }
+            let port = p.port
+            let token = CancelToken()
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 3) { token.cancel() }
+            Thread.detachNewThread {
+                _ = try? engine.shake(host: host, port: port, listenPort: listenPort, connectTimeout: 1.5, cancel: token)
+            }
+        }
+    }
+
+    /// A device on the network says it was just shaken (engine thread). The caller has already put it on the radar
+    /// when it said where to reach it back.
+    nonisolated func shaken(instanceId: String, name: String) {
+        guard let m = shakes.remote(instanceId: instanceId, name: name) else { return }
+        DispatchQueue.main.async { self.shookWith(m) }
+    }
+
+    func shakeHandled() { shakeMatch = nil }
+
+    private func shookWith(_ m: ShakeMatcher.Match) {
+        shakeWaiting = false
+        shakeMatch = m
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.shakeMatchTTL) { [weak self] in
+            if self?.shakeMatch == m { self?.shakeMatch = nil }
+        }
+    }
+
     // MARK: state
 
     private func reduce(_ event: TransferEvent, id: UUID) {

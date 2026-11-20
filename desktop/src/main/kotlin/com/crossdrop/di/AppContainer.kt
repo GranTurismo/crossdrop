@@ -88,7 +88,7 @@ class AppContainer {
             ?: Platform.current.computerNoun
 
     val identity = SessionIdentity()
-    val engine = TransferEngine(identity, deviceName::value, instanceId)
+    val engine = TransferEngine(identity, deviceName::value, instanceId, os = com.crossdrop.platform.Platform.wireName)
     val inbox = InboxStore(AppDirs.inbox, AppDirs.inboxState).also { store ->
         // Received files used to live in Application Support; bring them to Downloads once (cheap when there is nothing).
         kotlin.concurrent.thread(name = "inbox-migrate", isDaemon = true) {

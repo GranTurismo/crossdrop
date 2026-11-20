@@ -30,7 +30,7 @@ class ControlTest {
 
     private val idA = "0123456789abcdef"
     private val idB = "fedcba9876543210"
-    private fun engine(name: String, id: String) = TransferEngine(SessionIdentity(), { name }, id)
+    private fun engine(name: String, id: String, os: String? = null) = TransferEngine(SessionIdentity(), { name }, id, os = os)
 
     /** One connection: [initiator] runs [block] against a listener served by [rxEngine] with [handler]. */
     private fun <T> exchange(
@@ -50,16 +50,17 @@ class ControlTest {
 
     @Test
     fun `announce tells the listener where to reach the initiator`() {
-        var seen: List<Any>? = null
+        var seen: List<Any?>? = null
         val handler = object : ControlHandler {
-            override fun announced(name: String, instanceId: String, host: String, port: Int) { seen = listOf(name, instanceId, host, port) }
+            override fun announced(name: String, instanceId: String, host: String, port: Int, os: String?) { seen = listOf(name, instanceId, host, port, os) }
         }
-        val a = engine("Guest phone", idA)
-        val (peer, events) = exchange(engine("Host phone", idB), handler, a) { ep ->
-            a.control(ep) { announce(43210); peerName to peerInstanceId }
+        val a = engine("Guest phone", idA, os = Platforms.ANDROID)
+        val (peer, events) = exchange(engine("Host phone", idB, os = Platforms.ANDROID), handler, a) { ep ->
+            a.control(ep) { announce(43210); Triple(peerName, peerInstanceId, peerOs) }
         }
-        assertEquals(listOf("Guest phone", idA, "127.0.0.1", 43210), seen)
-        assertEquals("Host phone" to idB, peer)
+        // Both ends learn what the other runs on from the handshake (how a phone knows it may offer apps).
+        assertEquals(listOf("Guest phone", idA, "127.0.0.1", 43210, "android"), seen)
+        assertEquals(Triple("Host phone", idB, "android"), peer)
         assertTrue("a control exchange is not a transfer", events.none { it is TransferEvent.Failed || it is TransferEvent.Completed })
     }
 

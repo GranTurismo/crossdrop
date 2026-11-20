@@ -48,6 +48,15 @@ enum class Platform {
         }
 
         val current: Platform by lazy { of(System.getProperty("os.name")) }
+
+        /** What this machine tells peers it runs on (TXT `os`, `Hello.os`); null for an unknown OS. */
+        val wireName: String?
+            get() = when (current) {
+                MAC -> com.crossdrop.core.Platforms.MAC
+                WINDOWS -> com.crossdrop.core.Platforms.WINDOWS
+                LINUX -> com.crossdrop.core.Platforms.LINUX
+                OTHER -> null
+            }
         val isMac: Boolean get() = current == MAC
         val isWindows: Boolean get() = current == WINDOWS
         val isLinux: Boolean get() = current == LINUX

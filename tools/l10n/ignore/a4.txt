@@ -1,0 +1,2 @@
+# audit false positive: the second literal of a one-line trPlural(n, "Send 1 app · {0}", "Send {n} apps · {0}", size)
+Send {n} apps · {0}

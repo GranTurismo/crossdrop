@@ -37,6 +37,8 @@ struct RadarScreen: View {
     @EnvironmentObject var sheets: SheetHost
     @Environment(\.navInset) private var navInset
     var active = true
+    /// Something the shell shows sits over the radar (transfer, offer, sheet, guide…).
+    var covered = false
     var onShowConnectGuide: () -> Void = {}
     /// "Scan a code" (iPhone/iPad): join another phone's private link. Nil where the device can't (Mac).
     var onScanCode: (() -> Void)? = nil
@@ -52,10 +54,13 @@ struct RadarScreen: View {
     @State private var renaming = false
     @State private var renameText = ""
     @State private var loadingMedia = false
+    /// The animated "Shake to connect" card is up (see `shakeHintDue`).
+    @State private var shakeHintVisible = false
 
     var body: some View {
         let devices = container.peers.filter { $0.vault == nil }
         let drives = container.peers.filter { $0.vault != nil && $0.isReachable }
+        let reachableCount = devices.filter(\.isReachable).count
         ZStack {
             VStack(spacing: 0) {
                 header(devices.count).padding(.horizontal, 18).padding(.top, 22)
@@ -64,21 +69,36 @@ struct RadarScreen: View {
 
                 ZStack(alignment: .bottom) {
                     RadarCanvas(selfName: container.deviceName, selfIcon: Platform.deviceIcon, peers: devices, active: active,
-                                onPeerTap: startSendFlow, onSelfTap: { renameText = container.deviceName; renaming = true })
-                    if devices.isEmpty && connectHint.hint == .none {
+                                onPeerTap: { startSendFlow($0) }, onSelfTap: { renameText = container.deviceName; renaming = true })
+                    if coordinator.shakeWaiting {
+                        Text(tr("Now shake the other phone at the same time")).body(13, CD.accent, weight: .semibold)
+                            .multilineTextAlignment(.center).padding(.bottom, 6).padding(.horizontal, 16)
+                            .transition(.opacity)
+                    } else if devices.isEmpty && connectHint.hint == .none {
                         Text(tr("Open CrossDrop on another device on this Wi-Fi")).body(12, CD.textDim)
                             .multilineTextAlignment(.center).padding(.bottom, 6).padding(.horizontal, 16)
+                    } else if container.shakeEnabled && ShakeSensor.supported && !shakeHintVisible && reachableCount >= 2 {
+                        // The quiet hint; the animated card says it while it is up.
+                        Text(tr("Several devices? Shake both phones to find each other.")).body(12, CD.textDim)
+                            .multilineTextAlignment(.center).padding(.bottom, 6).padding(.horizontal, 16)
+                            .transition(.opacity)
                     }
                 }
+                .animation(.easeInOut(duration: 0.25), value: coordinator.shakeWaiting)
                 .frame(maxWidth: .infinity, minHeight: connectHint.hint == .none ? 220 : 120, maxHeight: .infinity)
                 .padding(.top, 8)
 
                 VStack(spacing: 10) {
+                    if shakeHintVisible && reachableCount >= 2 {
+                        ShakeHintCard { withAnimation(.easeInOut(duration: 0.3)) { shakeHintVisible = false } }
+                            .transition(.asymmetric(insertion: .offset(y: 36).combined(with: .opacity), removal: .opacity))
+                    }
                     if connectHint.hint != .none { ConnectHelpCard(hint: connectHint.hint, onGuide: onShowConnectGuide, onScan: onScanCode) }
                     JoinedLinkRow(join: container.wifiJoin)
                     SendToAnyoneCard { startAnyoneFlow() }
                     ForEach(drives.prefix(2)) { d in DriveRow(peer: d) { startSendFlow(d) } }
                 }
+                .animation(.easeInOut(duration: 0.3), value: shakeHintVisible && reachableCount >= 2)
                 .frame(maxWidth: 560)
                 .padding(.horizontal, 16).padding(.top, 4)
                 Spacer().frame(height: navInset)
@@ -94,6 +114,31 @@ struct RadarScreen: View {
             }
         }
         .background(CD.ink)
+        .background(ShakeWatch(visible: active && !covered && !showFiles && !showPhotos && !pickingLanguage && !renaming && !loadingMedia,
+                               qrShare: container.qrShare, explorer: container.vaultExplorer, importer: container.switchImporter,
+                               onChange: container.setRadarUncovered))
+        // Shook phones with someone: their send sheet, once they're on the radar (a SHAKE can land a moment before the
+        // device does: it may only now be reachable, or still being checked).
+        .onChange(of: coordinator.shakeMatch) { _ in openShakeMatch() }
+        .onChange(of: container.peers) { _ in openShakeMatch() }
+        // Teach shaking where it helps: once per launch, when several reachable devices show up, until it has worked
+        // once. A tap, 12 s or a shake hides it.
+        .task(id: shakeHintDue(reachableCount)) {
+            guard shakeHintDue(reachableCount), !container.shakeHintShown else { return }
+            try? await Task.sleep(nanoseconds: 800_000_000)        // let the new nodes land on the radar first
+            guard !Task.isCancelled else { return }
+            container.shakeHintShown = true
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) { shakeHintVisible = true }
+        }
+        .task(id: shakeHintVisible) {
+            guard shakeHintVisible else { return }
+            try? await Task.sleep(nanoseconds: 12_000_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.3)) { shakeHintVisible = false }
+        }
+        .onChange(of: coordinator.shakeWaiting) { waiting in
+            if waiting { withAnimation(.easeInOut(duration: 0.3)) { shakeHintVisible = false } }
+        }
         .sheet(isPresented: $pickingLanguage) { LanguageSheet() }
         .onAppear { connectHint.update(hasNetwork: container.hasNetwork, deviceCount: devices.count) }
         .onChange(of: devices.count) { n in connectHint.update(hasNetwork: container.hasNetwork, deviceCount: n) }
@@ -159,10 +204,29 @@ struct RadarScreen: View {
 
     // MARK: flows
 
-    /// Device tap → send sheet (or straight away for files handed over by another app); a drive → its sheet.
-    private func startSendFlow(_ peer: Peer) {
+    /// We shook phones with a device: the same sheet as a tap, introduced as the shake. Only while the radar is what the
+    /// person is looking at; a match whose device isn't on the radar waits here until it appears (or goes stale).
+    private func openShakeMatch() {
+        guard let m = coordinator.shakeMatch else { return }
+        guard container.radarUncovered else { coordinator.shakeHandled(); return }
+        guard let peer = container.peers.first(where: { $0.instanceId == m.instanceId && $0.vault == nil && $0.isReachable }) else { return }
+        coordinator.shakeHandled()
+        container.markShakeLearned()
+        shakeHintVisible = false
+        startSendFlow(peer, shook: true)
+    }
+
+    /// Several reachable devices, shaking on (and possible here), and it has never found anyone on this device. Only on
+    /// the radar tab: this view stays mounted (hidden) behind the others, and the card gets one showing per launch.
+    private func shakeHintDue(_ reachableCount: Int) -> Bool {
+        active && reachableCount >= 2 && container.shakeEnabled && ShakeSensor.supported && !container.shakeLearned
+    }
+
+    /// Device tap (or a shake) → send sheet (or straight away for files handed over by another app); a drive → its sheet.
+    private func startSendFlow(_ peer: Peer, shook: Bool = false) {
         guard peer.isReachable else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if shook { UINotificationFeedbackGenerator().notificationOccurred(.success) }
+        else { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
         if peer.vault != nil {
             sheets.present {
                 VaultMountSheet(peer: peer,
@@ -178,7 +242,7 @@ struct RadarScreen: View {
         }
         let others = container.peers.filter { $0.vault == nil && $0.isReachable && $0.id != peer.id }
         sheets.present {
-            SendSheet(kicker: tr("Send to"), title: peer.name, icon: deviceIconFor(peer.name),
+            SendSheet(kicker: shook ? tr("You shook phones with") : tr("Send to"), title: peer.name, icon: deviceIconFor(peer.name),
                       meta: MetaLine(lead: nil, rest: peer.sources.contains(.manual) ? tr("Added by address · Wi-Fi") : tr("Wi-Fi · this network")),
                       note: tr("Straight to this device, end-to-end encrypted, never through a server. You'll both see a 6-digit code to compare."),
                       primary: peer, others: others,
@@ -308,6 +372,27 @@ struct RadarScreen: View {
         .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(CD.glassMid))
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(CD.accent.opacity(0.4), lineWidth: 1))
         .frame(maxWidth: 560)
+    }
+}
+
+/// Tells the container whether the radar is what the person is looking at: the app in front, the radar tab with nothing
+/// over it — including the full-screen hosts that observe their own models (QR share, mounted drive, switch-phones
+/// receive), which nothing above them observes. Shake to connect listens only then.
+private struct ShakeWatch: View {
+    let visible: Bool
+    @ObservedObject var qrShare: QrShareManager
+    @ObservedObject var explorer: VaultExplorerManager
+    @ObservedObject var importer: SwitchImporter
+    let onChange: (Bool) -> Void
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        let uncovered = visible && scenePhase == .active && qrShare.state == nil && explorer.state == nil && importer.state == nil
+        Color.clear
+            .accessibilityHidden(true)
+            .onAppear { onChange(uncovered) }
+            .onChange(of: uncovered) { onChange($0) }
+            .onDisappear { onChange(false) }
     }
 }
 

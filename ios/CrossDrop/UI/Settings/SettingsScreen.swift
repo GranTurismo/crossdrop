@@ -38,6 +38,12 @@ struct SettingsScreen: View {
                         ToggleRow(title: "Wi-Fi", subtitle: tr("Find devices on this network"),
                                   isOn: Binding(get: { container.discoveryEnabled }, set: { container.setDiscoveryEnabled($0) }),
                                   icon: CdIcons.wifi)
+                        #if !targetEnvironment(macCatalyst)
+                        RowSeparator()
+                        ToggleRow(title: tr("Shake to connect"), subtitle: tr("Shake two phones at the same time to find each other"),
+                                  isOn: Binding(get: { container.shakeEnabled }, set: { container.setShakeEnabled($0) }),
+                                  icon: CdIcons.shake)
+                        #endif
                         RowSeparator()
                         NavRow(icon: CdIcons.radar, title: rescanned ? tr("Rescanning…") : tr("Rescan network"),
                                subtitle: tr("After allowing Local Network access, or switching Wi-Fi")) {

@@ -21,6 +21,8 @@ data class Hello(
     val publicKeyB64: String,
     /** Rotating instance token, hex — same value the peer advertises over NSD/BLE. */
     val instanceId: String,
+    /** What the device runs on ([com.crossdrop.core.Platforms]); absent on older builds. */
+    val os: String? = null,
 )
 
 @Serializable
@@ -33,6 +35,8 @@ data class HelloAck(
     /** Vault listeners set "open"/"pin" so clients know whether to send
      *  VAULT_AUTH next. Null/absent on plain transfer endpoints. */
     val vaultAuth: String? = null,
+    /** What the device runs on ([com.crossdrop.core.Platforms]); absent on older builds. */
+    val os: String? = null,
 )
 
 @Serializable
@@ -46,6 +50,8 @@ data class FileMeta(
     val mtime: Long? = null,
     /** [OfferKind.BACKUP]: the sender's stable id for this item, so the receiver can recognise it later. */
     val key: String? = null,
+    /** [OfferKind.APP]: the Android package this file belongs to (an app may come as several split APKs). */
+    val pkg: String? = null,
 )
 
 /** Values of [FileMeta.cat]. */
@@ -53,6 +59,8 @@ object ItemCategory {
     const val PHOTO = "photo"
     const val VIDEO = "video"
     const val CONTACTS = "contacts"
+    /** One APK of an installed app ([FileMeta.pkg] groups the pieces). */
+    const val APP = "app"
 }
 
 /**
@@ -72,6 +80,8 @@ object OfferKind {
     const val CONTACT = "contact"
     /** One batch of a phone backup to a paired computer; carries [Offer.pairProof]. Never prompts. */
     const val BACKUP = "backup"
+    /** Installed Android apps: each app's APKs (base + splits), grouped by [FileMeta.pkg]. Android to Android only. */
+    const val APP = "app"
 }
 
 /** Longest [Offer.text] a sender inlines (the file copy carries anything longer). */
@@ -163,6 +173,14 @@ data class Cancel(val reason: String? = null)
  */
 @Serializable
 data class Announce(val port: Int)
+
+/**
+ * SHAKE: "this phone was shaken just now" (shake to connect). Carries no time: the receiver notes when it
+ * arrived on its own clock, so the two phones' clocks never need to agree. [port] is the sender's listener,
+ * so a phone that wasn't on the receiver's radar yet can be reached back. The answer's [port] is 0.
+ */
+@Serializable
+data class Shake(val port: Int = 0)
 
 /** PAIR, first frame: the initiator asks to become one of the receiver's devices under [pairId] (32 hex). */
 @Serializable

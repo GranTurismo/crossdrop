@@ -24,7 +24,9 @@ enum class FrameType(val code: Int) {
      * [com.crossdrop.core.transfer.ControlChannel]). Builds that predate them fail the unknown frame
      * before any session exists, so nothing shows on their side.
      */
-    ANNOUNCE(0x20), PAIR(0x21), PAIR_CHECK(0x22), BACKUP_VERIFY(0x23);
+    ANNOUNCE(0x20), PAIR(0x21), PAIR_CHECK(0x22), BACKUP_VERIFY(0x23),
+    /** "I was just shaken" (shake to connect); see [com.crossdrop.core.shake.ShakeMatcher]. */
+    SHAKE(0x24);
 
     companion object {
         private val byCode = entries.associateBy { it.code }

@@ -134,6 +134,8 @@ class TransferEngine(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
     /** Advertised protocol version — tests pin this to simulate older peers. */
     private val protocolVersion: Int = PROTOCOL_VERSION,
+    /** What this device runs on ([com.crossdrop.core.Platforms]), told to every peer in the handshake. */
+    private val os: String? = null,
 ) {
     // ------------------------------------------------------------- sender --
 
@@ -152,7 +154,7 @@ class TransferEngine(
             val transferId = UUID.randomUUID().toString()
 
             // -- handshake
-            io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId, os = os).encode())
             val (ackType, ackPayload) = io.read()
             if (ackType != FrameType.HELLO_ACK) throw ProtocolException("expected HELLO_ACK, got $ackType")
             val ack = ackPayload.decode<HelloAck>()
@@ -450,7 +452,7 @@ class TransferEngine(
             socket.tcpNoDelay = true
             socket.soTimeout = CONTROL_TIMEOUT_MS
             val io = FrameIO(socket.getInputStream(), socket.getOutputStream())
-            io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId, os = os).encode())
             val (ackType, ackPayload) = io.read()
             if (ackType != FrameType.HELLO_ACK) throw ProtocolException("expected HELLO_ACK, got $ackType")
             val ack = ackPayload.decode<HelloAck>()
@@ -458,7 +460,7 @@ class TransferEngine(
             val keys = SessionCrypto.deriveSession(identity, unb64(ack.publicKeyB64), isInitiator = true)
             io.writeCipher = com.crossdrop.core.crypto.RecordCipher(keys.sendKey)
             io.readCipher = com.crossdrop.core.crypto.RecordCipher(keys.recvKey)
-            ControlChannel(socket, io, keys, ack.deviceName, ack.instanceId, keys.sas).block()
+            ControlChannel(socket, io, keys, ack.deviceName, ack.instanceId, keys.sas, ack.os).block()
         }
     }
 
@@ -505,7 +507,7 @@ class TransferEngine(
                 throw ProtocolException("protocol v${hello.version} unsupported")
             // A newer peer clamps down to what we speak rather than failing.
             val negotiated = minOf(hello.version, protocolVersion)
-            io.write(FrameType.HELLO_ACK, HelloAck(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId).encode())
+            io.write(FrameType.HELLO_ACK, HelloAck(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId, os = os).encode())
             val keys = SessionCrypto.deriveSession(identity, unb64(hello.publicKeyB64), isInitiator = false)
             io.writeCipher = com.crossdrop.core.crypto.RecordCipher(keys.sendKey)
             io.readCipher = com.crossdrop.core.crypto.RecordCipher(keys.recvKey)
@@ -517,7 +519,7 @@ class TransferEngine(
             val (offerType, offerPayload) = first
             if (offerType != FrameType.OFFER) {
                 if (control == null) throw ProtocolException("expected OFFER, got $offerType")
-                serveControl(socket, io, keys, hello.deviceName, hello.instanceId, first, control)
+                serveControl(socket, io, keys, hello.deviceName, hello.instanceId, first, control, hello.os)
                 return@flow
             }
             val offer = offerPayload.decode<Offer>()

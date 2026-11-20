@@ -9,6 +9,7 @@ import com.crossdrop.core.protocol.PairCheck
 import com.crossdrop.core.protocol.PairReply
 import com.crossdrop.core.protocol.PairRequest
 import com.crossdrop.core.protocol.ProtocolException
+import com.crossdrop.core.protocol.Shake
 import com.crossdrop.core.protocol.VerifyItem
 import com.crossdrop.core.protocol.VerifyReply
 import com.crossdrop.core.protocol.VerifyRequest
@@ -29,8 +30,14 @@ class PairSecret(val id: String, val key: ByteArray)
  * only what it supports.
  */
 interface ControlHandler {
-    /** A device told us where to reach it: [host] is the address it connected from, [port] its listener. */
-    fun announced(name: String, instanceId: String, host: String, port: Int) {}
+    /**
+     * A device told us where to reach it: [host] is the address it connected from, [port] its listener,
+     * [os] what it runs on ([com.crossdrop.core.Platforms]) if it said.
+     */
+    fun announced(name: String, instanceId: String, host: String, port: Int, os: String?) {}
+
+    /** A device says it was just shaken (shake to connect); [port] is its listener, 0 if it didn't say. */
+    fun shaken(name: String, instanceId: String, host: String, port: Int, os: String?) {}
 
     /** A device asks to pair. Suspend until the human answers; false (or never answering) declines. */
     suspend fun pairRequested(name: String, sas: String): Boolean = false
@@ -59,6 +66,8 @@ class ControlChannel internal constructor(
     val peerInstanceId: String,
     /** The 6-digit code both screens show for this connection. */
     val sas: String,
+    /** What the other device runs on ([com.crossdrop.core.Platforms]); null for older builds. */
+    val peerOs: String? = null,
 ) {
     private var matched: PairSecret? = null
 
@@ -67,6 +76,13 @@ class ControlChannel internal constructor(
         io.write(FrameType.ANNOUNCE, Announce(listenPort).encode())
         val (type, _) = io.read()
         if (type != FrameType.ANNOUNCE) throw ProtocolException("expected ANNOUNCE, got $type")
+    }
+
+    /** Tell the other device this one was just shaken ([listenPort] lets it reach us back). */
+    fun shake(listenPort: Int) {
+        io.write(FrameType.SHAKE, Shake(listenPort).encode())
+        val (type, _) = io.read()
+        if (type != FrameType.SHAKE) throw ProtocolException("expected SHAKE, got $type")
     }
 
     /**
@@ -141,6 +157,7 @@ internal suspend fun serveControl(
     peerInstanceId: String,
     first: Pair<FrameType, ByteArray>,
     handler: ControlHandler,
+    peerOs: String? = null,
 ) {
     val (type, payload) = first
     when (type) {
@@ -148,8 +165,14 @@ internal suspend fun serveControl(
             val port = payload.decode<Announce>().port
             if (port !in 1..65535) throw ProtocolException("bad announced port $port")
             val host = socket.inetAddress?.hostAddress?.substringBefore('%') ?: throw ProtocolException("no peer address")
-            handler.announced(peerName, peerInstanceId, host, port)
+            handler.announced(peerName, peerInstanceId, host, port, peerOs)
             io.write(FrameType.ANNOUNCE, Announce(0).encode())
+        }
+        FrameType.SHAKE -> {
+            val port = payload.decode<Shake>().port.takeIf { it in 1..65535 } ?: 0
+            val host = socket.inetAddress?.hostAddress?.substringBefore('%') ?: throw ProtocolException("no peer address")
+            handler.shaken(peerName, peerInstanceId, host, port, peerOs)
+            io.write(FrameType.SHAKE, Shake(0).encode())
         }
         FrameType.PAIR -> {
             val pairId = payload.decode<PairRequest>().pairId

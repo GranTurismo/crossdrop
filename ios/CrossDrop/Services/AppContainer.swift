@@ -24,6 +24,13 @@ final class AppContainer: ObservableObject {
     @Published var pendingShare: [URL] = []
     private var pendingTemporary: [URL] = []
     @Published var discoveryEnabled: Bool
+    /// "Shake to connect" (Settings): shaking two phones at once opens each one's send sheet for the other.
+    @Published private(set) var shakeEnabled: Bool
+    /// Has shaking ever found a device here? Until then the radar teaches it with an animated card.
+    @Published private(set) var shakeLearned: Bool
+    /// The radar's shake card has had its one showing this launch (here, not in the view: the tree is rebuilt when the
+    /// language or text size changes).
+    var shakeHintShown = false
     /// Wireless Drive host overlay open?
     @Published var driveOpen = false
     /// Bumped by the ⌘O "Send Files…" menu command; the radar reacts.
@@ -63,6 +70,10 @@ final class AppContainer: ObservableObject {
     private var vaultBeacons: [String: Peer] = [:]
     private var vaultDiscovery: VaultDiscovery!
     private let liveness = PeerLiveness()
+    private let shakeSensor = ShakeSensor()
+    /// The radar is on screen with nothing over it and the app is in front (set by the radar); the only time a
+    /// shake means "connect", so the only time the accelerometer runs.
+    private(set) var radarUncovered = false
     private var started = false
     private let pathMonitor = NWPathMonitor()
     private var lastPathSignature = ""
@@ -72,6 +83,8 @@ final class AppContainer: ObservableObject {
         let name = defaults.string(forKey: "device_name") ?? Self.defaultDeviceName()
         deviceName = name
         discoveryEnabled = defaults.object(forKey: "nsd_enabled") as? Bool ?? true
+        shakeEnabled = defaults.object(forKey: "shake_enabled") as? Bool ?? true
+        shakeLearned = defaults.bool(forKey: "shake_learned")
         let id = instanceId
         // The engine reads the live name through a box so renames apply to later sessions.
         let box = NameBox(name)
@@ -103,9 +116,16 @@ final class AppContainer: ObservableObject {
         // A device that announced itself (e.g. one that scanned this network's code) shows like any sighting.
         let announced = self.announced
         announced.onChange = { [weak self] in self?.mergePeers() }
-        coordinator.control = AnnounceRelay { name, instanceId, host, port in
+        let coord = coordinator
+        coordinator.control = AnnounceRelay({ name, instanceId, host, port in
             DispatchQueue.main.async { announced.add(instanceId: instanceId, name: name, host: host, port: port) }
-        }
+        }, onShake: { [weak coord] name, instanceId, host, port in
+            // Make sure we can reach it back, even if Bonjour never showed it here (queued before the match, so the
+            // radar learns of the device first).
+            if port > 0 { DispatchQueue.main.async { announced.add(instanceId: instanceId, name: name, host: host, port: port) } }
+            coord?.shaken(instanceId: instanceId, name: name)
+        })
+        shakeSensor.onShake = { [weak self] in self?.shakeNow() }
         wifiJoin.listenPort = { [weak self] in self?.listenerPort ?? 0 }
         // Radar only shows peers whose listener still answers (mDNS alone keeps a vanished device for an hour).
         liveness.onChange = { [weak self] in self?.mergePeers() }
@@ -231,6 +251,37 @@ final class AppContainer: ObservableObject {
         if on { discovery.start(port: listener.port); vaultDiscovery.start() } else { discovery.stop(); vaultDiscovery.stop() }
     }
 
+    // MARK: shake to connect
+
+    func setShakeEnabled(_ on: Bool) {
+        shakeEnabled = on
+        UserDefaults.standard.set(on, forKey: "shake_enabled")
+        updateShakeSensor()
+    }
+
+    /// A shake found a device: no more teaching card.
+    func markShakeLearned() {
+        guard !shakeLearned else { return }
+        UserDefaults.standard.set(true, forKey: "shake_learned")
+        shakeLearned = true
+    }
+
+    /// The radar reports whether it is what the person is looking at (app in front, radar tab, nothing over it).
+    func setRadarUncovered(_ uncovered: Bool) {
+        guard uncovered != radarUncovered else { return }
+        radarUncovered = uncovered
+        updateShakeSensor()
+    }
+
+    private func updateShakeSensor() {
+        if radarUncovered && shakeEnabled && ShakeSensor.supported { shakeSensor.start() } else { shakeSensor.stop() }
+    }
+
+    /// This device was shaken: tell the radar's devices, and match one that shook at the same time.
+    func shakeNow() {
+        coordinator.shake(peers.filter { $0.isReachable && $0.vault == nil }, listenPort: listenerPort)
+    }
+
     func start() {
         guard !started else { return }
         started = true
@@ -296,7 +347,11 @@ final class AppContainer: ObservableObject {
             guard p.count == 2, let port = Int(p[1]) else { return nil }
             return (p[0], port)
         }
-        if let v = args.string(forKey: "dev_peer"), let (h, p) = hostPort(v) { addManualPeer(name: "dev \(h)", host: h, port: p) }
+        // `-dev_peer h:p` or several, `-dev_peer h:p,h:p` (like Android's `-e dev_peer`).
+        if let v = args.string(forKey: "dev_peer") {
+            let list = v.split(separator: ",").compactMap { hostPort(String($0)) }
+            for (h, p) in list { addManualPeer(name: list.count > 1 ? "dev \(h):\(p)" : "dev \(h)", host: h, port: p) }
+        }
         if let v = args.string(forKey: "dev_send"), let (h, p) = hostPort(v) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.debugSend(host: h, port: p) }
         }
@@ -336,6 +391,9 @@ final class AppContainer: ObservableObject {
             }
         }
         if args.bool(forKey: "dev_share") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.qrShare.startDebug() } }
+        // `-dev_shake YES`: this device "is shaken" 3 s after launch (the simulator has no accelerometer, and
+        // Device → Shake is a UIKit motion event, not sensor data).
+        if args.bool(forKey: "dev_shake") { DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { self.shakeNow() } }
         if args.bool(forKey: "dev_autoaccept") { coordinator.autoAcceptAll = true }
         // Screenshot drivers.
         if args.bool(forKey: "dev_seed_inbox") { inbox.seedDebug() }

@@ -195,6 +195,19 @@ public struct Announce: Codable, Equatable {
     public init(port: Int) { self.port = port }
 }
 
+/// SHAKE: "this phone was shaken just now" (shake to connect). Carries no time: the receiver notes when it arrived on
+/// its own clock, so the two phones' clocks never need to agree. `port` is the sender's listener, so a phone that
+/// wasn't on the receiver's radar yet can be reached back. The answer's `port` is 0; a missing `port` reads as 0.
+public struct Shake: Codable, Equatable {
+    public var port: Int
+    public init(port: Int = 0) { self.port = port }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        port = try c.decodeIfPresent(Int.self, forKey: .port) ?? 0
+    }
+    enum K: String, CodingKey { case port }
+}
+
 /// PAIR, first frame: the initiator asks to become one of the receiver's devices under `pairId` (32 hex).
 public struct PairRequest: Codable, Equatable {
     public var pairId: String

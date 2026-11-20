@@ -19,6 +19,8 @@ public enum FrameType: UInt8 {
     /// Exchanges that carry no files, sent instead of an OFFER right after the handshake (see `ControlChannel`).
     /// Builds that predate them fail the unknown frame before any session exists, so nothing shows on their side.
     case announce = 0x20, pair = 0x21, pairCheck = 0x22, backupVerify = 0x23
+    /// "I was just shaken" (shake to connect); see `ShakeMatcher`.
+    case shake = 0x24
 }
 
 /// `[u32 BE bodyLen][body]`, body = `[u8 type][payload]` or `seal(type || payload)`.

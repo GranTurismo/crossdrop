@@ -129,6 +129,7 @@ class NsdDiscovery(
             setAttribute("id", instanceId)
             setAttribute("name", deviceName().take(48))
             setAttribute(CrossDrop.TXT_PROBE, "1")
+            setAttribute(CrossDrop.TXT_OS, com.crossdrop.core.Platforms.ANDROID)
         }
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
@@ -238,6 +239,8 @@ class NsdDiscovery(
             ?: prev?.name ?: UNNAMED_PEER
         val probeable = attrs[CrossDrop.TXT_PROBE]?.let { String(it, Charsets.UTF_8) == "1" }
             ?: prev?.probeable ?: false
+        val platform = attrs[CrossDrop.TXT_OS]?.let { String(it, Charsets.UTF_8) }?.takeIf { it.length <= 16 }
+            ?: prev?.platform
         names.add(resolved.serviceName, id)
         _peers.update { it + (id to Peer(
             instanceId = id,
@@ -245,6 +248,7 @@ class NsdDiscovery(
             endpoint = Endpoint(host, port),
             sources = setOf(DiscoverySource.NSD),
             probeable = probeable,
+            platform = platform,
         )) }
     }
 

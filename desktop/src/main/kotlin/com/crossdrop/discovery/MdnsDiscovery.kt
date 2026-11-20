@@ -95,7 +95,8 @@ class MdnsDiscovery(
         ours?.let { runCatching { dns.unregisterService(it) } }
         val info = ServiceInfo.create(
             type, "crossdrop-$instanceId", advertisedPort, 0, 0,
-            mapOf("id" to instanceId, "name" to deviceName().take(48), CrossDrop.TXT_PROBE to "1"),
+            mapOf("id" to instanceId, "name" to deviceName().take(48), CrossDrop.TXT_PROBE to "1") +
+                (com.crossdrop.platform.Platform.wireName?.let { mapOf(CrossDrop.TXT_OS to it) } ?: emptyMap()),
         )
         ours = info
         runCatching { dns.registerService(info) }
@@ -113,6 +114,7 @@ class MdnsDiscovery(
         val prev = _peers.value[id]
         val name = info.getPropertyString("name")?.takeIf { it.isNotBlank() } ?: prev?.name ?: UNNAMED_PEER
         val probeable = info.getPropertyString(CrossDrop.TXT_PROBE)?.let { it == "1" } ?: prev?.probeable ?: false
+        val platform = info.getPropertyString(CrossDrop.TXT_OS)?.takeIf { it.length <= 16 } ?: prev?.platform
         names.add(info.name, id)
         _peers.update { it + (id to Peer(
             instanceId = id,
@@ -120,6 +122,7 @@ class MdnsDiscovery(
             endpoint = Endpoint(host, info.port),
             sources = setOf(DiscoverySource.NSD),
             probeable = probeable,
+            platform = platform,
         )) }
     }
 

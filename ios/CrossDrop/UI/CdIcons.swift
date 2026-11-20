@@ -61,6 +61,8 @@ enum CdIcons {
     static let doc = CdIcon(d("M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"), d("M14 3v5h5M9 13h6M9 17h4"), stroke: 1.8)
     static let video = CdIcon(.rect(3, 6, 13, 12, 2), d("M16 10l5-3v10l-5-3"))
     static let contacts = CdIcon(.circle(12, 9, 3.5), d("M5 20c.8-3.5 3.6-5.5 7-5.5s6.2 2 7 5.5"))
+    /// A phone with motion lines: shake to connect.
+    static let shake = CdIcon(.rect(8, 3, 8, 18, 2), d("M4.5 8.5c-1 1.6-1 5.4 0 7M19.5 8.5c1 1.6 1 5.4 0 7M11.5 17.5h1"))
     static let camera = CdIcon(d("M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"), .circle(12, 12.5, 3.5))
     static let note = CdIcon(d("M5 6h14M5 11h14M5 16h9"), stroke: 2)
     static let swap = CdIcon(d("M7 4L3 8l4 4M3 8h13M17 12l4 4-4 4M21 16H8"), stroke: 2)

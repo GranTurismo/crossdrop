@@ -74,7 +74,7 @@ class AppContainer(private val app: Context) {
     val directLink = com.crossdrop.net.DirectLink(app, scope, { listenerPort.value }, instanceId)
 
     val identity = SessionIdentity()
-    val engine = TransferEngine(identity, deviceName::value, instanceId)
+    val engine = TransferEngine(identity, deviceName::value, instanceId, os = com.crossdrop.core.Platforms.ANDROID)
     val inbox = InboxStore(app).also { store ->
         // Received files used to sit in the app's private folder; move them to Downloads once.
         Thread({ runCatching { store.migrateToDownloads() } }, "inbox-migrate").apply { isDaemon = true }.start()
@@ -106,6 +106,10 @@ class AppContainer(private val app: Context) {
     /** Contact cards sent on their own: straight into the address book. */
     val contactInbox = com.crossdrop.contacts.ContactInbox(app, coordinator.hub, inbox)
         .also { coordinator.hub.contactReceiver = it }
+
+    /** Apps another Android phone sent, waiting to be installed (staging left by a dead process is cleared). */
+    val appInbox = com.crossdrop.apps.AppInbox(app, scope)
+        .also { it.cleanUp(); coordinator.hub.appReceiver = it }
 
     /** "Send to anyone" — zero-install receiver path via QR + embedded HTTP. */
     val qrShare = QrShareManager(scope, app, deviceName::value, history)
@@ -161,12 +165,44 @@ class AppContainer(private val app: Context) {
         runCatching { if (enabled) bleDiscovery.start() else bleDiscovery.stop() }
     }
 
+    // ------------------------------------------------------ shake to connect --
+
+    private val _shakeEnabled = MutableStateFlow(prefs.getBoolean("shake_enabled", true))
+    val shakeEnabled: StateFlow<Boolean> = _shakeEnabled
+
+    fun setShakeEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("shake_enabled", enabled) }
+        _shakeEnabled.value = enabled
+    }
+
+    /** Has shaking ever found a device here? Until then the radar teaches it with an animated card. */
+    private val _shakeLearned = MutableStateFlow(prefs.getBoolean("shake_learned", false))
+    val shakeLearned: StateFlow<Boolean> = _shakeLearned
+
+    fun markShakeLearned() {
+        if (_shakeLearned.value) return
+        prefs.edit { putBoolean("shake_learned", true) }
+        _shakeLearned.value = true
+    }
+
+    /** When this phone was last shaken without a match yet: the radar says "now shake the other phone". */
+    val shakeWaitingSince = MutableStateFlow(0L)
+
+    /** This phone was shaken: tell the radar's devices, and match one that shook at the same time. */
+    fun shakeNow() {
+        val reachable = peers.value.values.filter { it.endpoint != null && it.vault == null }
+        coordinator.hub.shake(reachable, listenerPort.value)
+        if (coordinator.hub.shakeMatch.value == null) shakeWaitingSince.value = System.currentTimeMillis()
+    }
+
     /** Port our transfer listener bound to — shown on the radar in debug builds. */
     val listenerPort = MutableStateFlow(0)
 
     /** Debug: place a peer on the radar by address, as if NSD had found it. */
     fun injectPeer(name: String?, host: String, port: Int) {
-        manualDiscovery?.add(name ?: "$host:$port", host, port)
+        // Port 0: this phone's own listener (a send to self, e.g. apps on a single emulator).
+        val p = if (port == 0) listenerPort.value else port
+        manualDiscovery?.add(name ?: "$host:$p", host, p)
     }
 
     /** Debug: a phone heard over Bluetooth only (emulators have no Bluetooth peers). */
