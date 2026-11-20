@@ -9,7 +9,9 @@
 # Set SMOKE_SHOT=/path/shot.png to also save a screenshot of the window (needs ImageMagick's `import`).
 set -euo pipefail
 
-deb="${1:?usage: linux_smoke.sh <package.deb>}"
+# apt takes anything not starting with / or ./ for a package name, so hand it an absolute path.
+deb="$(realpath "${1:?usage: linux_smoke.sh <package.deb>}")"
+[ -f "$deb" ] || { echo "::error::no such package: $deb"; exit 1; }
 SUDO=""; [ "$(id -u)" = 0 ] || SUDO=sudo
 work="$(mktemp -d)"
 
