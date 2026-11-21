@@ -29,8 +29,8 @@ android {
         applicationId = "com.crossdrop"
         minSdk = 29
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.10.0"
+        versionCode = 13
+        versionName = "0.11.0"
     }
 
     buildFeatures {

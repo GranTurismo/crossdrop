@@ -1,12 +1,13 @@
 # CrossDrop Privacy Policy
 
-**Last updated:** November 2026 (scanning a code, "My devices" and backups to your computer)
+**Last updated:** November 2026 (whole folders, "My devices" that send without asking, send when it's back, and the rating prompt)
 
 ## The short version
 
 CrossDrop collects **no personal data**. It has no accounts, no servers, no
 analytics, no ads, and no third-party SDKs that communicate off your device.
 Everything the app does happens entirely on your local network or on-device.
+The one exception is the store's own rating sheet, described below.
 
 ## What CrossDrop does on your device
 
@@ -69,12 +70,21 @@ Everything the app does happens entirely on your local network or on-device.
   again. It lives only in memory, ends when you close the viewer, finish the
   move or restart the app, and is never stored or sent anywhere else.
 
+## Asking for a rating
+
+After a few transfers that worked, CrossDrop asks once for a store rating (never after a
+failure, at most three times). On Android this uses Google Play's in-app review, on iPhone
+and iPad Apple's StoreKit: the sheet is shown and handled by Google Play or Apple, under
+their privacy policies, and CrossDrop sends them nothing. CrossDrop only keeps three small
+counters on your device to decide when to ask (how many transfers in a row worked, how
+often it asked, and when). Nothing else is added or sent.
+
 ## What CrossDrop does not do
 
 - No data collection, sharing, or sale — nothing leaves your local network, and nothing ever reaches us.
 - No tracking, analytics, crash-reporting SDKs, or advertising.
 - No account, sign-in, email, or personal identifiers required.
-- No internet connectivity is used or needed.
+- No internet connectivity is used or needed by CrossDrop itself (the store's rating sheet above is Google Play's or Apple's own).
 
 ## Permissions explained
 

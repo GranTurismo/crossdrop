@@ -1,0 +1,1 @@
+Clearer messages when a transfer fails: CrossDrop now says what happened and what to try. Sending to another iPhone or iPad reminds you that it only receives while CrossDrop is open and its screen is on. After a few transfers that worked, CrossDrop asks once for a rating (never after a failure, at most three times). No cloud, no account, no ads.

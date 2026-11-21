@@ -1,0 +1,1 @@
+New: My devices (add your own phones and computers; they send each other files without asking, with a switch to turn that off), send when it's back for a device that is away, whole folders, and transfers that get cut off finish by themselves. You can now choose where received files go, and failures say what happened and what to try. Nothing goes over the internet.
