@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.di.AppContainer
+import com.crossdrop.net.TransferGroup
 import com.crossdrop.net.isTerminal
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -108,6 +109,23 @@ fun Root(container: AppContainer) {
     val vaultUi by container.vaultExplorer.state.collectAsState()
     val vaultHost by container.vaultHost.state.collectAsState()
     val incomingOffer by container.coordinator.incomingOffer.collectAsState()
+    val pairPrompt by container.coordinator.hub.pairPrompt.collectAsState()
+    val pairedDevices by container.pairings.devices.collectAsState()
+    val here by container.presence.present.collectAsState()
+    val outboxEntries by container.outbox.entries.collectAsState()
+    val outboxSending by container.outboxRunner.sending.collectAsState()
+    val outboxNote by container.outboxNote.collectAsState()
+    val queuedCounts = outboxEntries.groupBy { it.pairId }.mapValues { (_, e) -> e.sumOf { it.items.size } }
+    val sendingPairs = outboxEntries.filter { it.id in outboxSending }.map { it.pairId }.toSet()
+    // "Send when it's back": pick with the document picker (its grants can be kept), and queue for the chosen device.
+    var queueTarget by remember { mutableStateOf<com.crossdrop.core.pairing.PairedDevice?>(null) }
+    val queuePicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments(),
+    ) { uris ->
+        queueTarget?.let { d -> if (uris.isNotEmpty()) container.queueFiles(d, uris) }
+        queueTarget = null
+    }
+    val queueFor: (com.crossdrop.core.pairing.PairedDevice) -> Unit = { d -> queueTarget = d; queuePicker.launch(arrayOf("*/*")) }
     val deviceName by container.deviceName.collectAsState()
     val nsdEnabled by container.nsdEnabled.collectAsState()
     val bleEnabled by container.bleEnabled.collectAsState()
@@ -135,7 +153,7 @@ fun Root(container: AppContainer) {
     var guideOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(directLink) { container.localNetwork.refresh() }
     val tab = Tab.valueOf(tabName)
-    var inboxCount by remember { mutableIntStateOf(container.inbox.list().size) }
+    var inboxCount by remember { mutableIntStateOf(0) }
     var historyTick by remember { mutableIntStateOf(0) }
     var inboxTick by remember { mutableIntStateOf(0) }
     var driveOpen by remember { mutableStateOf(false) }
@@ -160,10 +178,26 @@ fun Root(container: AppContainer) {
     var switchInHidden by remember { mutableStateOf(false) }
     val doneCount = allSessions.count { it.status.isTerminal }
     val context = androidx.compose.ui.platform.LocalContext.current
+    // Closing a transfer that went well is the moment to ask for a rating (the policy decides whether to).
+    val finishTransfer = { g: TransferGroup ->
+        val wentWell = g.isTerminal && g.problems == 0
+        container.coordinator.dismissGroup(g.id)
+        if (wentWell) generateSequence(context) { (it as? android.content.ContextWrapper)?.baseContext }
+            .filterIsInstance<android.app.Activity>().firstOrNull()?.let(container.review::maybeAsk)
+    }
+
+    // A paired device can send without a tap on the offer; the service keeps the receive alive like an accepted one.
+    val receiving = allSessions.any { it.direction == com.crossdrop.net.Direction.RECEIVING && !it.status.isTerminal }
+    LaunchedEffect(receiving) { if (receiving) TransferService.start(container.contextForService()) }
 
     // Files may land while we're anywhere in the app — keep badges fresh.
     val inboxVersion by container.inbox.version.collectAsState()
-    LaunchedEffect(doneCount, switchIn?.phase, inboxVersion) { inboxCount = container.inbox.list().size }
+    // Listing the inbox can mean MediaStore and folder queries, and a received folder bumps the version once per file:
+    // wait for the burst to settle (a newer change cancels this one) and look off the main thread.
+    LaunchedEffect(doneCount, switchIn?.phase, inboxVersion) {
+        kotlinx.coroutines.delay(250)
+        inboxCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { container.inbox.list().size }
+    }
     // A newly focused group always opens the transfer view.
     LaunchedEffect(focused?.id) { if (focused != null) transferHidden = false }
     // A minimised group that finishes is cleared — history already has it.
@@ -228,6 +262,15 @@ fun Root(container: AppContainer) {
                         TransferService.start(container.contextForService())
                         container.coordinator.sendTo(targets, uris)
                     },
+                    onSendFolder = { targets, tree, grantIsNew ->
+                        if (grantIsNew) container.trackFolderGrant(tree)
+                        TransferService.start(container.contextForService())
+                        container.coordinator.sendFolder(targets, tree)
+                    },
+                    offlineDevices = pairedDevices.filter { it.id !in here },
+                    queued = queuedCounts,
+                    sendingIds = sendingPairs,
+                    onQueueFor = queueFor,
                     onCamera = { targets -> cameraShots = emptyList(); cameraTargets = targets },
                     onSendText = { targets, text ->
                         TransferService.start(container.contextForService())
@@ -295,16 +338,34 @@ fun Root(container: AppContainer) {
                         inboxTick++
                     },
                     onClearHistory = { container.history.clear(); historyTick++ },
+                    // Read again whenever the inbox changes (a pick, a receive): the version is part of the refresh signal.
+                    inboxFolder = remember(inboxVersion, inboxTick) { container.inbox.folderLabel() },
+                    inboxIsCustom = remember(inboxVersion, inboxTick) { container.inbox.isCustom },
+                    onSetInboxFolder = { uri ->
+                        container.inbox.setFolder(uri).also { inboxTick++; inboxCount = container.inbox.list().size }
+                    },
                     onShowWelcome = { welcome = true },
                     vaultState = vaultHost,
                     onOpenDrive = { driveOpen = true },
                     backup = backupState,
                     onOpenBackup = { backupOpen = true },
+                    // The backup computer is managed on the backup screen; these are the devices added by hand.
+                    myDevices = pairedDevices.filter { !it.backup },
+                    peers = peers.values.sortedBy { it.lastSeenMs },
+                    onAccept = container::setAccept,
+                    onUnpair = { id -> container.pairings.remove(id) },
+                    onPairDevice = container::pairDevice,
+                    presentIds = here.keys,
+                    queued = queuedCounts,
+                    sendingIds = sendingPairs,
+                    outboxNote = outboxNote,
+                    onQueue = queueFor,
+                    onClearQueue = { id -> container.outbox.clearFor(id) },
                     onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
                         ({ container.coordinator.selfTransfer() }) else null,
                     onAddPeer = if (com.crossdrop.BuildConfig.DEBUG)
                         ({ h, p -> container.injectPeer(null, h, p) }) else null,
-                    refreshSignal = listOf(doneCount, inboxTick, historyTick),
+                    refreshSignal = listOf(doneCount, inboxTick, historyTick, inboxVersion),
                 )
             }
 
@@ -372,13 +433,13 @@ fun Root(container: AppContainer) {
 
             // ---- live transfer (one device, or a send to several)
             Overlay(focused?.takeIf { !transferHidden }) { g ->
-                BackHandler { if (g.isTerminal) container.coordinator.dismissGroup(g.id) else transferHidden = true }
+                BackHandler { if (g.isTerminal) finishTransfer(g) else transferHidden = true }
                 if (g.multi) {
                     com.crossdrop.ui.transfer.GroupTransferScreen(
                         group = g,
                         onCancelAll = { container.coordinator.cancelGroup(g.id) },
                         onRetry = { container.coordinator.retryFailed(g.id) },
-                        onClose = { container.coordinator.dismissGroup(g.id) },
+                        onClose = { finishTransfer(g) },
                         onHide = { transferHidden = true },
                     )
                 } else {
@@ -386,10 +447,10 @@ fun Root(container: AppContainer) {
                         session = g.primary,
                         selfName = deviceName,
                         onCancel = { container.coordinator.cancelGroup(g.id) },
-                        onClose = { container.coordinator.dismissGroup(g.id) },
+                        onClose = { finishTransfer(g) },
                         onHide = { transferHidden = true },
                         onOpenInbox = {
-                            container.coordinator.dismissGroup(g.id)
+                            finishTransfer(g)
                             tabName = Tab.INBOX.name
                         },
                     )
@@ -583,6 +644,12 @@ fun Root(container: AppContainer) {
                         onDone = { container.contactInbox.dismiss(d.id); inboxCount = container.inbox.list().size },
                     )
                 }
+            }
+
+            // ---- another device asks to be one of "My devices" — compare the code, then agree or not
+            Overlay(pairPrompt, fade = true) { p ->
+                BackHandler { container.coordinator.hub.respondToPair(p, false) }
+                com.crossdrop.ui.pairing.PairPromptSheet(p, onAnswer = { yes -> container.coordinator.hub.respondToPair(p, yes) })
             }
 
             // ---- inbound offer — always on top; Back declines

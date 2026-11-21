@@ -36,6 +36,9 @@ enum class FrameType(val code: Int) {
 
 class ProtocolException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
+/** The file being sent changed (or came up short) while it was being read: the sender's file, not the connection. */
+class SourceChangedException(message: String) : Exception(message)
+
 /**
  * Frame layout: `[u32 BE bodyLen][body]` where body = `[u8 type][payload]` —
  * or, once a session is established, `seal(type || payload)`. Length covers the

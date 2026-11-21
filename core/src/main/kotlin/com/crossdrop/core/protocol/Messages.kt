@@ -52,6 +52,12 @@ data class FileMeta(
     val key: String? = null,
     /** [OfferKind.APP]: the Android package this file belongs to (an app may come as several split APKs). */
     val pkg: String? = null,
+    /**
+     * A folder being sent: the folder this file sits in, `/`-separated, starting with the folder that was
+     * picked ("Holiday/Day 1"); null for a loose file. Older receivers ignore it and get a flat file.
+     * Peer-supplied, so receivers clean every segment ([com.crossdrop.core.protocol.Folders.relativePath]).
+     */
+    val dir: String? = null,
 )
 
 /** Values of [FileMeta.cat]. */
@@ -184,7 +190,17 @@ data class Shake(val port: Int = 0)
 
 /** PAIR, first frame: the initiator asks to become one of the receiver's devices under [pairId] (32 hex). */
 @Serializable
-data class PairRequest(val pairId: String)
+data class PairRequest(
+    val pairId: String,
+    /** What the pairing is for ([PairPurpose]); absent on older builds, which only ever paired for backups. */
+    val purpose: String? = null,
+)
+
+/** Values of [PairRequest.purpose]. */
+object PairPurpose {
+    /** "My devices": these two send each other files without asking. */
+    const val DEVICES = "devices"
+}
 
 /** PAIR, answer: the human on the receiving side agreed (or not, or didn't answer in time). */
 @Serializable

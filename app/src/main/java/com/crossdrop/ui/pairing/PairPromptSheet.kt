@@ -37,7 +37,7 @@ import com.crossdrop.ui.theme.displayStyle
 import com.crossdrop.ui.theme.monoStyle
 
 /**
- * A device asks to become one of "My devices" (so far: a phone that wants to back up here). Both screens
+ * A device asks to become one of "My devices" (to send files without asking, or a phone that wants to back up here). Both screens
  * show the same 6-digit code; agreeing only makes sense when they match. Platform-free: shared with desktop.
  */
 @Composable
@@ -55,7 +55,9 @@ fun PairPromptSheet(prompt: PairPrompt, onAnswer: (Boolean) -> Unit, modifier: M
                 modifier = Modifier.semantics { heading() },
             )
             Text(
-                tr("{0} will back up its photos and videos to this computer, without asking each time.", prompt.peerName),
+                if (prompt.purpose == com.crossdrop.core.protocol.PairPurpose.DEVICES)
+                    tr("{0} will be able to send you files without asking each time. You can turn that off in Settings.", prompt.peerName)
+                else tr("{0} will back up its photos and videos to this computer, without asking each time.", prompt.peerName),
                 color = TextSecondary, fontSize = 14.sp, lineHeight = 20.sp, textAlign = TextAlign.Center,
             )
             GlassCard(

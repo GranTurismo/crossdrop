@@ -52,6 +52,7 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
             "id": Data(instanceId.utf8),
             "name": Data(deviceName().clippedUTF8(48).utf8),
             "probe": Data("1".utf8),          // our listener ignores a bare connect-and-close (liveness probe)
+            "os": Data(AppPlatform.wireName.utf8),     // lets other devices tell an iPhone (must stay open) from the rest
         ])
     }
 
@@ -105,7 +106,8 @@ final class BonjourDiscovery: NSObject, NetServiceBrowserDelegate, NetServiceDel
         let prev = peers[id]
         let name = str("name").flatMap { $0.isEmpty ? nil : $0 } ?? prev?.name ?? Peer.unnamed
         let probeable = str("probe").map { $0 == "1" } ?? prev?.probeable ?? false
-        peers[id] = Peer(instanceId: id, name: name, host: host, port: sender.port, probeable: probeable)
+        let platform = str("os") ?? prev?.platform
+        peers[id] = Peer(instanceId: id, name: name, host: host, port: sender.port, probeable: probeable, platform: platform)
         onPeersChanged?(peers)
     }
 

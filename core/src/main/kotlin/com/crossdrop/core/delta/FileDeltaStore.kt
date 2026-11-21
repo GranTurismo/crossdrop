@@ -40,8 +40,10 @@ class FileDeltaStore(
 
     override fun stagingPool(): File = pool.apply { mkdirs() }
 
-    // The directory may not exist yet (a fresh store on first use): the .part beside the target needs it.
-    override fun targetFor(meta: FileMeta): File = File(inboxDir.apply { mkdirs() }, nameFor(meta))
+    // The directory may not exist yet (a fresh store on first use, or the sub-folder of a received folder):
+    // the .part beside the target needs it. [nameFor] may return a `/`-separated path for a file inside a folder.
+    override fun targetFor(meta: FileMeta): File =
+        File(inboxDir.apply { mkdirs() }, nameFor(meta)).also { it.parentFile?.mkdirs() }
 
     override fun baselineFor(meta: FileMeta): Baseline? {
         val file = File(inboxDir, nameFor(meta))
@@ -55,12 +57,14 @@ class FileDeltaStore(
         return Baseline(file, indexed.chunks, indexed.root)
     }
 
+    // Looks only: creating the folders of an offer that may still be cancelled (or hostile) is not a side effect of asking.
     override fun canPush(files: List<FileMeta>): Boolean =
         (pool.listFiles() ?: emptyArray()).none { it.name.endsWith(".bin") } &&
-            files.none { targetFor(it).exists() }
+            files.none { File(inboxDir, nameFor(it)).exists() }
 
     override fun publishIndex(file: File, chunks: List<ChunkEntry>, root: String) {
-        writeIndex(indexFileFor(file), file, chunks, root)
+        // The index is a cache for the next transfer: failing to write it must never fail the one that just finished.
+        runCatching { writeIndex(indexFileFor(file), file, chunks, root) }
     }
 
     override fun invalidate(meta: FileMeta) {
@@ -77,7 +81,30 @@ class FileDeltaStore(
 
     // ------------------------------------------------------------ internals --
 
-    private fun indexFileFor(file: File) = File(idxDir, "${file.name}.idx")
+    /**
+     * The index of [file]. Keyed by its path inside the inbox, so two files with the same name in different
+     * folders don't share one (a flat file keeps its plain `<name>.idx`). `$` stands for `/`: a received
+     * name can't contain it, so no file name can collide with a folder path.
+     */
+    private fun indexFileFor(file: File): File {
+        val rel = runCatching { file.relativeTo(inboxDir).invariantSeparatorsPath }.getOrNull()
+            ?.takeIf { it.isNotEmpty() && !it.startsWith("..") } ?: file.name
+        val key = rel.replace('/', '$')
+        // A deep path would make a file name past what file systems allow (255 bytes): long ones are named by their hash.
+        val name = if (key.toByteArray().size <= MAX_INDEX_NAME) key
+            else "h-" + java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray()).joinToString("") { "%02x".format(it) }
+        return File(idxDir, "$name.idx")
+    }
+
+    /**
+     * True when this store assembled [file] itself and it is still exactly that: its index exists and matches the file's
+     * size and time. A file that is merely sitting where we would write (the person's own, one they edited since, an old
+     * index left behind by a deleted file) is not ours and must never be replaced.
+     */
+    fun knows(file: File): Boolean = file.isFile && readIndex(indexFileFor(file), file) != null
+
+    /** Drop the index of [file] (it was deleted, moved or published elsewhere). */
+    fun forget(file: File) { indexFileFor(file).delete() }
 
     class Indexed(val chunks: List<ChunkEntry>, val root: String)
 
@@ -135,5 +162,9 @@ class FileDeltaStore(
             java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     }
 
-    private companion object { const val IDX_MAGIC = 0x43445833 }   // "CDX3"
+    private companion object {
+        const val IDX_MAGIC = 0x43445833    // "CDX3"
+        /** Longest index name kept as the path itself; leaves room for ".idx" under the 255-byte file-name limit. */
+        const val MAX_INDEX_NAME = 200
+    }
 }

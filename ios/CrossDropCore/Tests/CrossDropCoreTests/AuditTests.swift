@@ -17,7 +17,7 @@ final class Recorder {
         lock.lock(); defer { lock.unlock() }
         return events.last { switch $0 { case .completed, .failed, .cancelled, .declinedByPeer: return true; default: return false } }
     }
-    var failure: String? { if case .failed(let m) = terminal { return m }; return nil }
+    var failure: String? { if case .failed(let m, _) = terminal { return m }; return nil }
     var completed: Bool { if case .completed = terminal { return true }; return false }
     var cancelled: Bool { if case .cancelled = terminal { return true }; return false }
     func wait(_ seconds: TimeInterval = 20) -> Bool { finished.wait(timeout: .now() + seconds) == .success }

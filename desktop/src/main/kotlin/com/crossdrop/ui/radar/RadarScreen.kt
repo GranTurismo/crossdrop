@@ -101,6 +101,7 @@ fun RadarScreen(
     onClearPending: () -> Unit = {},
     onComposeText: () -> Unit = {},
     onPickForSeveral: () -> Unit = {},
+    onPickFolder: () -> Unit = {},
     onShareToAnyone: (List<File>) -> Unit = {},
     onMountVault: (Peer) -> Unit = {},
     onRename: (String) -> Unit,
@@ -108,6 +109,11 @@ fun RadarScreen(
     nsdEnabled: Boolean = true,
     hasNetwork: Boolean = true,
     onShowConnectGuide: () -> Unit = {},
+    /** Paired devices that are not here right now, and what is waiting for them ("send when it's back"). */
+    offlineDevices: List<com.crossdrop.core.pairing.PairedDevice> = emptyList(),
+    queued: Map<String, Int> = emptyMap(),
+    sendingIds: Set<String> = emptySet(),
+    onQueueFor: (com.crossdrop.core.pairing.PairedDevice) -> Unit = {},
 ) {
     var pickingLanguage by remember { mutableStateOf(false) }
     if (pickingLanguage) com.crossdrop.ui.language.LanguageDialog { pickingLanguage = false }
@@ -206,11 +212,13 @@ fun RadarScreen(
                 )
             } else {
                 com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, modifier = Modifier.widthIn(max = 560.dp))
+                com.crossdrop.ui.pairing.OfflineDevicesStrip(offlineDevices, queued, sendingIds, onQueueFor, Modifier.widthIn(max = 560.dp))
                 SendToAnyoneCard(::startAnyoneFlow, Modifier.widthIn(max = 560.dp))
                 Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     QuickAction(tr("Send text or a link"), CdIcons.Note, Modifier.weight(1f), onComposeText)
                     QuickAction(tr("Send to several devices"), CdIcons.Transfers, Modifier.weight(1f), onPickForSeveral)
                 }
+                QuickAction(tr("Send a folder"), CdIcons.Folder, Modifier.widthIn(max = 560.dp).fillMaxWidth(), onPickFolder)
             }
             drives.take(2).forEach { d -> DriveRow(d, Modifier.widthIn(max = 560.dp)) { startSendFlow(d) } }
         }

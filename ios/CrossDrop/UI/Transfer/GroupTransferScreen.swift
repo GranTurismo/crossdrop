@@ -98,6 +98,7 @@ private struct DeviceRow: View {
                 Spacer(minLength: 4)
                 if let sas = s.sas { Text(String(sas.prefix(3)) + " " + String(sas.suffix(3))).monoStyle(13, color: CD.textSecondary) }
             }
+            if let note = s.note { Text(note).body(12, CD.textDim).frame(maxWidth: .infinity, alignment: .leading) }
             if !s.status.isTerminal { ProgressBar(fraction: s.fraction, height: 4) }
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
@@ -114,7 +115,7 @@ private struct DeviceRow: View {
         case .completed: return (tr("Delivered"), CD.accent)
         case .declined: return (tr("Declined"), CD.dangerText)
         case .cancelled: return (tr("Cancelled"), CD.textSecondary)
-        case .failed: return (s.error.map { tr("Failed: {0}", $0) } ?? tr("Failed"), CD.dangerText)
+        case .failed: return (s.error ?? tr("Failed"), CD.dangerText)
         }
     }
 }

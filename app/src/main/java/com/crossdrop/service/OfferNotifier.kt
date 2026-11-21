@@ -26,7 +26,8 @@ object OfferNotifier {
     private const val ID = 43
 
     fun show(context: Context, offer: IncomingOffer) {
-        if (context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        // The permission only exists from Android 13; before that notifications are simply allowed (asking would always say "denied").
+        if (android.os.Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val nm = context.getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CHANNEL, tr("Incoming offers"), NotificationManager.IMPORTANCE_HIGH))
         val n = offer.offer.files.size

@@ -4,11 +4,16 @@ import com.crossdrop.core.Endpoint
 import com.crossdrop.core.Peer
 import com.crossdrop.core.contacts.VCard
 import com.crossdrop.core.discovery.AnnouncedPeers
+import com.crossdrop.core.pairing.PairedDevice
 import com.crossdrop.core.pairing.PairingStore
 import com.crossdrop.core.protocol.VerifyItem
 import com.crossdrop.core.shake.ShakeMatcher
 import com.crossdrop.core.transfer.ControlHandler
+import com.crossdrop.core.transfer.FailureAdvice
 import com.crossdrop.core.transfer.PairSecret
+import com.crossdrop.core.transfer.FailureKind
+import com.crossdrop.core.transfer.ResumableOffers
+import com.crossdrop.core.transfer.ResumePolicy
 import com.crossdrop.core.contacts.VContact
 import com.crossdrop.core.delta.DeltaReceiver
 import com.crossdrop.core.i18n.tr
@@ -33,6 +38,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
@@ -70,6 +76,14 @@ data class SessionState(
     val currentFileName: String? = null,
     val status: SessionStatus = SessionStatus.CONNECTING,
     val error: String? = null,
+    /** What to try, for a failed or declined session (see [FailureAdvice]). */
+    val hint: String? = null,
+    /** A send whose connection dropped and which is waiting for the device to come back, then trying again. */
+    val resuming: Boolean = false,
+    /** Why it failed, once it did (see [FailureAdvice]); null otherwise. */
+    val failure: FailureKind? = null,
+    /** What the other device runs on ([com.crossdrop.core.Platforms]) when known, e.g. to warn that an iPhone must stay open. */
+    val peerOs: String? = null,
     val id: String = "",
     /** Sessions started together (one send to several devices) share it; a receive is its own group. */
     val groupId: String = "",
@@ -84,6 +98,19 @@ data class SessionState(
         else -> (bytesDone.toFloat() / bytesTotal.coerceAtLeast(1)).coerceIn(0f, 1f)
     }
 }
+
+/**
+ * The line under a session's status: what to try after a failure or a decline, or, while sending to an
+ * iPhone or iPad, the heads-up that it only receives with CrossDrop open and its screen on.
+ */
+val SessionState.note: String?
+    get() = when {
+        resuming && status == SessionStatus.CONNECTING ->
+            tr("Lost the connection to {0}. Trying again as soon as it's back; what already arrived is kept.", peerName)
+        hint != null -> hint
+        direction == Direction.SENDING && !status.isTerminal && peerOs == com.crossdrop.core.Platforms.IOS -> FailureAdvice.iosNote(peerName)
+        else -> null
+    }
 
 /** The sessions of one send (one per device) or of one receive, as the transfer view shows them. */
 data class TransferGroup(val id: String, val sessions: List<SessionState>) {
@@ -185,7 +212,13 @@ interface AppReceiver {
 }
 
 /** A device asking to become one of "My devices"; both screens show [sas]. */
-class PairPrompt(val peerName: String, val sas: String, internal val answer: CompletableDeferred<Boolean>)
+class PairPrompt(
+    val peerName: String,
+    val sas: String,
+    internal val answer: CompletableDeferred<Boolean>,
+    /** What the pairing is for ([com.crossdrop.core.protocol.PairPurpose]); null = phone backups, as older builds ask. */
+    val purpose: String? = null,
+)
 
 /**
  * Receiving end of contact cards sent on their own: the `.vcf` is staged in [stagingFile] and handed
@@ -213,6 +246,9 @@ class TransferHub(
     private val port: ReceivePort,
     /** History hook: called once per session as it ends (camera shots and switch batches excluded). */
     private val onEnded: (Direction, SessionState) -> Unit,
+    /** When an interrupted send is picked up again by itself (tests shorten the pauses). */
+    private val resumePolicy: ResumePolicy = ResumePolicy(),
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     val trust = TrustStore()
     var switchReceiver: SwitchReceiver? = null
@@ -225,6 +261,18 @@ class TransferHub(
 
     /** Devices that announced themselves (ANNOUNCE); shown on the radar like mDNS sightings. */
     var announced: AnnouncedPeers? = null
+
+    /** The devices on the radar now; an interrupted send waits for its device to be in here again. Optional. */
+    var radar: StateFlow<Map<String, Peer>>? = null
+
+    /** Which of "My devices" are on the radar: lets an interrupted send find a paired device that restarted. Optional. */
+    var presence: PairedPresence? = null
+
+    /** Offers just accepted, remembered so the same sender picking an interrupted transfer up again isn't asked twice. */
+    private val resumable = ResumableOffers(clock = clock)
+
+    /** Receive session id → the plain-files offer accepted for it (so a cancel here can tell [resumable]). */
+    private val receiving = ConcurrentHashMap<String, InboundRequest>()
 
     private val _pairPrompt = MutableStateFlow<PairPrompt?>(null)
     /** A pairing request waiting for the human's answer. */
@@ -246,7 +294,7 @@ class TransferHub(
             val ep = p.endpoint ?: continue
             if (p.vault != null) continue
             scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching { withTimeoutOrNull(3_000) { engine.control(ep, connectTimeoutMs = 1_500) { shake(listenPort) } } }
+                runCatching { withTimeoutOrNull(3_000) { engine.control(ep, connectTimeoutMs = 1_500, readTimeoutMs = 3_000) { shake(listenPort) } } }
             }
         }
     }
@@ -285,12 +333,22 @@ class TransferHub(
     private val specs = ConcurrentHashMap<String, SendSpec>()
 
     private class SendSpec(
-        val peers: Map<String, Peer>,
+        /** Session id → the device it goes to; an auto-resume swaps in the device's new address. */
+        val peers: MutableMap<String, Peer>,
         val files: suspend () -> List<OutgoingFile>,
         val options: SendOptions,
         val quiet: Boolean,
         val inline: (suspend (List<OutgoingFile>) -> String?)?,
+        /** Session id → the pairing the device proved to hold, when it is one of "My devices". */
+        val pairIds: MutableMap<String, String> = ConcurrentHashMap(),
     )
+
+    /** One send that lost its connection and is waiting for the device to come back. */
+    private class ResumeState(val firstLossAt: Long) {
+        var attempts = 0
+        var job: Job? = null
+    }
+    private val resumes = ConcurrentHashMap<String, ResumeState>()
 
     /** Dev-only: auto-accept the next inbound offer (loopback self-tests). */
     @Volatile var autoAcceptOnce = false
@@ -312,12 +370,12 @@ class TransferHub(
         val groupId = newId()
         val targets = peers.filter { it.endpoint != null }.associateBy { newId() }
         if (targets.isEmpty()) return groupId
-        specs[groupId] = SendSpec(targets, files, options, quiet, inline)
+        specs[groupId] = SendSpec(ConcurrentHashMap(targets), files, options, quiet, inline)
         _sessions.update { list ->
             list + targets.map { (sid, peer) ->
                 SessionState(
                     Direction.SENDING, peer.name, id = sid, groupId = groupId,
-                    kind = options.kind, quiet = quiet,
+                    kind = options.kind, quiet = quiet, peerOs = peer.platform,
                 )
             }
         }
@@ -339,7 +397,7 @@ class TransferHub(
     ): SessionState {
         val sid = newId()
         observers[sid] = onUpdate
-        _sessions.update { it + SessionState(Direction.SENDING, peer.name, id = sid, groupId = sid, kind = options.kind, quiet = quiet) }
+        _sessions.update { it + SessionState(Direction.SENDING, peer.name, id = sid, groupId = sid, kind = options.kind, quiet = quiet, peerOs = peer.platform) }
         var last: SessionState? = null
         try {
             runSend(sid, peer, files, options)
@@ -366,7 +424,16 @@ class TransferHub(
         // finally ends, unregister the new one.
         jobs.remove(sid)?.cancel()
         val job = scope.launch {
-            val list = runCatching { files() }.getOrElse { emptyList() }
+            val list = try {
+                files()
+            } catch (e: com.crossdrop.core.protocol.TooManyFilesException) {
+                reduce(sid, TransferEvent.Failed(tr("That folder has more than {0} files. Send part of it, or zip it first.", e.limit)))
+                return@launch
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                emptyList()
+            }
             if (list.isEmpty()) {
                 reduce(sid, TransferEvent.Failed(tr("nothing readable selected")))
                 return@launch
@@ -382,8 +449,22 @@ class TransferHub(
     private suspend fun runSend(sid: String, peer: Peer, files: List<OutgoingFile>, options: SendOptions) {
         val endpoint = peer.endpoint ?: run { reduce(sid, TransferEvent.Failed(tr("device has no address"))); return }
         val kind = options.kind
-        val opts = if (kind == OfferKind.CAMERA || kind == OfferKind.SWITCH)
+        var opts = if (kind == OfferKind.CAMERA || kind == OfferKind.SWITCH)
             options.copy(trust = options.trust ?: trust.credentialFor(peer.instanceId, kind)) else options
+        // Plain files to one of "My devices": prove the pairing, so it can take them without asking.
+        if (opts.pairKey == null && (kind == null || kind == OfferKind.FILES)) {
+            val secret = pairSecretFor(peer)
+            val spec = _sessions.value.firstOrNull { it.id == sid }?.let { specs[it.groupId] }
+            // This send already went to one of "My devices" and proved it: a retry (a resume, a manual Retry) must find
+            // that same device again. Whoever now answers at the address, because it took the radar id or because the
+            // check timed out, is not it: wait, never fall back to sending unproven (an impostor would get the files).
+            if (spec?.pairIds?.get(sid) != null && secret?.id != spec.pairIds[sid]) {
+                reduce(sid, TransferEvent.Failed("paired device not confirmed", kind = FailureKind.UNREACHABLE))
+                return
+            }
+            opts = opts.copy(pairKey = secret?.key)
+            if (secret != null) spec?.pairIds?.put(sid, secret.id)
+        }
         engine.send(endpoint, files, opts).collect { ev ->
             when (ev) {
                 is TransferEvent.TrustGranted -> trust.remember(peer.instanceId, ev.grant)
@@ -395,14 +476,46 @@ class TransferHub(
         }
     }
 
+    /**
+     * The pairing [peer] holds with us, or null (not one of "My devices", not reachable in time, an
+     * older build). Costs one short connection, and only when we hold any pairing at all.
+     */
+    private suspend fun pairSecretFor(peer: Peer): PairSecret? {
+        val held = pairings?.secrets().orEmpty()
+        val endpoint = peer.endpoint
+        if (held.isEmpty() || endpoint == null || peer.vault != null) return null
+        val match = withTimeoutOrNull(PAIR_CHECK_MS) {
+            runCatching { engine.control(endpoint, connectTimeoutMs = 2_000, readTimeoutMs = PAIR_CHECK_MS.toInt()) { pairCheck(held) } }.getOrNull()
+        } ?: return null
+        pairings?.seen(match.id, null)
+        return match
+    }
+
+    /**
+     * Pair with [peer] as one of "My devices": both screens show the code [onCode] gets, and the other person
+     * agrees. The two then send each other files without asking (each can turn that off). Returns the pairing, or
+     * null when they declined or didn't answer; throws when the device can't be reached.
+     */
+    suspend fun pairWith(peer: Peer, onCode: (String) -> Unit): PairedDevice? {
+        val endpoint = peer.endpoint ?: return null
+        val store = pairings ?: return null
+        val id = PairingStore.newId()
+        val (key, name) = engine.control(endpoint) {
+            onCode(sas)
+            pair(id, purpose = com.crossdrop.core.protocol.PairPurpose.DEVICES)?.let { it to peerName }
+        } ?: return null
+        return store.add(id, name, key, accept = true, backup = false)
+    }
+
     /** Resend to the devices of [groupId] that failed, declined or were cancelled. */
     fun retryFailed(groupId: String) {
         val spec = specs[groupId] ?: return
         val retry = _sessions.value.filter { it.groupId == groupId && it.status.isProblem }
         if (retry.isEmpty()) return
+        retry.forEach { resumes.remove(it.id)?.job?.cancel() }
         _sessions.update { list ->
             list.map { s ->
-                if (retry.any { it.id == s.id }) SessionState(Direction.SENDING, s.peerName, id = s.id, groupId = groupId, kind = s.kind, quiet = s.quiet)
+                if (retry.any { it.id == s.id }) SessionState(Direction.SENDING, s.peerName, id = s.id, groupId = groupId, kind = s.kind, quiet = s.quiet, peerOs = s.peerOs)
                 else s
             }
         }
@@ -411,9 +524,11 @@ class TransferHub(
     }
 
     fun cancelSession(id: String) {
+        receiving[id]?.let(resumable::stop)      // a receive the person stopped: its sender must not be able to resume it silently
+        resumes.remove(id)?.job?.cancel()
         jobs.remove(id)?.cancel()
         _sessions.update { list ->
-            list.map { if (it.id == id && !it.status.isTerminal) it.copy(status = SessionStatus.CANCELLED) else it }
+            list.map { if (it.id == id && !it.status.isTerminal) it.copy(status = SessionStatus.CANCELLED, resuming = false) else it }
         }
     }
 
@@ -437,6 +552,67 @@ class TransferHub(
         _sessions.update { list -> list.filterNot { it.quiet && it.kind == kind && it.status.isTerminal } }
     }
 
+    // ------------------------------------------------------- auto-resume --
+
+    /**
+     * A send lost its connection mid-way (a Wi-Fi blip, the other device locking its screen): instead of failing,
+     * wait for the device and try again, for as long as [ResumePolicy.windowMs]. The receiver keeps what arrived,
+     * so each try only moves what is left, and it takes the repeat without asking again ([resumable]). Returns
+     * true when the failure was taken over; false lets it show as a failure.
+     */
+    private fun startResume(id: String, event: TransferEvent.Failed): Boolean {
+        val cur = _sessions.value.firstOrNull { it.id == id } ?: return false
+        if (cur.status.isTerminal || cur.direction != Direction.SENDING) return false
+        val spec = specs[cur.groupId] ?: return false
+        if (spec.quiet || (spec.options.kind != null && spec.options.kind != OfferKind.FILES)) return false
+        val state = resumes[id]
+        if (state != null && resumePolicy.expired(state.firstLossAt, clock())) { resumes.remove(id); return false }
+        val connected = cur.status != SessionStatus.CONNECTING
+        val kind = FailureAdvice.kindOf(event.cause, event.kind, connected, sending = true)
+        if (!resumePolicy.eligible(kind, connected, state != null)) { resumes.remove(id); return false }
+        val st = state ?: ResumeState(clock()).also { resumes[id] = it }
+        _sessions.update { list ->
+            list.map { if (it.id == id) it.copy(status = SessionStatus.CONNECTING, resuming = true, error = null, hint = null, bytesPerSec = 0) else it }
+        }
+        observers[id]?.let { obs -> _sessions.value.firstOrNull { it.id == id }?.let { runCatching { obs(it) } } }
+        scheduleResume(id, st)
+        return true
+    }
+
+    private fun scheduleResume(id: String, st: ResumeState) {
+        st.job?.cancel()
+        st.job = scope.launch {
+            delay(resumePolicy.pauseMs(st.attempts++))
+            while (true) {
+                val cur = _sessions.value.firstOrNull { it.id == id }
+                // Cancelled, closed or already moving again by the person's own doing: nothing left to do here.
+                if (cur == null || !cur.resuming || cur.status != SessionStatus.CONNECTING) { resumes.remove(id); return@launch }
+                val spec = specs[cur.groupId] ?: run { resumes.remove(id); return@launch }
+                if (resumePolicy.expired(st.firstLossAt, clock())) {
+                    resumes.remove(id)
+                    reduce(id, TransferEvent.Failed(tr("connection lost"), kind = FailureKind.CONNECTION_LOST))
+                    return@launch
+                }
+                val peer = livePeer(spec, id)
+                if (peer != null) {
+                    spec.peers[id] = peer
+                    launchSend(id, peer, spec.files, spec.options, spec.inline)
+                    return@launch      // how this try ends comes back through reduce, which schedules the next one
+                }
+                delay(WAIT_FOR_PEER_MS)
+            }
+        }
+    }
+
+    /** The radar entry to retry against: the same device (same launch), or a paired one that restarted; null while it is away. */
+    private fun livePeer(spec: SendSpec, id: String): Peer? {
+        val original = spec.peers[id] ?: return null
+        val radar = radar?.value ?: return original      // no radar to ask: just try again
+        radar[original.instanceId]?.takeIf { it.endpoint != null }?.let { return it }
+        val pairId = spec.pairIds[id] ?: return null
+        return presence?.present?.value?.get(pairId)
+    }
+
     // ----------------------------------------------------------- incoming --
 
     /** Serve one inbound connection accepted by the transfer listener. */
@@ -447,7 +623,13 @@ class TransferHub(
             engine.receiveRequest(socket, control) { req -> decide(sid, req, route) }.collect { ev ->
                 if (_sessions.value.none { it.id == sid }) return@collect   // not accepted (yet)
                 reduce(sid, ev)
-                if (ev is TransferEvent.Completed) onReceived(route, ev.offer, ev.roots)
+                if (ev is TransferEvent.Completed) { route.request?.let(resumable::completed); onReceived(route, ev.offer, ev.roots) }
+                if (ev is TransferEvent.Failed) {
+                    // The sender sees any failure here as a dropped connection and retries. A bad link may well mend, but a full
+                    // disk won't: for anything else the retries are asked about instead of silently accepted.
+                    val kind = FailureAdvice.kindOf(ev.cause, ev.kind, connected = true, sending = false)
+                    if (kind != FailureKind.CONNECTION_LOST && kind != FailureKind.UNREACHABLE) route.request?.let(resumable::stop)
+                }
                 if (ev is TransferEvent.Failed || ev is TransferEvent.Cancelled) {
                     val status = if (ev is TransferEvent.Failed) SessionStatus.FAILED else SessionStatus.CANCELLED
                     val message = (ev as? TransferEvent.Failed)?.message
@@ -458,7 +640,7 @@ class TransferHub(
             }
         }
         jobs[sid] = job
-        job.invokeOnCompletion { jobs.remove(sid, job) }
+        job.invokeOnCompletion { jobs.remove(sid, job); receiving.remove(sid) }
     }
 
     /** What an accepted offer turned into, so completion knows where its files went. */
@@ -469,11 +651,50 @@ class TransferHub(
         var store: DeltaReceiver? = null
         var switchStore: Boolean = false
         var pairId: String? = null
+        /** The accepted plain-files offer, so completion can stop treating a repeat of it as a resume. */
+        var request: InboundRequest? = null
+    }
+
+    /** Forget a receive that a retry replaced: its connection is dead, so it will never finish. */
+    private fun dropSession(sid: String) {
+        jobs.remove(sid)?.cancel()
+        _sessions.update { list -> list.filterNot { it.id == sid } }
     }
 
     private suspend fun decide(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
-        val offer = req.offer
         route.peerName = req.peerName
+        // One of "My devices" proves it with the offer (a device that only borrowed the name can't). Files from it
+        // go straight in when the person said so; anything else is asked about as usual. Either way the answer
+        // proves the pairing back, which the sender checks before sending a byte. Text, contacts and the like
+        // are never taken unseen: they are shown first.
+        val store = pairings
+        val secret = if (req.offer.kind == OfferKind.BACKUP) null else store?.let { req.pairedWith(it.secrets()) }
+        val device = secret?.let { store?.get(it.id) }
+        if (device != null) store?.seen(device.id, req.peerName)
+        val plainFiles = req.offer.kind == null || req.offer.kind == OfferKind.FILES
+        // A transfer id is taken once: a recorded session replayed verbatim must not be accepted again.
+        // …unless the person here cancelled that very transfer a moment ago: then it is asked about, not taken on trust.
+        val stopped = plainFiles && resumable.isStopped(req)
+        val auto = device != null && device.accept && plainFiles && !stopped && rememberTransfer(req.offer.transferId)
+        // The same sender, in the same two app launches, picking up the very same files it was just let send and
+        // did not finish: no reason to ask again. A dead connection may still be holding the first receive; the
+        // retry replaces it.
+        val repeat = plainFiles && !stopped && resumable.matches(req)
+        val resumed = repeat && !auto
+        if (repeat) resumable.staleSession(req)?.let(::dropSession)
+        val decision = if (auto || resumed) acceptFiles(sid, req, route) else decideOffer(sid, req, route)
+        return if (secret != null && decision is ReceiveDecision.Accept) decision.copy(pairKey = secret.key) else decision
+    }
+
+    /** True the first time [transferId] is seen. */
+    private fun rememberTransfer(transferId: String): Boolean {
+        val fresh = seenBackups.add(transferId)
+        synchronized(seenBackups) { while (seenBackups.size > 4_096) seenBackups.remove(seenBackups.first()) }
+        return fresh
+    }
+
+    private suspend fun decideOffer(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
+        val offer = req.offer
 
         // A backup batch never asks: it comes from one of "My devices" or it is refused.
         if (offer.kind == OfferKind.BACKUP) return decideBackup(sid, req, route)
@@ -555,6 +776,11 @@ class TransferHub(
     private fun acceptFiles(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
         route.kind = req.offer.kind
         route.store = port.inboxDelta
+        // Plain files are remembered for a resume *before* the session shows (and can be cancelled): a Cancel that
+        // lands in between must still find what to stop.
+        if (req.offer.kind == null || req.offer.kind == OfferKind.FILES) {
+            resumable.remember(req, sid); route.request = req; receiving[sid] = req
+        }
         register(sid, req, req.offer.kind, quiet = false)
         return ReceiveDecision.Accept(inboxSink(route), port.inboxDelta)
     }
@@ -630,7 +856,7 @@ class TransferHub(
     private fun decideBackup(sid: String, req: InboundRequest, route: Route): ReceiveDecision {
         val rx = backupReceiver ?: return ReceiveDecision.Reject("no backups here")
         val store = pairings ?: return ReceiveDecision.Reject("not paired")
-        val pair = req.pairedWith(store.secrets()) ?: return ReceiveDecision.Reject("not paired")
+        val pair = req.pairedWith(store.secrets(backupOnly = true)) ?: return ReceiveDecision.Reject("not paired")
         if (!seenBackups.add(req.offer.transferId)) return ReceiveDecision.Reject("already received")
         synchronized(seenBackups) { while (seenBackups.size > 4_096) seenBackups.remove(seenBackups.first()) }
         store.seen(pair.id, req.peerName)
@@ -662,9 +888,13 @@ class TransferHub(
             shakes.remote(instanceId, name)?.let { _shakeMatch.value = it }
         }
 
-        override suspend fun pairRequested(name: String, sas: String): Boolean {
+        override suspend fun pairRequested(name: String, sas: String, purpose: String?): Boolean {
             if (this@TransferHub.pairings == null) return false
-            val prompt = PairPrompt(name, sas, CompletableDeferred())
+            // The old, backup-only form of the request is for a computer that keeps backups. A device that doesn't (a
+            // phone) refuses it without a word: agreeing would make the other device its "backup computer", and the
+            // phone's own backup logic would then start sending it every photo.
+            if (purpose != com.crossdrop.core.protocol.PairPurpose.DEVICES && backupReceiver == null) return false
+            val prompt = PairPrompt(name, sas, CompletableDeferred(), purpose)
             _pairPrompt.value?.answer?.complete(false)
             _pairPrompt.value = prompt
             val answer = runCatching { withTimeoutOrNull(PAIR_PROMPT_MS) { prompt.answer.await() } }.getOrNull()
@@ -672,8 +902,10 @@ class TransferHub(
             return answer == true
         }
 
-        override fun paired(pairId: String, name: String, key: ByteArray) {
-            this@TransferHub.pairings?.add(pairId, name, key)
+        override fun paired(pairId: String, name: String, key: ByteArray, purpose: String?) {
+            // "My devices": send each other files without asking. Anything else is a phone backing up here, as before.
+            val devices = purpose == com.crossdrop.core.protocol.PairPurpose.DEVICES
+            this@TransferHub.pairings?.add(pairId, name, key, accept = devices, backup = !devices)
         }
 
         override fun pairings(): List<PairSecret> = this@TransferHub.pairings?.secrets().orEmpty()
@@ -772,6 +1004,13 @@ class TransferHub(
     // ------------------------------------------------------------- state --
 
     private fun reduce(id: String, event: TransferEvent) {
+        // A send that lost its connection waits for the device instead of failing (see startResume).
+        if (event is TransferEvent.Failed && startResume(id, event)) return
+        // Done, or moving again after a pause (a later loss starts a fresh window, not what is left of the old one).
+        if (event is TransferEvent.Completed || event is TransferEvent.Failed || event is TransferEvent.Cancelled ||
+            event is TransferEvent.DeclinedByPeer || event is TransferEvent.Progress) {
+            resumes.remove(id)?.job?.cancel()
+        }
         var ended: SessionState? = null
         _sessions.update { list ->
             list.map { cur ->
@@ -788,20 +1027,30 @@ class TransferHub(
                         bytesTotal = event.offer.files.sumOf { it.size }.coerceAtLeast(1),
                     )
                     is TransferEvent.Progress -> cur.copy(
-                        status = SessionStatus.TRANSFERRING,
+                        status = SessionStatus.TRANSFERRING, resuming = false,
                         bytesDone = event.bytesDone, bytesTotal = event.bytesTotal,
                         bytesPerSec = event.bytesPerSec, bytesSkipped = event.bytesSkipped,
                         currentFileName = event.currentFile.name,
                     )
                     is TransferEvent.Completed -> cur.copy(
-                        status = SessionStatus.COMPLETED, offer = event.offer,
+                        status = SessionStatus.COMPLETED, resuming = false, offer = event.offer,
                         bytesDone = cur.bytesTotal.coerceAtLeast(cur.bytesDone), bytesPerSec = 0,
                         roots = event.roots,
                     )
                     is TransferEvent.TrustGranted -> cur
-                    is TransferEvent.DeclinedByPeer -> cur.copy(status = SessionStatus.DECLINED, bytesPerSec = 0)
-                    is TransferEvent.Cancelled -> cur.copy(status = SessionStatus.CANCELLED, bytesPerSec = 0)
-                    is TransferEvent.Failed -> cur.copy(status = SessionStatus.FAILED, error = event.message, bytesPerSec = 0)
+                    is TransferEvent.DeclinedByPeer -> cur.copy(
+                        status = SessionStatus.DECLINED, resuming = false, bytesPerSec = 0,
+                        hint = if (cur.direction == Direction.SENDING) FailureAdvice.declinedHint() else null,
+                    )
+                    is TransferEvent.Cancelled -> cur.copy(status = SessionStatus.CANCELLED, resuming = false, bytesPerSec = 0)
+                    is TransferEvent.Failed -> {
+                        // Before the offer went out nothing but a socket existed: a failure then means "couldn't reach".
+                        val advice = FailureAdvice.explain(
+                            event.cause, event.message, cur.peerName, cur.peerOs, event.kind,
+                            connected = cur.status != SessionStatus.CONNECTING, sending = cur.direction == Direction.SENDING,
+                        )
+                        cur.copy(status = SessionStatus.FAILED, resuming = false, failure = advice.kind, error = advice.title, hint = advice.hint, bytesPerSec = 0)
+                    }
                 }
                 // Record the outcome once, on the transition into a terminal state.
                 if (next.status.isTerminal && !cur.status.isTerminal) ended = next
@@ -830,6 +1079,10 @@ class TransferHub(
         const val SWITCH_TTL_MS = 30 * 60_000L
         /** How long a pairing request waits for the human (the asking side waits a little longer). */
         const val PAIR_PROMPT_MS = 70_000L
+        /** How long a send waits to learn whether the other device is one of ours, before it just sends. */
+        const val PAIR_CHECK_MS = 3_000L
+        /** While a dropped send waits for its device: how often it looks at the radar. */
+        const val WAIT_FOR_PEER_MS = 2_000L
         const val MAX_LIVE_SHOTS = 60
     }
 }

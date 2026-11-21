@@ -42,8 +42,14 @@ interface ControlHandler {
     /** A device asks to pair. Suspend until the human answers; false (or never answering) declines. */
     suspend fun pairRequested(name: String, sas: String): Boolean = false
 
+    /** [pairRequested] with what the pairing is for ([com.crossdrop.core.protocol.PairPurpose]; null = a backup, as older builds ask). */
+    suspend fun pairRequested(name: String, sas: String, purpose: String?): Boolean = pairRequested(name, sas)
+
     /** The human agreed and both devices now hold [key] under [pairId]. */
     fun paired(pairId: String, name: String, key: ByteArray) {}
+
+    /** [paired] with the purpose the asking device gave. */
+    fun paired(pairId: String, name: String, key: ByteArray, purpose: String?) = paired(pairId, name, key)
 
     /** The pairings tried against a PAIR_CHECK. */
     fun pairings(): List<PairSecret> = emptyList()
@@ -89,9 +95,9 @@ class ControlChannel internal constructor(
      * Ask the other device to pair under [pairId]. Its human sees [sas] and answers; this waits up to
      * [waitMs]. Returns the pairing key when they agreed, null when they declined.
      */
-    fun pair(pairId: String, waitMs: Int = PAIR_WAIT_MS): ByteArray? {
+    fun pair(pairId: String, waitMs: Int = PAIR_WAIT_MS, purpose: String? = null): ByteArray? {
         require(PAIR_ID.matches(pairId)) { "bad pair id" }
-        io.write(FrameType.PAIR, PairRequest(pairId).encode())
+        io.write(FrameType.PAIR, PairRequest(pairId, purpose).encode())
         socket.soTimeout = waitMs
         val (type, payload) = io.read()
         if (type != FrameType.PAIR) throw ProtocolException("expected PAIR, got $type")
@@ -175,12 +181,13 @@ internal suspend fun serveControl(
             io.write(FrameType.SHAKE, Shake(0).encode())
         }
         FrameType.PAIR -> {
-            val pairId = payload.decode<PairRequest>().pairId
+            val request = payload.decode<PairRequest>()
+            val pairId = request.pairId
             if (!ControlChannel.PAIR_ID.matches(pairId)) throw ProtocolException("bad pair id")
             socket.soTimeout = ControlChannel.PAIR_WAIT_MS + 5_000
-            val accepted = runCatching { handler.pairRequested(peerName, keys.sas) }.getOrDefault(false)
+            val accepted = runCatching { handler.pairRequested(peerName, keys.sas, request.purpose) }.getOrDefault(false)
             io.write(FrameType.PAIR, PairReply(accepted).encode())
-            if (accepted) handler.paired(pairId, peerName, SessionCrypto.pairKey(keys.shared, keys.binding, pairId))
+            if (accepted) handler.paired(pairId, peerName, SessionCrypto.pairKey(keys.shared, keys.binding, pairId), request.purpose)
         }
         FrameType.PAIR_CHECK -> {
             val check = payload.decode<PairCheck>()

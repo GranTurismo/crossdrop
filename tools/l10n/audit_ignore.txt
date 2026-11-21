@@ -6,3 +6,5 @@ QR
 WebDAV
 Sora
 Contact
+Folder
+Download/CrossDrop/

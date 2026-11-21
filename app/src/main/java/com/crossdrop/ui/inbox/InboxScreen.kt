@@ -105,7 +105,14 @@ fun InboxScreen(
 ) {
     val context = LocalContext.current
     var tick by remember { mutableIntStateOf(0) }
-    val files = remember(refreshSignal, tick) { inbox.list() }
+    // Loaded off the main thread (it may query MediaStore and a picked folder); the last list stays up while a new one loads.
+    var loaded by remember { mutableStateOf<List<InboxStore.ReceivedFile>?>(null) }
+    androidx.compose.runtime.LaunchedEffect(refreshSignal, tick) {
+        loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { inbox.list() }
+    }
+    val files = loaded ?: emptyList()
+    val isCustom = remember(refreshSignal, tick) { inbox.isCustom }
+    val folderLabel = remember(refreshSignal, tick) { inbox.folderLabel() }
     var filter by remember { mutableStateOf(InboxFilter.ALL) }
     var confirmWipe by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<InboxStore.ReceivedFile?>(null) }
@@ -172,7 +179,8 @@ fun InboxScreen(
             }
             item {
                 FootNote(
-                    tr("Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first."),
+                    if (isCustom) tr("Saved in {0}. Wiping overwrites each file with zeros first.", folderLabel)
+                    else tr("Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first."),
                     Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     icon = CdIcons.Lock,
                 )

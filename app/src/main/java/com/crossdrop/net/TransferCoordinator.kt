@@ -34,6 +34,7 @@ class TransferCoordinator(
     private val server: TransferServer,
     private val inbox: InboxStore,
     private val history: HistoryStore,
+    resumePolicy: com.crossdrop.core.transfer.ResumePolicy = com.crossdrop.core.transfer.ResumePolicy(),
 ) {
     val hub = TransferHub(
         scope, engine,
@@ -43,7 +44,12 @@ class TransferCoordinator(
             override fun received(files: List<File>) { files.forEach { inbox.publish(it) } }
         },
         onEnded = ::record,
+        resumePolicy = resumePolicy,
     )
+
+    /** Told once per finished send/receive: true when it completed, false when it failed (declines and cancels are not reported). */
+    var onOutcome: ((success: Boolean) -> Unit)? = null
+    private var lastCountedGroup: String? = null
 
     val sessions: StateFlow<List<SessionState>> get() = hub.sessions
     val groups: StateFlow<List<TransferGroup>> get() = hub.groups
@@ -75,6 +81,9 @@ class TransferCoordinator(
     }
 
     fun sendTo(peer: Peer, uris: List<Uri>): String = sendTo(listOf(peer), uris)
+
+    /** A whole folder (a tree picked with `OpenDocumentTree`) with everything in it; the receiver rebuilds the same tree. */
+    fun sendFolder(peers: List<Peer>, tree: Uri): String = hub.send(peers, { context.outgoingFolder(tree) })
 
     /** Text or a link: shown on the receiver with Copy / Open; older versions get a .txt file. */
     fun sendText(peers: List<Peer>, text: String): String {
@@ -136,6 +145,12 @@ class TransferCoordinator(
     }
 
     private fun record(direction: Direction, s: SessionState) {
+        // One send to three devices is one transfer that worked, not three: only the first of a group counts as a success.
+        when (s.status) {
+            SessionStatus.COMPLETED -> if (lastCountedGroup != s.groupId) { lastCountedGroup = s.groupId; runCatching { onOutcome?.invoke(true) } }
+            SessionStatus.FAILED -> { lastCountedGroup = s.groupId; runCatching { onOutcome?.invoke(false) } }
+            else -> Unit
+        }
         if (direction == Direction.SENDING && s.status == SessionStatus.COMPLETED)
             com.crossdrop.share.DirectShare.remember(context, s.peerName)
         val files = s.offer?.files.orEmpty()

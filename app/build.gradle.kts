@@ -94,6 +94,7 @@ dependencies {
     implementation(libs.camera.view)
     // "Scan a code": decodes the other phone's private-link code.
     implementation(libs.zxing.core)
+    implementation(libs.play.review)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
 

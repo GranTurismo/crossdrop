@@ -60,7 +60,7 @@ final class ShareModel: NSObject, ObservableObject, NetServiceBrowserDelegate, N
         var b = [UInt8](repeating: 0, count: 8)
         _ = SecRandomCopyBytes(kSecRandomDefault, b.count, &b)
         let name = ShareModel.deviceName()
-        return TransferEngine(identity: SessionIdentity(), deviceName: { name }, instanceId: b.map { String(format: "%02x", $0) }.joined())
+        return TransferEngine(identity: SessionIdentity(), deviceName: { name }, instanceId: b.map { String(format: "%02x", $0) }.joined(), os: "ios")
     }()
 
     var summary: String {
@@ -271,7 +271,7 @@ final class ShareModel: NSObject, ObservableObject, NetServiceBrowserDelegate, N
         case .completed: rows[i].status = "Sent"; rows[i].fraction = 1; rows[i].done = true
         case .declinedByPeer: rows[i].status = "Declined"; rows[i].failed = true
         case .cancelled: rows[i].status = "Cancelled"; rows[i].failed = true
-        case .failed(let m): rows[i].status = "Failed: \(m)"; rows[i].failed = true
+        case .failed(let m, _): rows[i].status = "Failed: \(m)"; rows[i].failed = true
         default: break
         }
         if rows.allSatisfy(\.done) {

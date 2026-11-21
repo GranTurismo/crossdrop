@@ -102,6 +102,17 @@ fun Root(container: AppContainer) {
     val incomingOffer by container.coordinator.incomingOffer.collectAsState()
     val pairPrompt by container.coordinator.hub.pairPrompt.collectAsState()
     val pairedDevices by container.pairings.devices.collectAsState()
+    val here by container.presence.present.collectAsState()
+    val outboxEntries by container.outbox.entries.collectAsState()
+    val outboxSending by container.outboxRunner.sending.collectAsState()
+    val outboxNote by container.outboxNote.collectAsState()
+    val queuedCounts = outboxEntries.groupBy { it.pairId }.mapValues { (_, e) -> e.sumOf { it.items.size } }
+    val sendingPairs = outboxEntries.filter { it.id in outboxSending }.map { it.pairId }.toSet()
+    // Picking is blocking, like every other native dialog here; what is picked waits for the device.
+    val queueFor: (com.crossdrop.core.pairing.PairedDevice) -> Unit = { d ->
+        val picked = com.crossdrop.platform.SystemActions.pickFiles(title = tr("Choose what to send to {0} when it's back", d.name))
+        if (picked.isNotEmpty()) container.queueFor(d, picked)
+    }
     val lastBackups by container.backups.last.collectAsState()
     val deviceName by container.deviceName.collectAsState()
     val nsdEnabled by container.nsdEnabled.collectAsState()
@@ -169,6 +180,10 @@ fun Root(container: AppContainer) {
                             val picked = com.crossdrop.platform.SystemActions.pickFiles(title = tr("Choose files to send"))
                             container.openFiles(picked)
                         },
+                        onPickFolder = {
+                            com.crossdrop.platform.SystemActions.pickFolder(title = tr("Choose a folder to send"))
+                                ?.let { container.openFiles(listOf(it)) }
+                        },
                         onShareToAnyone = { files -> container.qrShare.start(files) },
                         onMountVault = { peer -> container.vaultExplorer.mount(peer) },
                         onRename = container::setDeviceName,
@@ -176,6 +191,10 @@ fun Root(container: AppContainer) {
                         nsdEnabled = nsdEnabled,
                         hasNetwork = hasNetwork,
                         onShowConnectGuide = { guideOpen = true },
+                        offlineDevices = pairedDevices.filter { it.id !in here },
+                        queued = queuedCounts,
+                        sendingIds = sendingPairs,
+                        onQueueFor = queueFor,
                     )
                     Tab.TRANSFERS -> TransfersScreen(
                         groups = groups,
@@ -211,8 +230,26 @@ fun Root(container: AppContainer) {
                         lastBackups = lastBackups,
                         backupFolder = container.backupRoot,
                         onUnpair = container::unpair,
+                        peers = peers.values.sortedBy { it.lastSeenMs },
+                        onAccept = container::setAccept,
+                        onPairDevice = container::pairDevice,
+                        presentIds = here.keys,
+                        queued = queuedCounts,
+                        sendingIds = sendingPairs,
+                        outboxNote = outboxNote,
+                        onQueue = queueFor,
+                        onClearQueue = { id -> container.outbox.clearFor(id) },
                         onChangeBackupFolder = {
                             com.crossdrop.platform.SystemActions.pickFolder(title = tr("Choose where backups go"))?.let(container::setBackupRoot)
+                        },
+                        inboxFolder = container.inbox.dir,
+                        inboxIsCustom = container.inbox.isCustom,
+                        onPickInboxFolder = {
+                            com.crossdrop.platform.SystemActions.pickFolder(title = tr("Choose where received files go"))
+                        },
+                        onSetInboxFolder = { dir ->
+                            container.setInboxFolder(dir, onMoved = { inboxTick++; inboxCount = container.inbox.list().size })
+                                .also { inboxTick++; inboxCount = container.inbox.list().size }
                         },
                         refreshSignal = listOf(doneCount, inboxTick, historyTick),
                     )

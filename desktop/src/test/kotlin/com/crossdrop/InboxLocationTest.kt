@@ -108,4 +108,80 @@ class InboxLocationTest {
         assertTrue(File(visible, "sub/keep.txt").exists())
         assertFalse(File(state, ".staging/x.bin").exists())
     }
+
+    // ------------------------------------------------------- choosing a folder --
+
+    @Test
+    fun `switching the inbox folder sends new files there and carries the old ones across`() {
+        val first = tmp("first")
+        val second = tmp("second")
+        val state = tmp("state")
+        val inbox = InboxStore(first, state)
+        val firstDelta = inbox.delta
+        assertFalse(inbox.isCustom)
+        File(first, "Résumé 2026.pdf").writeText("cv")          // not a peer's name: it must keep its spelling
+        File(first, "clash.txt").writeText("new one")
+        File(second, "clash.txt").writeText("already there")
+        File(first, "half.7.part").writeText("unfinished")       // an unfinished receive stays behind
+        File(first, ".hidden").writeText("h")
+        File(first, "sub").mkdirs(); File(first, "sub/keep.txt").writeText("k")
+
+        val old = inbox.switchTo(second)
+        assertEquals(first.canonicalFile, old.canonicalFile)
+        assertTrue(inbox.isCustom)
+        assertEquals(second.canonicalFile, inbox.dir.canonicalFile)
+        assertTrue("the resume/delta plumbing follows the folder", inbox.delta !== firstDelta)
+        assertEquals(second.canonicalFile, inbox.uniqueFile("fresh.bin").parentFile.canonicalFile)
+
+        assertEquals(2, inbox.moveFrom(old))
+        assertEquals("cv", File(second, "Résumé 2026.pdf").readText())
+        assertEquals("already there", File(second, "clash.txt").readText())     // never overwritten
+        assertEquals("new one", File(second, "clash (1).txt").readText())
+        assertTrue(File(first, "half.7.part").exists())
+        assertTrue(File(first, ".hidden").exists())
+        assertTrue(File(first, "sub/keep.txt").exists())
+        // in a folder the person picked only what was received is listed: their own clash.txt is not
+        assertEquals(setOf("Résumé 2026.pdf", "clash (1).txt"), inbox.list().map { it.name }.toSet())
+
+        // Asking for the folder already in use is a no-op.
+        assertEquals(second.canonicalFile, inbox.switchTo(second, custom = true).canonicalFile)
+        assertEquals(0, inbox.moveFrom(second))
+        // Going back to CrossDrop's own folder leaves a picked folder's files where they are (it may hold the person's own).
+        val back = inbox.switchTo(first, custom = false)
+        assertFalse(inbox.isCustom)
+        assertEquals(0, inbox.moveFrom(back))
+        assertTrue(File(second, "Résumé 2026.pdf").exists())
+        assertFalse(inbox.list().any { it.name == "Résumé 2026.pdf" })
+    }
+
+    @Test
+    fun `leaving the old files behind just drops them from the list`() {
+        val first = tmp("first")
+        val second = tmp("second")
+        val inbox = InboxStore(first, tmp("state"))
+        File(first, "a.bin").writeText("a")
+        inbox.switchTo(second)
+        assertTrue(inbox.list().isEmpty())
+        assertTrue(File(first, "a.bin").exists())
+        assertEquals(0, inbox.moveFrom(File(first, "no-such-folder")))
+    }
+
+    @Test
+    fun `leaving a folder the person picked never moves the files that were already in it`() {
+        val default = tmp("default"); val docs = tmp("docs")
+        File(docs, "taxes.pdf").writeText("the person's own file")
+        val inbox = InboxStore(default, tmp("state"))
+        inbox.switchTo(docs, custom = true)
+        File(docs, "from-a-friend.txt").writeText("received here")       // loose files can't be told apart from the person's own
+        val old = inbox.switchTo(default, custom = false)
+        assertEquals("nothing is carried out of a picked folder", 0, inbox.moveFrom(old))
+        assertTrue(File(docs, "taxes.pdf").exists())
+        assertTrue(File(docs, "from-a-friend.txt").exists())
+        assertTrue(inbox.list().isEmpty())
+        // going the other way (from CrossDrop's own folder into a picked one) still carries the files
+        File(default, "mine.bin").writeText("received")
+        val first = inbox.switchTo(docs, custom = true)
+        assertEquals(1, inbox.moveFrom(first))
+        assertTrue(File(docs, "mine.bin").exists())
+    }
 }

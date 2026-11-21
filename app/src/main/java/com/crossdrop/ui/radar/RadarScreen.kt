@@ -126,6 +126,8 @@ fun RadarScreen(
     selfName: String,
     peers: List<Peer>,
     onSendTo: (List<Peer>, List<android.net.Uri>) -> Unit,
+    /** [grantIsNew]: this send took the read grant itself (it was not held for something else), so it may be let go later. */
+    onSendFolder: (List<Peer>, android.net.Uri, grantIsNew: Boolean) -> Unit = { _, _, _ -> },
     onCamera: (List<Peer>) -> Unit = {},
     onSendText: (List<Peer>, String) -> Unit = { _, _ -> },
     onContacts: (List<Peer>) -> Unit = {},
@@ -144,6 +146,11 @@ fun RadarScreen(
     onShowConnectGuide: () -> Unit = {},
     onOpenDirectLink: () -> Unit = {},
     /** "Show a code" straight from the not-on-your-Wi-Fi sheet (starts this phone's private link). */
+    /** Paired devices that are not here right now, and what is waiting for them ("send when it's back"). */
+    offlineDevices: List<com.crossdrop.core.pairing.PairedDevice> = emptyList(),
+    queued: Map<String, Int> = emptyMap(),
+    sendingIds: Set<String> = emptySet(),
+    onQueueFor: (com.crossdrop.core.pairing.PairedDevice) -> Unit = {},
     onShowCode: () -> Unit = onConnectDirectly,
     onScanCode: () -> Unit = {},
     /** This phone joined another's link by scanning its code: the network, and the phone once it answered. */
@@ -200,6 +207,18 @@ fun RadarScreen(
     val filePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenMultipleDocuments()
     ) { dispatch(it) }
+    // A whole folder. Keep read access past this screen: the send keeps reading while the app is in the background.
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        val targets = pendingPeers
+        pendingPeers = emptyList()
+        if (uri != null && targets.isNotEmpty()) {
+            val held = context.contentResolver.persistedUriPermissions.any { it.uri == uri }
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            onSendFolder(targets, uri, !held)
+        }
+    }
     // Default maxItems = the system picker's own ceiling (100+ on Android 13+).
     val mediaPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia()
@@ -362,6 +381,7 @@ fun RadarScreen(
             com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, onPrimary = onConnectDirectly)
             if (directLinkOn) DirectLinkRow(onOpenDirectLink)
             if (joinedSsid != null) JoinedLinkRow(joinedSsid, joinedHost, onLeaveLink)
+            com.crossdrop.ui.pairing.OfflineDevicesStrip(offlineDevices, queued, sendingIds, onQueueFor)
             SendToAnyoneCard(::startAnyoneFlow)
             drives.take(2).forEach { d -> DriveRow(d) { startSendFlow(d) } }
         }
@@ -432,13 +452,17 @@ fun RadarScreen(
                         pickingForPeer = null; pendingPeers = emptyList(); onSwitchPhones(peer)
                     }
                 }
-                // Apps only make sense on another Android phone: it is the one that can install them.
-                if (peer.platform == com.crossdrop.core.Platforms.ANDROID) Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SmallTile(tr("Apps"), tr("Installed apps"), CdIcons.Apk, Modifier.weight(1f)) {
-                        val t = targets().filter { it.platform == com.crossdrop.core.Platforms.ANDROID }
-                        pickingForPeer = null; pendingPeers = emptyList(); onApps(t)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    SmallTile(tr("Folder"), tr("With everything in it"), CdIcons.Folder, Modifier.weight(1f)) {
+                        pendingPeers = targets(); pickingForPeer = null; folderPicker.launch(null)
                     }
-                    Spacer(Modifier.weight(1f))
+                    // Apps only make sense on another Android phone: it is the one that can install them.
+                    if (peer.platform == com.crossdrop.core.Platforms.ANDROID) {
+                        SmallTile(tr("Apps"), tr("Installed apps"), CdIcons.Apk, Modifier.weight(1f)) {
+                            val t = targets().filter { it.platform == com.crossdrop.core.Platforms.ANDROID }
+                            pickingForPeer = null; pendingPeers = emptyList(); onApps(t)
+                        }
+                    } else Spacer(Modifier.weight(1f))
                 }
             },
         )

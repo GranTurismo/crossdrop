@@ -8,8 +8,10 @@ public struct Hello: Codable {
     public var deviceName: String
     public var publicKeyB64: String
     public var instanceId: String
-    public init(version: Int, deviceName: String, publicKeyB64: String, instanceId: String) {
-        self.version = version; self.deviceName = deviceName; self.publicKeyB64 = publicKeyB64; self.instanceId = instanceId
+    /// What the device runs on (`ios`, `mac`, `android`…); absent on older builds.
+    public var os: String?
+    public init(version: Int, deviceName: String, publicKeyB64: String, instanceId: String, os: String? = nil) {
+        self.version = version; self.deviceName = deviceName; self.publicKeyB64 = publicKeyB64; self.instanceId = instanceId; self.os = os
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
@@ -17,8 +19,9 @@ public struct Hello: Codable {
         deviceName = try c.decode(String.self, forKey: .deviceName)
         publicKeyB64 = try c.decode(String.self, forKey: .publicKeyB64)
         instanceId = try c.decode(String.self, forKey: .instanceId)
+        os = try c.decodeIfPresent(String.self, forKey: .os)
     }
-    enum K: String, CodingKey { case version, deviceName, publicKeyB64, instanceId }
+    enum K: String, CodingKey { case version, deviceName, publicKeyB64, instanceId, os }
 }
 
 public struct HelloAck: Codable {
@@ -27,9 +30,11 @@ public struct HelloAck: Codable {
     public var publicKeyB64: String
     public var instanceId: String
     public var vaultAuth: String?
-    public init(version: Int, deviceName: String, publicKeyB64: String, instanceId: String, vaultAuth: String? = nil) {
+    /// What the device runs on (`ios`, `mac`, `android`…); absent on older builds.
+    public var os: String?
+    public init(version: Int, deviceName: String, publicKeyB64: String, instanceId: String, vaultAuth: String? = nil, os: String? = nil) {
         self.version = version; self.deviceName = deviceName; self.publicKeyB64 = publicKeyB64
-        self.instanceId = instanceId; self.vaultAuth = vaultAuth
+        self.instanceId = instanceId; self.vaultAuth = vaultAuth; self.os = os
     }
     public init(from d: Decoder) throws {
         let c = try d.container(keyedBy: K.self)
@@ -38,8 +43,9 @@ public struct HelloAck: Codable {
         publicKeyB64 = try c.decode(String.self, forKey: .publicKeyB64)
         instanceId = try c.decode(String.self, forKey: .instanceId)
         vaultAuth = try c.decodeIfPresent(String.self, forKey: .vaultAuth)
+        os = try c.decodeIfPresent(String.self, forKey: .os)
     }
-    enum K: String, CodingKey { case version, deviceName, publicKeyB64, instanceId, vaultAuth }
+    enum K: String, CodingKey { case version, deviceName, publicKeyB64, instanceId, vaultAuth, os }
 }
 
 public struct FileMeta: Codable, Equatable {
