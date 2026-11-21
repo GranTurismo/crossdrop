@@ -32,6 +32,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.crossdrop.core.i18n.tr
+import com.crossdrop.net.outgoingFileFor
+import com.crossdrop.net.outgoingFolder
 import java.security.SecureRandom
 import java.util.UUID
 
@@ -91,6 +94,9 @@ class AppContainer(private val app: Context) {
 
     val server = TransferServer(scope, engine, onBound = ::onListenerBound)
     val coordinator = TransferCoordinator(scope, app, engine, server, inbox, history)
+
+    /** Asks for a store rating after a run of good transfers; see [com.crossdrop.core.review.ReviewPolicy]. */
+    val review = com.crossdrop.review.ReviewPrompter(app).also { r -> coordinator.onOutcome = r::onTransfer }
 
     /** Devices known by address: ones that announced themselves to us, and the phone whose code we scanned. */
     val announced = com.crossdrop.core.discovery.AnnouncedPeers(scope).also { coordinator.hub.announced = it }
@@ -225,11 +231,115 @@ class AppContainer(private val app: Context) {
         PeerLiveness(scope, sighted).peers
     }
 
+    // ------------------------------------------------ auto-resume + send when it's back --
+
+    /** Which of "My devices" are on the radar: proven with their pairing, not guessed from a name. */
+    val presence: com.crossdrop.net.PairedPresence by lazy {
+        com.crossdrop.net.PairedPresence(scope, engine, pairings, peers).also { coordinator.hub.presence = it }
+    }
+
+    /** Things picked for one of "My devices" while it was away; they go when it shows up (if CrossDrop is running). */
+    val outbox = com.crossdrop.net.Outbox(java.io.File(app.filesDir, "outbox.json"), onRemoved = ::forgetQueued)
+
+    /** A line about the last queued send, for a few seconds ("Sent to Laptop"). */
+    private val _outboxNote = MutableStateFlow<String?>(null)
+    val outboxNote: StateFlow<String?> = _outboxNote
+
+    val outboxRunner: com.crossdrop.net.OutboxRunner by lazy {
+        com.crossdrop.net.OutboxRunner(
+            scope, coordinator.hub, presence, outbox, pairings,
+            resolve = ::resolveQueued,
+            keepAlive = { com.crossdrop.service.TransferService.start(app) },
+            onResult = { r ->
+                _outboxNote.value =
+                    if (r.delivered) tr("Sent to {0}", r.entry.deviceName) else tr("Couldn't send to {0}", r.entry.deviceName)
+                scope.launch { kotlinx.coroutines.delay(8_000); _outboxNote.value = null }
+                com.crossdrop.service.OutboxNotifier.show(app, r)
+            },
+        )
+    }
+
     /**
-     * "My devices": the computer this phone backs up to. Phones don't keep backups, so the hub isn't given
-     * the store: a pairing request from someone else is declined without a prompt.
+     * Queue [uris] (picked with the document picker) for [device]. Each keeps its read grant so it can still be read
+     * when the device shows up; one whose grant can't be kept (the photo picker's) is copied into private storage.
+     */
+    fun queueFiles(device: com.crossdrop.core.pairing.PairedDevice, uris: List<android.net.Uri>) {
+        val staging = java.io.File(app.filesDir, "outbox/" + System.nanoTime()).also { it.mkdirs() }
+        val items = uris.withIndex().mapNotNull { (n, uri) ->
+            val name = displayName(uri)
+            if (runCatching { app.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }.isSuccess)
+                com.crossdrop.net.OutboxItem("uri", uri.toString(), name)
+            else runCatching {
+                // each copy in its own folder: two picked files can have the same display name
+                val copy = java.io.File(java.io.File(staging, "$n").also { it.mkdirs() }, com.crossdrop.core.protocol.FileNames.sanitize(name))
+                (app.contentResolver.openInputStream(uri) ?: error("cannot open")).use { src -> copy.outputStream().use { src.copyTo(it) } }
+                com.crossdrop.net.OutboxItem("copy", copy.path, name)
+            }.getOrNull()
+        }
+        if (items.none { it.kind == "copy" }) staging.deleteRecursively()
+        outbox.add(device.id, device.name, items)
+    }
+
+    private fun displayName(uri: android.net.Uri): String = runCatching {
+        app.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+    }.getOrNull() ?: uri.lastPathSegment ?: "file"
+
+    private suspend fun resolveQueued(e: com.crossdrop.net.OutboxEntry): List<com.crossdrop.core.transfer.OutgoingFile> =
+        e.items.flatMap { item ->
+            when (item.kind) {
+                "uri" -> listOfNotNull(app.outgoingFileFor(android.net.Uri.parse(item.ref)))
+                "tree" -> app.outgoingFolder(android.net.Uri.parse(item.ref))
+                "copy" -> java.io.File(item.ref).takeIf { it.isFile }?.let { listOf(com.crossdrop.net.TransferCoordinator.localFile(it)) }.orEmpty()
+                else -> emptyList()
+            }
+        }
+
+    /**
+     * A folder send keeps its read grant past the screen (the send goes on in the background, and Retry reads again). Each
+     * grant counts against Android's cap on persisted ones (128 before Android 11), and the cap drops the oldest, which could
+     * be the picked inbox folder: so only the last few of the grants a folder send took *itself* are kept.
+     */
+    fun trackFolderGrant(tree: android.net.Uri) {
+        val prefs = app.getSharedPreferences("send_folders", Context.MODE_PRIVATE)
+        val kept = (prefs.getString("trees", "").orEmpty().split('\n').filter { it.isNotBlank() } - tree.toString() + tree.toString())
+        kept.dropLast(MAX_FOLDER_GRANTS).forEach {
+            runCatching { app.contentResolver.releasePersistableUriPermission(android.net.Uri.parse(it), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+        prefs.edit { putString("trees", kept.takeLast(MAX_FOLDER_GRANTS).joinToString("\n")) }
+    }
+
+    /** An entry left the queue: delete what was copied for it and let go of the grants it held. */
+    private fun forgetQueued(e: com.crossdrop.net.OutboxEntry) {
+        for (item in e.items) when (item.kind) {
+            // its own folder goes, and the batch's folder once nothing is left in it (a big pick is several entries)
+            "copy" -> runCatching {
+                val own = java.io.File(item.ref).parentFile
+                own?.deleteRecursively()
+                own?.parentFile?.takeIf { it.parentFile?.name == "outbox" && it.list().isNullOrEmpty() }?.delete()
+            }
+            // A grant belongs to the document, not to the entry: the same file may be waiting for another device too.
+            "uri" -> if (outbox.entries.value.none { x -> x.items.any { it.kind == "uri" && it.ref == item.ref } })
+                runCatching { app.contentResolver.releasePersistableUriPermission(android.net.Uri.parse(item.ref), android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+        }
+    }
+
+    /**
+     * "My devices": the computer this phone backs up to, and the devices added with "Add a device" (they send
+     * each other files without asking). The hub gets the store, so another device's pairing request is shown to
+     * the person; a phone still never keeps backups for others, because only a backup pairing can do that.
      */
     val pairings = com.crossdrop.core.pairing.PairingStore(java.io.File(app.filesDir, "pairings.json"))
+        .also { coordinator.hub.pairings = it }
+
+    /** Accept (or ask about) files from a paired device. */
+    fun setAccept(id: String, on: Boolean) = pairings.setAccept(id, on)
+
+    /** "Add a device": pair with [peer] as one of "My devices" (both screens show the code). */
+    suspend fun pairDevice(peer: com.crossdrop.core.Peer, onCode: (String) -> Unit): com.crossdrop.ui.pairing.AddDeviceResult =
+        if (coordinator.hub.pairWith(peer, onCode) != null) com.crossdrop.ui.pairing.AddDeviceResult.PAIRED
+        else com.crossdrop.ui.pairing.AddDeviceResult.DECLINED
 
     /** "Back up to a computer": photos and videos to the paired computer, and freeing up space after. */
     val backup = com.crossdrop.backup.BackupManager(
@@ -250,6 +360,9 @@ class AppContainer(private val app: Context) {
     }
 
     fun start() {
+        // Interrupted sends and "send when it's back" look at the radar and at which paired devices are on it.
+        coordinator.hub.radar = peers
+        presence; outboxRunner
         // Camera shots and contact exports from an earlier run are only temporary copies.
         runCatching { java.io.File(app.cacheDir, "camera").deleteRecursively() }
         runCatching { java.io.File(app.cacheDir, "switch").deleteRecursively() }
@@ -289,4 +402,6 @@ class AppContainer(private val app: Context) {
         listenerPort.value = port
         nsdDiscovery.advertisedPort = port
     }
+
+    private companion object { const val MAX_FOLDER_GRANTS = 4 }
 }

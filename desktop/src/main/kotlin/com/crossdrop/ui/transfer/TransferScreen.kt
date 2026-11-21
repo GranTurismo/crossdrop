@@ -64,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.Direction
 import com.crossdrop.net.SessionState
+import com.crossdrop.net.note
 import com.crossdrop.net.SessionStatus
 import com.crossdrop.net.isTerminal
 import com.crossdrop.ui.CdIcon
@@ -176,6 +177,12 @@ fun TransferScreen(
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
+                session.note?.let {
+                    Text(
+                        it, color = TextDim, fontSize = 13.sp, lineHeight = 18.sp, textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             // actions
@@ -200,7 +207,7 @@ fun TransferScreen(
 @Composable
 private fun StatusChip(s: SessionState) {
     val (label, color) = when (s.status) {
-        SessionStatus.CONNECTING -> tr("Connecting") to Accent
+        SessionStatus.CONNECTING -> (if (s.resuming) tr("Reconnecting…") else tr("Connecting")) to Accent
         SessionStatus.AWAITING_ACCEPT -> tr("Waiting for {0}", s.peerName) to Accent
         SessionStatus.TRANSFERRING -> (if (s.direction == Direction.SENDING) tr("Sending") else tr("Receiving")) to Accent
         SessionStatus.COMPLETED -> tr("Complete") to Accent

@@ -89,7 +89,7 @@ final class AppContainer: ObservableObject {
         // The engine reads the live name through a box so renames apply to later sessions.
         let box = NameBox(name)
         nameBox = box
-        engine = TransferEngine(identity: identity, deviceName: { box.value }, instanceId: id)
+        engine = TransferEngine(identity: identity, deviceName: { box.value }, instanceId: id, os: AppPlatform.wireName)
         coordinator = TransferCoordinator(engine: engine, inbox: inbox, history: history)
         switchImporter = SwitchImporter(inbox: inbox, history: history)
         switchSender = SwitchSender(coordinator: coordinator, history: history)

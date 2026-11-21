@@ -24,6 +24,8 @@ struct Peer: Identifiable, Equatable {
     /// The peer's listener ignores a bare connect-and-close, so `PeerLiveness` may use one to check it is
     /// still there (older builds report a failed session for such a connection — opt-in via the peer's TXT).
     var probeable = false
+    /// What the device runs on (`android`, `ios`, `mac`, `windows`, `linux`), when it said so (TXT `os` or its handshake).
+    var platform: String?
     var id: String { instanceId }
     var isReachable: Bool { host != nil && port > 0 }
 
@@ -51,6 +53,10 @@ struct SessionState: Identifiable {
     var currentFileName: String?
     var status: SessionStatus = .connecting
     var error: String?
+    /// What to try, for a failed or declined session (see `FailureAdvice`).
+    var hint: String?
+    /// What the other device runs on, when known: an iPhone only receives with CrossDrop open and the screen on.
+    var peerOS: String?
     var id = UUID()
     /// Sessions started together (one send to several devices) share it; a receive is its own group.
     var groupId = UUID()

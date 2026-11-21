@@ -27,14 +27,16 @@ class TransferCoordinator(
     private val server: TransferServer,
     private val inbox: InboxStore,
     private val history: HistoryStore,
+    resumePolicy: com.crossdrop.core.transfer.ResumePolicy = com.crossdrop.core.transfer.ResumePolicy(),
 ) {
     val hub = TransferHub(
         scope, engine,
         port = object : ReceivePort {
-            override fun newInboxFile(meta: FileMeta): File = inbox.uniqueFile(meta.name)
+            override fun newInboxFile(meta: FileMeta): File = inbox.uniqueFile(meta)
             override val inboxDelta: DeltaReceiver get() = inbox.delta
         },
         onEnded = ::record,
+        resumePolicy = resumePolicy,
     )
 
     val sessions: StateFlow<List<SessionState>> get() = hub.sessions
@@ -55,7 +57,7 @@ class TransferCoordinator(
         val cards = picked.isNotEmpty() && picked.all {
             it.isFile && ContactShare.isVCard(it.name, null) && it.length() <= ContactShare.MAX_CARD_FILE
         }
-        if (!cards) return hub.send(peers, { picked.mapNotNull { it.toOutgoingFile() } })
+        if (!cards) return hub.send(peers, { picked.toOutgoingFiles() })
         return hub.send(
             peers,
             {

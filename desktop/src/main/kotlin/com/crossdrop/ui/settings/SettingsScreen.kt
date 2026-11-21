@@ -99,13 +99,39 @@ fun SettingsScreen(
     backupFolder: java.io.File? = null,
     onUnpair: (String) -> Unit = {},
     onChangeBackupFolder: () -> Unit = {},
+    peers: List<com.crossdrop.core.Peer> = emptyList(),
+    onAccept: (String, Boolean) -> Unit = { _, _ -> },
+    onPairDevice: suspend (com.crossdrop.core.Peer, (String) -> Unit) -> com.crossdrop.ui.pairing.AddDeviceResult = { _, _ -> com.crossdrop.ui.pairing.AddDeviceResult.FAILED },
+    presentIds: Set<String> = emptySet(),
+    queued: Map<String, Int> = emptyMap(),
+    sendingIds: Set<String> = emptySet(),
+    outboxNote: String? = null,
+    onQueue: ((com.crossdrop.core.pairing.PairedDevice) -> Unit)? = null,
+    onClearQueue: (String) -> Unit = {},
+    inboxFolder: java.io.File? = null,
+    inboxIsCustom: Boolean = false,
+    onPickInboxFolder: () -> java.io.File? = { null },
+    onSetInboxFolder: (java.io.File?) -> com.crossdrop.di.AppContainer.InboxMove = { com.crossdrop.di.AppContainer.InboxMove.OK },
     refreshSignal: Any?,
 ) {
     var renaming by remember { mutableStateOf(false) }
     var confirmWipe by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    // A folder waiting for "Use this folder?" (its folder is null for "back to the default").
+    var pendingInbox by remember { mutableStateOf<InboxTarget?>(null) }
+    var inboxProblem by remember { mutableStateOf<String?>(null) }
     val stats = remember(refreshSignal) { inboxStats() }
     val storedCount = stats.first
+    val applyInbox = { target: InboxTarget ->
+        pendingInbox = null
+        inboxProblem = when (onSetInboxFolder(target.folder)) {
+            com.crossdrop.di.AppContainer.InboxMove.OK -> null
+            com.crossdrop.di.AppContainer.InboxMove.NOT_ALLOWED -> tr("CrossDrop can't save files in that folder. Pick another one.")
+            com.crossdrop.di.AppContainer.InboxMove.BUSY -> tr("Wait for the transfer in progress to finish, then try again.")
+        }
+    }
+    // Nothing to explain when the inbox is empty, or when leaving a folder the person picked: its files stay where they are.
+    val requestInbox = { target: InboxTarget -> if (stats.first == 0 || inboxIsCustom) applyInbox(target) else pendingInbox = target }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Box(Modifier.fillMaxSize()) {
@@ -174,7 +200,22 @@ fun SettingsScreen(
 
                 // ------------------------------------------- wireless drive --
                 DriveCard(vaultState, onOpenDrive)
-                MyDevicesCard(myDevices, lastBackups, backupFolder, onUnpair, onChangeBackupFolder)
+                com.crossdrop.ui.pairing.MyDevicesSection(
+                    devices = myDevices, peers = peers, onAccept = onAccept, onUnpair = onUnpair, onPair = onPairDevice,
+                    present = presentIds, queued = queued, sending = sendingIds, onQueue = onQueue, onClearQueue = onClearQueue,
+                    note = outboxNote,
+                    subtitleFor = { d ->
+                        if (!d.backup) null
+                        else lastBackups[d.id]?.let { tr("Last backup {0}", relativeTime(it.lastAt)) } ?: tr("Backs up to this computer")
+                    },
+                    extra = {
+                        // The folder phones back up into; only worth showing once a phone does.
+                        if (backupFolder != null && myDevices.any { it.backup }) {
+                            RowSeparator()
+                            BackupFolderRow(backupFolder, onChangeBackupFolder)
+                        }
+                    },
+                )
 
                 // -------------------------------------------------- storage --
                 SectionLabel(tr("Storage"), Modifier.padding(top = 4.dp))
@@ -185,6 +226,23 @@ fun SettingsScreen(
                             "${trPlural(storedCount, "1 file", "{n} files")} · ${formatBytes(stats.second)}",
                             style = monoStyle(12, TextSecondary),
                         )
+                    }
+                    if (inboxFolder != null) {
+                        RowSeparator()
+                        NavRow(CdIcons.Folder, tr("Inbox folder"), inboxFolder.path) {
+                            inboxProblem = null
+                            onPickInboxFolder()?.let { requestInbox(InboxTarget(it)) }
+                        }
+                        if (inboxIsCustom) {
+                            RowSeparator()
+                            ActionRow(tr("Use the default folder"), TextPrimary) {
+                                inboxProblem = null
+                                requestInbox(InboxTarget(null))
+                            }
+                        }
+                        inboxProblem?.let {
+                            Text(it, color = DangerText, fontSize = 12.sp, modifier = Modifier.padding(bottom = 12.dp))
+                        }
                     }
                     RowSeparator()
                     ActionRow(tr("Wipe inbox"), DangerText, enabled = stats.first > 0) { confirmWipe = true }
@@ -228,6 +286,17 @@ fun SettingsScreen(
             onDismiss = { confirmWipe = false },
         )
     }
+    pendingInbox?.let { target ->
+        val where = (target.folder ?: inboxFolder)?.path.orEmpty()
+        ConfirmDialog(
+            title = tr("Use this folder?"),
+            text = trPlural(stats.first, "New files will be saved in {0}. Your 1 received file moves there too.", "New files will be saved in {0}. Your {n} received files move there too.", where),
+            confirmLabel = tr("Use this folder"),
+            danger = false,
+            onConfirm = { applyInbox(target) },
+            onDismiss = { pendingInbox = null },
+        )
+    }
     if (confirmClear) {
         ConfirmDialog(
             title = tr("Clear transfer history?"),
@@ -249,6 +318,9 @@ private fun SettingsGroup(content: @Composable ColumnScope.() -> Unit) {
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp), content = content,
     )
 }
+
+/** A folder the person picked for the inbox; null stands for the default one. */
+private class InboxTarget(val folder: java.io.File?)
 
 @Composable
 private fun ActionRow(title: String, color: Color, enabled: Boolean = true, onClick: () -> Unit) {
@@ -277,62 +349,6 @@ private fun NavRow(icon: ImageVector, title: String, subtitle: String, onClick: 
 }
 
 /** Accent call-to-action while off; a live status card (pulsing dot) while the drive is on. */
-/**
- * "My devices": phones paired with this computer. Each backs up into its own folder; Unpair stops that
- * (the files stay). Hidden until something is paired: pairing starts on the phone.
- */
-@Composable
-private fun MyDevicesCard(
-    devices: List<com.crossdrop.core.pairing.PairedDevice>,
-    last: Map<String, com.crossdrop.backup.DesktopBackupReceiver.Summary>,
-    folder: java.io.File?,
-    onUnpair: (String) -> Unit,
-    onChangeFolder: () -> Unit,
-) {
-    if (devices.isEmpty()) return
-    var unpairing by remember { mutableStateOf<com.crossdrop.core.pairing.PairedDevice?>(null) }
-    SectionLabel(tr("My devices"), Modifier.padding(top = 6.dp))
-    com.crossdrop.ui.GroupCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)) {
-        devices.forEachIndexed { i, d ->
-            if (i > 0) RowSeparator()
-            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                CdIcon(com.crossdrop.ui.radar.deviceIconFor(d.name), TextPrimary, size = 22.dp)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(d.name, color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val s = last[d.id]
-                    Text(
-                        if (s != null) tr("Last backup {0}", relativeTime(s.lastAt))
-                        else tr("Backs up to this computer"),
-                        color = TextDim, fontSize = 12.sp,
-                    )
-                }
-                com.crossdrop.ui.ChipButton(tr("Unpair"), { unpairing = d }, height = 32.dp, fontSize = 12)
-            }
-        }
-    }
-    if (folder != null) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(tr("Backups go to"), color = TextDim, fontSize = 12.sp)
-                Text(folder.path, style = monoStyle(12, TextSecondary), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            com.crossdrop.ui.ChipButton(com.crossdrop.platform.Platform.current.fileManager, {
-                folder.mkdirs(); com.crossdrop.platform.SystemActions.reveal(folder)
-            }, height = 32.dp, fontSize = 12)
-            com.crossdrop.ui.ChipButton(tr("Change"), onChangeFolder, height = 32.dp, fontSize = 12)
-        }
-    }
-    unpairing?.let { d ->
-        ConfirmDialog(
-            title = tr("Unpair {0}?", d.name),
-            text = tr("{0} can no longer back up here. Its photos and videos stay in the backup folder.", d.name),
-            confirmLabel = tr("Unpair"),
-            onConfirm = { unpairing = null; onUnpair(d.id) },
-            onDismiss = { unpairing = null },
-        )
-    }
-}
-
 private fun relativeTime(at: Long): String {
     val mins = ((System.currentTimeMillis() - at) / 60_000).coerceAtLeast(0).toInt()
     val hours = mins / 60
@@ -396,5 +412,20 @@ private fun DriveCard(state: com.crossdrop.net.VaultHostManager.State?, onOpen: 
                 CdIcon(CdIcons.ChevronRight, TextDim, size = 20.dp)
             }
         }
+    }
+}
+
+/** Where phone backups go, with "show in Finder/Explorer" and "Change". */
+@Composable
+private fun BackupFolderRow(folder: java.io.File, onChangeFolder: () -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(tr("Backups go to"), color = TextDim, fontSize = 12.sp)
+            Text(folder.path, style = monoStyle(12, TextSecondary), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        }
+        com.crossdrop.ui.ChipButton(com.crossdrop.platform.Platform.current.fileManager, {
+            folder.mkdirs(); com.crossdrop.platform.SystemActions.reveal(folder)
+        }, height = 32.dp, fontSize = 12)
+        com.crossdrop.ui.ChipButton(tr("Change"), onChangeFolder, height = 32.dp, fontSize = 12)
     }
 }

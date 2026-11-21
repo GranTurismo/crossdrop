@@ -173,7 +173,8 @@ fun InboxScreen(
             }
             item {
                 FootNote(
-                    tr("Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first."),
+                    if (inbox.isCustom) tr("Saved in {0}. Wiping overwrites each file with zeros first.", inbox.dir.path)
+                    else tr("Saved in the CrossDrop folder inside Downloads. Wiping overwrites each file with zeros first."),
                     Modifier.widthIn(max = 640.dp).fillMaxWidth(),
                     icon = CdIcons.Lock,
                 )

@@ -66,6 +66,10 @@ final class TransferCoordinator: ObservableObject {
     /// Called once per session as it ends (camera shots and switch batches excluded) — app-layer hooks.
     var onSessionEnded: ((SessionState) -> Void)?
 
+    /// Asks for an App Store rating after a run of good transfers (`ReviewPolicy` decides whether to).
+    let review = ReviewPrompter()
+    private var lastCountedGroup: UUID?
+
     init(engine: TransferEngine, inbox: InboxStore, history: HistoryStore) {
         self.engine = engine; self.inbox = inbox; self.history = history
     }
@@ -186,7 +190,7 @@ final class TransferCoordinator: ObservableObject {
         var byId: [UUID: Peer] = [:]
         for p in targets {
             var s = SessionState(direction: .sending, peerName: p.name, status: .connecting)
-            s.groupId = gid; s.kind = options.kind; s.quiet = quiet
+            s.groupId = gid; s.kind = options.kind; s.quiet = quiet; s.peerOS = p.platform
             sessions.append(s)
             byId[s.id] = p
         }
@@ -200,7 +204,7 @@ final class TransferCoordinator: ObservableObject {
     }
 
     private func launchSend(_ sid: UUID, peer: Peer, files: [OutgoingFile], options: SendOptions) {
-        guard let host = peer.host else { reduce(.failed(tr("device has no address")), id: sid); return }
+        guard let host = peer.host else { reduce(.failed(tr("device has no address"), .other), id: sid); return }
         var opts = options
         let kind = options.kind
         if let kind, kind == OfferKind.camera || kind == OfferKind.switchPhones, opts.trust == nil {
@@ -229,7 +233,7 @@ final class TransferCoordinator: ObservableObject {
         for s in retry {
             guard let i = sessions.firstIndex(where: { $0.id == s.id }), let p = spec.peers[s.id] else { continue }
             var fresh = SessionState(direction: .sending, peerName: s.peerName, status: .connecting)
-            fresh.id = s.id; fresh.groupId = groupId; fresh.kind = s.kind; fresh.quiet = s.quiet
+            fresh.id = s.id; fresh.groupId = groupId; fresh.kind = s.kind; fresh.quiet = s.quiet; fresh.peerOS = s.peerOS
             sessions[i] = fresh
             launchSend(s.id, peer: p, files: spec.files, options: spec.options)
         }
@@ -247,6 +251,13 @@ final class TransferCoordinator: ObservableObject {
             sessions[i].status = .cancelled
             ended(sessions[i])
         }
+    }
+
+    /// The person closed a finished transfer: forget it, and when it all went well it is a fair moment to ask for a rating.
+    func finishGroup(_ g: TransferGroup) {
+        let wentWell = g.sessions.allSatisfy { $0.status.isTerminal } && !g.sessions.contains { $0.status.isProblem }
+        dismissGroup(g.id)
+        if wentWell { review.maybeAsk() }
     }
 
     /// Forget the group's finished sessions (history already has them).
@@ -413,7 +424,7 @@ final class TransferCoordinator: ObservableObject {
         reduce(event, id: id)
         switch event {
         case .completed(let offer, _): received(offer, conn: conn)
-        case .failed(let msg):
+        case .failed(let msg, _):
             if conn.kind == OfferKind.switchPhones { switchReceiver?.batchEnded(failed: true, error: msg) }
             if conn.kind == OfferKind.camera { live?.incoming = nil }
         case .cancelled:
@@ -553,9 +564,14 @@ final class TransferCoordinator: ObservableObject {
             next.status = .completed; next.offer = offer; next.bytesPerSec = 0
             next.bytesDone = max(next.bytesTotal, next.bytesDone)
         case .trustGranted: break
-        case .declinedByPeer: next.status = .declined; next.bytesPerSec = 0
+        case .declinedByPeer:
+            next.status = .declined; next.bytesPerSec = 0
+            if next.direction == .sending { next.hint = FailureAdvice.declinedHint() }
         case .cancelled: next.status = .cancelled; next.bytesPerSec = 0
-        case .failed(let msg): next.status = .failed; next.error = msg; next.bytesPerSec = 0
+        case .failed(let msg, let kind):
+            // Before the offer went out nothing but a socket existed: a failure then reads as "couldn't reach".
+            let advice = FailureAdvice.explain(kind, raw: msg, peerName: next.peerName, peerOS: next.peerOS)
+            next.status = .failed; next.error = advice.title; next.hint = advice.hint; next.bytesPerSec = 0
         }
         sessions[i] = next
         if live?.incoming?.id == id { live?.incoming = next }
@@ -567,6 +583,12 @@ final class TransferCoordinator: ObservableObject {
         tokens[s.id] = nil
         if s.kind != OfferKind.camera && s.kind != OfferKind.switchPhones { record(s) }
         onSessionEnded?(s)
+        // Quiet sessions (camera shots, switch batches) aren't transfers the person made by hand; declines and cancels count neither way.
+        // One send to three devices is one transfer that worked, not three: only the first of a group counts as a success.
+        if !s.quiet {
+            if s.status == .completed, lastCountedGroup != s.groupId { lastCountedGroup = s.groupId; review.onTransfer(success: true) }
+            else if s.status == .failed { lastCountedGroup = s.groupId; review.onTransfer(success: false) }
+        }
         if s.direction == .receiving { inbox.refresh() }
         // The group's files stay readable until it is dismissed: Retry resends from them.
         updateKeepAwake()

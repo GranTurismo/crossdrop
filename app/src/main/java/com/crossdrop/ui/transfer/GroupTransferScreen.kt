@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.crossdrop.core.i18n.tr
 import com.crossdrop.net.Direction
 import com.crossdrop.net.SessionState
+import com.crossdrop.net.note
 import com.crossdrop.net.SessionStatus
 import com.crossdrop.net.TransferGroup
 import com.crossdrop.net.isTerminal
@@ -211,6 +212,7 @@ private fun DeviceRow(s: SessionState) {
             }
             s.sas?.let { Text(it.chunked(3).joinToString(" "), style = monoStyle(13, TextSecondary)) }
         }
+        s.note?.let { Text(it, color = TextDim, fontSize = 12.sp, lineHeight = 17.sp) }
         if (!s.status.isTerminal) {
             Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(GlassHigh)) {
                 Box(Modifier.fillMaxWidth(s.fraction).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Accent))
@@ -220,7 +222,7 @@ private fun DeviceRow(s: SessionState) {
 }
 
 private fun sessionLabel(s: SessionState): Pair<String, Color> = when (s.status) {
-    SessionStatus.CONNECTING -> tr("Connecting…") to TextDim
+    SessionStatus.CONNECTING -> (if (s.resuming) tr("Reconnecting…") else tr("Connecting…")) to TextDim
     SessionStatus.AWAITING_ACCEPT -> tr("Waiting for them to accept") to TextDim
     SessionStatus.TRANSFERRING -> listOfNotNull(
         "${(s.fraction * 100).toInt()}%",
@@ -229,5 +231,5 @@ private fun sessionLabel(s: SessionState): Pair<String, Color> = when (s.status)
     SessionStatus.COMPLETED -> tr("Delivered") to Accent
     SessionStatus.DECLINED -> tr("Declined") to DangerText
     SessionStatus.CANCELLED -> tr("Cancelled") to TextSecondary
-    SessionStatus.FAILED -> (s.error?.let { tr("Failed: {0}", it) } ?: tr("Failed")) to DangerText
+    SessionStatus.FAILED -> (s.error ?: tr("Failed")) to DangerText
 }

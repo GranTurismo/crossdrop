@@ -69,7 +69,7 @@ extension TransferEngine {
         s.setTimeout(TransferEngine.controlTimeout)
         let fio = FrameIO(socket: s)
         try fio.write(.hello, Hello(version: version, deviceName: deviceName(),
-                                    publicKeyB64: b64(identity.publicKey), instanceId: instanceId).encodeBytes())
+                                    publicKeyB64: b64(identity.publicKey), instanceId: instanceId, os: os).encodeBytes())
         let (ackType, ackPayload) = try fio.read()
         guard ackType == .helloAck else { throw ProtocolError("expected HELLO_ACK, got \(ackType)") }
         let ack = try ackPayload.decodeJSON(HelloAck.self)

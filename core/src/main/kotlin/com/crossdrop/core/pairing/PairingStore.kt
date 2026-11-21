@@ -19,6 +19,10 @@ data class PairedDevice(
     val key: String,
     val pairedAt: Long,
     val lastSeen: Long = 0,
+    /** Files from this device are accepted without asking (its own transfers prove the pairing). Off for old pairings. */
+    val accept: Boolean = false,
+    /** This pairing is for phone backups (the computer keeps them). Pairings made by "Add a device" are not; old ones are. */
+    val backup: Boolean = true,
 ) {
     fun secret(): PairSecret = PairSecret(id, Base64.getDecoder().decode(key))
 }
@@ -33,13 +37,19 @@ class PairingStore(private val file: File) {
     private val _devices = MutableStateFlow(load())
     val devices: StateFlow<List<PairedDevice>> = _devices
 
-    fun secrets(): List<PairSecret> = _devices.value.mapNotNull { runCatching { it.secret() }.getOrNull() }
+    /** The keys held: all of them (recognising a device), or only those meant for backups. */
+    fun secrets(backupOnly: Boolean = false): List<PairSecret> =
+        // Accepting pairings first: when two devices hold two pairings with each other, the one answered in a PAIR_CHECK is the one that matters.
+        _devices.value.filter { !backupOnly || it.backup }.sortedByDescending { it.accept }.mapNotNull { runCatching { it.secret() }.getOrNull() }
 
     fun get(id: String): PairedDevice? = _devices.value.firstOrNull { it.id == id }
 
     @Synchronized
-    fun add(id: String, name: String, key: ByteArray, now: Long = System.currentTimeMillis()): PairedDevice {
-        val d = PairedDevice(id, name.trim().take(64), Base64.getEncoder().encodeToString(key), now, now)
+    fun add(
+        id: String, name: String, key: ByteArray, now: Long = System.currentTimeMillis(),
+        accept: Boolean = false, backup: Boolean = true,
+    ): PairedDevice {
+        val d = PairedDevice(id, name.trim().take(64), Base64.getEncoder().encodeToString(key), now, now, accept, backup)
         _devices.value = _devices.value.filterNot { it.id == id } + d
         save()
         return d
@@ -52,6 +62,15 @@ class PairingStore(private val file: File) {
         val next = cur.copy(name = name?.trim()?.take(64)?.ifBlank { null } ?: cur.name, lastSeen = now)
         if (next == cur) return
         _devices.value = _devices.value.map { if (it.id == id) next else it }
+        save()
+    }
+
+    /** Accept (or ask about) files from this device from now on. */
+    @Synchronized
+    fun setAccept(id: String, on: Boolean) {
+        val cur = get(id) ?: return
+        if (cur.accept == on) return
+        _devices.value = _devices.value.map { if (it.id == id) it.copy(accept = on) else it }
         save()
     }
 

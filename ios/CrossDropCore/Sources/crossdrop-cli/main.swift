@@ -61,7 +61,7 @@ func onEvent(_ e: TransferEvent) {
     case .completed(_, let ms): print("EVENT completed \(ms)ms"); exitCode = 0; if !each { done.signal() }
     case .declinedByPeer: print("EVENT declined"); if !each { done.signal() }
     case .cancelled: print("EVENT cancelled"); if !each { done.signal() }
-    case .failed(let m): print("EVENT failed \(m)"); if !each { done.signal() }
+    case .failed(let m, _): print("EVENT failed \(m)"); if !each { done.signal() }
     case .trustGranted(let g): print("EVENT trust \(g.kind)"); heldGrant = g
     }
 }

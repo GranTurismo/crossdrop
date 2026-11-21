@@ -97,7 +97,7 @@ class BackupManager(
         scope.launch {
             // The radar changes every few seconds (signal strength, liveness); a check in flight must not be
             // cancelled by that, or a device marked "checked" would never be asked again.
-            combine(pairings.devices, peers) { devices, all -> devices.firstOrNull() to all }.collect { (device, all) ->
+            combine(pairings.devices, peers) { devices, all -> devices.firstOrNull { it.backup } to all }.collect { (device, all) ->
                 _state.update { it.copy(device = device) }
                 if (device == null) { _state.update { it.copy(computer = null) }; return@collect }
                 // Still on the radar? (Its id rotates per launch, so a restart of the computer is a new id.)
@@ -142,7 +142,7 @@ class BackupManager(
                 else -> {
                     // Other pairings for backups are replaced: one computer at a time.
                     val id = secret.getOrNull()!!.id
-                    pairings.devices.value.filter { it.id != id }.forEach { unpairQuietly(it.id) }
+                    pairings.devices.value.filter { it.id != id && it.backup }.forEach { unpairQuietly(it.id) }
                     _state.update { it.copy(pairing = null, computer = peer) }
                     refreshCounts()
                 }

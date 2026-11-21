@@ -23,6 +23,8 @@ import com.crossdrop.platform.SleepGuard
 import com.crossdrop.storage.HistoryStore
 import com.crossdrop.platform.AppDirs
 import com.crossdrop.storage.InboxStore
+import com.crossdrop.net.toOutgoingFiles
+import com.crossdrop.core.i18n.tr
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -89,13 +91,38 @@ class AppContainer {
 
     val identity = SessionIdentity()
     val engine = TransferEngine(identity, deviceName::value, instanceId, os = com.crossdrop.platform.Platform.wireName)
-    val inbox = InboxStore(AppDirs.inbox, AppDirs.inboxState).also { store ->
+    /** The folder picked in Settings, when it is still there and writable (a removed USB drive → the default, for now). */
+    private val chosenInbox: java.io.File? = prefs.getString("inbox_dir")?.takeIf { it.isNotBlank() }?.let { java.io.File(it) }
+        ?.takeIf { it.isDirectory && it.canWrite() }
+
+    val inbox = InboxStore(chosenInbox ?: AppDirs.inbox, AppDirs.inboxState, custom = chosenInbox != null).also { store ->
         // Received files used to live in Application Support; bring them to Downloads once (cheap when there is nothing).
         kotlin.concurrent.thread(name = "inbox-migrate", isDaemon = true) {
             runCatching { store.migrateFrom(AppDirs.legacyInbox) }
         }
     }
     val history = HistoryStore()
+
+    enum class InboxMove { OK, NOT_ALLOWED, BUSY }
+
+    /**
+     * Receive into [dir] from now on (kept across launches); null = back to `<Downloads>/CrossDrop`.
+     * The files already in the inbox follow in the background ([onMoved] fires when they have).
+     * Refused for folders that are not safe to fill and wipe (the home folder, system and app-state
+     * folders: the same rule as a shared drive), and while a transfer is running, because its
+     * half-written files belong to the old folder.
+     */
+    fun setInboxFolder(dir: java.io.File?, onMoved: () -> Unit = {}): InboxMove {
+        if (dir != null && (!vaultHost.isShareable(dir) || !dir.canWrite())) return InboxMove.NOT_ALLOWED
+        if (coordinator.sessions.value.any { !it.status.isTerminal }) return InboxMove.BUSY
+        val old = inbox.switchTo(dir ?: AppDirs.inbox, custom = dir != null)
+        prefs.putString("inbox_dir", dir?.canonicalPath ?: "")
+        kotlin.concurrent.thread(name = "inbox-move", isDaemon = true) {
+            runCatching { inbox.moveFrom(old) }
+            onMoved()
+        }
+        return InboxMove.OK
+    }
 
     /** The first-run welcome is shown once; anyone who has already transferred something has seen enough. */
     var welcomeSeen: Boolean
@@ -129,6 +156,14 @@ class AppContainer {
         },
     ).also { coordinator.hub.backupReceiver = it }
 
+    /** Accept (or ask about) files from a paired device. */
+    fun setAccept(id: String, on: Boolean) = pairings.setAccept(id, on)
+
+    /** "Add a device": pair with [peer] as one of "My devices" (both screens show the code). */
+    suspend fun pairDevice(peer: com.crossdrop.core.Peer, onCode: (String) -> Unit): com.crossdrop.ui.pairing.AddDeviceResult =
+        if (coordinator.hub.pairWith(peer, onCode) != null) com.crossdrop.ui.pairing.AddDeviceResult.PAIRED
+        else com.crossdrop.ui.pairing.AddDeviceResult.DECLINED
+
     /** Unpair a device: it can no longer back up here (its files stay where they are). */
     fun unpair(id: String) {
         pairings.remove(id)
@@ -138,10 +173,10 @@ class AppContainer {
     /** Files or text waiting for the user to pick devices (drag-and-drop, Open With, Send to…). */
     val pending = MutableStateFlow<com.crossdrop.ui.radar.Pending?>(null)
 
-    /** Readable files only; folders and anything else are skipped. Never sends by itself. */
+    /** Readable files and folders (a folder goes with everything inside it); anything else is skipped. Never sends by itself. */
     fun openFiles(files: List<java.io.File>) {
         // Network paths are skipped before touching them: even a stat would authenticate to that server.
-        val ok = files.filter { !com.crossdrop.platform.isNetworkPath(it.path) && it.isFile && it.canRead() }.distinct()
+        val ok = files.filter { !com.crossdrop.platform.isNetworkPath(it.path) && (it.isFile || it.isDirectory) && it.canRead() }.distinct()
         if (ok.isNotEmpty()) pending.value = com.crossdrop.ui.radar.Pending.Files(ok)
     }
 
@@ -184,6 +219,35 @@ class AppContainer {
         val sighted = combine(discoveries.map { it.peers }) { mergePeers(it.asList()) }
             .stateIn(scope, SharingStarted.Eagerly, emptyMap())
         PeerLiveness(scope, sighted).peers
+    }
+
+    // ------------------------------------------------ auto-resume + send when it's back --
+
+    /** Which of "My devices" are on the radar: proven with their pairing, not guessed from a name. */
+    val presence = com.crossdrop.net.PairedPresence(scope, engine, pairings, peers)
+        .also { coordinator.hub.presence = it; coordinator.hub.radar = peers }
+
+    /** Things picked for one of "My devices" while it was away; they go when it shows up. */
+    val outbox = com.crossdrop.net.Outbox(java.io.File(AppDirs.support, "outbox.json"))
+
+    /** A line about the last queued send, for a few seconds ("Sent to Laptop"). */
+    private val _outboxNote = MutableStateFlow<String?>(null)
+    val outboxNote: StateFlow<String?> = _outboxNote
+
+    val outboxRunner = com.crossdrop.net.OutboxRunner(
+        scope, coordinator.hub, presence, outbox, pairings,
+        resolve = { e -> e.items.map { java.io.File(it.ref) }.toOutgoingFiles() },
+        onResult = { r ->
+            _outboxNote.value =
+                if (r.delivered) tr("Sent to {0}", r.entry.deviceName) else tr("Couldn't send to {0}", r.entry.deviceName)
+            scope.launch { delay(8_000); _outboxNote.value = null }
+        },
+    )
+
+    /** Queue [files] (and folders) for [device]; they go the next time it is here. */
+    fun queueFor(device: com.crossdrop.core.pairing.PairedDevice, files: List<java.io.File>) {
+        val ok = files.filter { (it.isFile || it.isDirectory) && it.canRead() && !com.crossdrop.platform.isNetworkPath(it.path) }
+        outbox.add(device.id, device.name, ok.map { com.crossdrop.net.OutboxItem("path", it.absolutePath, it.name) })
     }
 
     /** Re-bind Bonjour — e.g. after switching networks or approving the macOS Local Network / Windows Firewall prompt. */

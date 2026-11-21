@@ -11,7 +11,8 @@ public enum TransferEvent {
     case trustGranted(TrustGrant)
     case declinedByPeer
     case cancelled
-    case failed(String)
+    /// `kind` is what the engine concluded (see `FailureKind`); the message is the raw detail.
+    case failed(String, FailureKind)
 }
 
 /// A file the app layer wants to ship. `url` must stay readable for the whole transfer.
@@ -217,12 +218,14 @@ public final class TransferEngine {
     let deviceName: () -> String
     let instanceId: String
     let version: Int
+    /// What this device runs on (`ios`, `mac`…), told to every peer in the handshake. Absent on older builds.
+    let os: String?
     private let gate = ReceiveGate(limit: Limits.maxConcurrentReceives)
 
     public init(identity: SessionIdentity, deviceName: @escaping () -> String, instanceId: String,
-                protocolVersion: Int = CrossDropCore.protocolVersion) {
+                protocolVersion: Int = CrossDropCore.protocolVersion, os: String? = nil) {
         self.identity = identity; self.deviceName = deviceName
-        self.instanceId = instanceId; self.version = protocolVersion
+        self.instanceId = instanceId; self.version = protocolVersion; self.os = os
     }
 
     // MARK: sender
@@ -231,6 +234,7 @@ public final class TransferEngine {
                      cancel: CancelToken = CancelToken(), emit: @escaping (TransferEvent) -> Void) {
         let started = Date()
         var socket: TCPSocket?
+        var connected = false      // the secure channel came up: later failures are "lost", earlier ones "unreachable"
         defer { cancel.detach(); socket?.close() }
         do {
             emit(.connecting)
@@ -244,10 +248,11 @@ public final class TransferEngine {
             let transferId = UUID().uuidString.lowercased()
 
             try fio.write(.hello, Hello(version: version, deviceName: deviceName(),
-                                        publicKeyB64: b64(identity.publicKey), instanceId: instanceId).encodeBytes())
+                                        publicKeyB64: b64(identity.publicKey), instanceId: instanceId, os: os).encodeBytes())
             let (ackType, ackPayload) = try fio.read()
             guard ackType == .helloAck else { throw ProtocolError("expected HELLO_ACK, got \(ackType)") }
             let ack = try ackPayload.decodeJSON(HelloAck.self)
+            connected = true
             let keys = try SessionCrypto.deriveSession(identity: identity, peerPublicKey: try unb64(ack.publicKeyB64), isInitiator: true)
             fio.writeCipher = RecordCipher(key: keys.sendKey)
             fio.readCipher = RecordCipher(key: keys.recvKey)
@@ -289,7 +294,7 @@ public final class TransferEngine {
             }
         } catch {
             if cancel.isCancelled || error is SessionCancelled { emit(.cancelled) }
-            else { emit(.failed(describe(error))) }
+            else { emit(.failed(describe(error), FailureKind.classify(error, connected: connected, sending: true))) }
         }
     }
 
@@ -322,7 +327,7 @@ public final class TransferEngine {
         if t == .cancel { emit(.cancelled); return }
         guard t == .done else { throw ProtocolError("expected DONE echo, got \(t)") }
         let echo = try p.decodeJSON(Done.self)
-        if echo.sha256.lowercased() != sha { emit(.failed("integrity check failed")); return }
+        if echo.sha256.lowercased() != sha { emit(.failed("integrity check failed", .integrity)); return }
         emit(.completed(offer, elapsedMs: ms(since: started)))
     }
 
@@ -427,7 +432,7 @@ public final class TransferEngine {
         guard t == .done else { throw ProtocolError("expected DONE echo, got \(t)") }
         let echo = try p.decodeJSON(Done.self)
         // v2/v3 completion is only trusted if the receiver proves it holds the same per-file roots.
-        guard let r = echo.roots, r == roots else { emit(.failed("integrity check failed")); return }
+        guard let r = echo.roots, r == roots else { emit(.failed("integrity check failed", .integrity)); return }
         emit(.completed(offer, elapsedMs: ms(since: started)))
     }
 
@@ -470,7 +475,7 @@ public final class TransferEngine {
             guard hello.version >= 1 else { throw ProtocolError("protocol v\(hello.version) unsupported") }
             let negotiated = min(hello.version, version)
             try fio.write(.helloAck, HelloAck(version: version, deviceName: deviceName(),
-                                              publicKeyB64: b64(identity.publicKey), instanceId: instanceId).encodeBytes())
+                                              publicKeyB64: b64(identity.publicKey), instanceId: instanceId, os: os).encodeBytes())
             let keys = try SessionCrypto.deriveSession(identity: identity, peerPublicKey: try unb64(hello.publicKeyB64), isInitiator: false)
             fio.writeCipher = RecordCipher(key: keys.sendKey)
             fio.readCipher = RecordCipher(key: keys.recvKey)
@@ -514,7 +519,7 @@ public final class TransferEngine {
             }
         } catch {
             if cancel.isCancelled || error is SessionCancelled { emit(.cancelled) }
-            else { emit(.failed(describe(error))) }
+            else { emit(.failed(describe(error), FailureKind.classify(error, connected: true, sending: false))) }
         }
     }
 
@@ -557,7 +562,7 @@ public final class TransferEngine {
                 let done = try payload.decodeJSON(Done.self)
                 let local = hex([UInt8](digest.finalize()))
                 try io.write(.done, Done(transferId: offer.transferId, sha256: local).encodeBytes())
-                if local != done.sha256.lowercased() { emit(.failed("integrity check failed")); return }
+                if local != done.sha256.lowercased() { emit(.failed("integrity check failed", .integrity)); return }
                 emit(.completed(offer, elapsedMs: ms(since: started)))
                 return
             case .cancel: emit(.cancelled); return
@@ -816,7 +821,7 @@ public final class TransferEngine {
         try io.write(.done, Done(transferId: offer.transferId, sha256: "", roots: roots).encodeBytes())
         guard let r = done.roots, r == roots else {
             metas.forEach { delta.invalidate($0) }
-            emit(.failed("integrity check failed"))
+            emit(.failed("integrity check failed", .integrity))
             return
         }
         emit(.completed(offer, elapsedMs: ms(since: started)))

@@ -208,16 +208,16 @@ struct RootView: View {
                 if g.multi {
                     GroupTransferScreen(group: g, onCancelAll: { coordinator.cancelGroup(g.id) },
                                         onRetry: { coordinator.retryFailed(g.id) },
-                                        onClose: { coordinator.dismissGroup(g.id) },
+                                        onClose: { coordinator.finishGroup(g) },
                                         onHide: { transferHidden = true })
                 } else {
                     TransferScreen(
                         session: g.primary, selfName: container.deviceName,
                         onCancel: { coordinator.cancelGroup(g.id) },
-                        onClose: { coordinator.dismissGroup(g.id) },
+                        onClose: { coordinator.finishGroup(g) },
                         onHide: { transferHidden = true },
                         onOpenInbox: {
-                            coordinator.dismissGroup(g.id)
+                            coordinator.finishGroup(g)
                             tab = .inbox
                         })
                 }

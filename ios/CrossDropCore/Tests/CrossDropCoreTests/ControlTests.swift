@@ -99,7 +99,7 @@ final class ControlTests: XCTestCase {
         let host = try Host(control: nil)
         XCTAssertThrowsError(try phone().announce(host: "127.0.0.1", port: host.port, listenPort: 4000))
         host.waitDone()
-        guard case .failed(let msg)? = host.events.last else { return XCTFail("expected a failure: \(host.events)") }
+        guard case .failed(let msg, _)? = host.events.last else { return XCTFail("expected a failure: \(host.events)") }
         XCTAssertTrue(msg.contains("expected OFFER"), msg)
     }
 
@@ -167,7 +167,7 @@ final class ControlTests: XCTestCase {
         let host = try Host(control: nil)
         XCTAssertThrowsError(try phone().shake(host: "127.0.0.1", port: host.port, listenPort: 4000))
         host.waitDone()
-        guard case .failed(let msg)? = host.events.last else { return XCTFail("expected a failure: \(host.events)") }
+        guard case .failed(let msg, _)? = host.events.last else { return XCTFail("expected a failure: \(host.events)") }
         XCTAssertTrue(msg.contains("expected OFFER"), msg)
     }
 

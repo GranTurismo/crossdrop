@@ -45,7 +45,8 @@ sealed interface TransferEvent {
     data class TrustGranted(val grant: TrustGrant) : TransferEvent
     data object DeclinedByPeer : TransferEvent
     data object Cancelled : TransferEvent
-    data class Failed(val message: String, val cause: Throwable? = null) : TransferEvent
+    /** [kind] is set when the engine knows why without an exception (a failed integrity check); see [FailureAdvice]. */
+    data class Failed(val message: String, val cause: Throwable? = null, val kind: FailureKind? = null) : TransferEvent
 }
 
 /** A file the app layer wants to ship. [open] must return a fresh readable stream. */
@@ -81,6 +82,14 @@ class InboundRequest(
     val offer: Offer,
     private val binding: ByteArray,
 ) {
+    /**
+     * Identifies the two app launches this connection is between (a hash of the session binding, which follows
+     * from both launches' keys): the same for every connection between them, impossible to reproduce for anyone
+     * else. Not an identity that outlives a launch.
+     */
+    val sessionKey: String get() =
+        java.util.Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(binding))
+
     fun provesTrust(token: ByteArray): Boolean {
         val proof = offer.trustProof?.let { runCatching { java.util.Base64.getDecoder().decode(it) }.getOrNull() }
             ?: return false
@@ -261,7 +270,7 @@ class TransferEngine(
         if (doneType != FrameType.DONE) throw ProtocolException("expected DONE echo, got $doneType")
         val echo = donePayload.decode<Done>()
         if (!echo.sha256.equals(sha, ignoreCase = true)) {
-            emit(TransferEvent.Failed(tr("integrity check failed")))
+            emit(TransferEvent.Failed(tr("integrity check failed"), kind = FailureKind.INTEGRITY))
             return
         }
         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
@@ -328,7 +337,7 @@ class TransferEngine(
                         readFully(input, bytes)
                         pos = offs[ci] + bytes.size
                         if (!Blake3.hash(bytes).contentEquals(chunks[ci].hash))
-                            throw ProtocolException(tr("{0} changed mid-transfer", file.meta.name))
+                            throw com.crossdrop.core.protocol.SourceChangedException(tr("{0} changed mid-transfer", file.meta.name))
                         io.write(FrameType.CHUNK, ChunkCodec.encodeChunk(index, ci, bytes))
                         sent += bytes.size; windowBytes += bytes.size
                         val now = System.currentTimeMillis()
@@ -388,7 +397,7 @@ class TransferEngine(
                 }
             }
             if (fileBytes != file.meta.size)
-                throw ProtocolException(tr("{0} changed mid-transfer", file.meta.name))
+                throw com.crossdrop.core.protocol.SourceChangedException(tr("{0} changed mid-transfer", file.meta.name))
             val root = fileHasher.digest()
             io.write(FrameType.PUSH_END, ChunkCodec.encodePushEnd(index, count, root))
             roots += root.toHex()
@@ -409,7 +418,7 @@ class TransferEngine(
         if (doneType != FrameType.DONE) throw ProtocolException("expected DONE echo, got $doneType")
         val echo = donePayload.decode<Done>()
         if (echo.roots != null && echo.roots != roots) {
-            emit(TransferEvent.Failed(tr("integrity check failed")))
+            emit(TransferEvent.Failed(tr("integrity check failed"), kind = FailureKind.INTEGRITY))
             return
         }
         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started, roots))
@@ -422,7 +431,7 @@ class TransferEngine(
         while (left > 0) {
             val s = input.skip(left)
             if (s > 0) { left -= s; continue }
-            if (input.read() < 0) throw ProtocolException(tr("source truncated mid-transfer"))
+            if (input.read() < 0) throw com.crossdrop.core.protocol.SourceChangedException(tr("source truncated mid-transfer"))
             left--
         }
     }
@@ -431,7 +440,7 @@ class TransferEngine(
         var off = 0
         while (off < buf.size) {
             val n = input.read(buf, off, buf.size - off)
-            if (n < 0) throw ProtocolException(tr("source truncated mid-transfer"))
+            if (n < 0) throw com.crossdrop.core.protocol.SourceChangedException(tr("source truncated mid-transfer"))
             off += n
         }
     }
@@ -445,12 +454,17 @@ class TransferEngine(
     suspend fun <T> control(
         endpoint: Endpoint,
         connectTimeoutMs: Int = 5_000,
+        /**
+         * How long to wait for the other device to answer, per read. A quick check ("is this one of mine?") must say so
+         * here: a coroutine timeout can't interrupt a blocked socket read, so it would still wait the full default.
+         */
+        readTimeoutMs: Int = CONTROL_TIMEOUT_MS,
         block: suspend ControlChannel.() -> T,
     ): T = kotlinx.coroutines.withContext(dispatcher) {
         Socket().use { socket ->
             socket.connect(java.net.InetSocketAddress(endpoint.host, endpoint.port), connectTimeoutMs)
             socket.tcpNoDelay = true
-            socket.soTimeout = CONTROL_TIMEOUT_MS
+            socket.soTimeout = readTimeoutMs
             val io = FrameIO(socket.getInputStream(), socket.getOutputStream())
             io.write(FrameType.HELLO, Hello(version = protocolVersion, deviceName = deviceName(), publicKeyB64 = b64(identity.publicKey), instanceId = instanceId, os = os).encode())
             val (ackType, ackPayload) = io.read()
@@ -605,7 +619,7 @@ class TransferEngine(
                         val localSha = digest.digest().toHex()
                         io.write(FrameType.DONE, Done(offer.transferId, localSha).encode())
                         if (!localSha.equals(done.sha256, ignoreCase = true)) {
-                            emit(TransferEvent.Failed(tr("integrity check failed")))
+                            emit(TransferEvent.Failed(tr("integrity check failed"), kind = FailureKind.INTEGRITY))
                             return
                         }
                         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started))
@@ -907,7 +921,7 @@ class TransferEngine(
             // Content assembled but the root disagrees — drop the indexes we
             // trusted so a retry re-chunks baselines rather than re-failing.
             offer.files.forEach { runCatching { delta.invalidate(it) } }
-            emit(TransferEvent.Failed(tr("integrity check failed")))
+            emit(TransferEvent.Failed(tr("integrity check failed"), kind = FailureKind.INTEGRITY))
             return
         }
         emit(TransferEvent.Completed(offer, System.currentTimeMillis() - started, roots))

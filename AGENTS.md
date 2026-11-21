@@ -60,7 +60,44 @@ that allows it. Bookkeeping (resume pool `.staging/`, delta indexes `.idx/`) nev
   app lists it: `UIFileSharingEnabled`). **Mac Catalyst** uses the real `~/Downloads/CrossDrop` (sandbox entitlement
   `com.apple.security.files.downloads.read-write`), state in Application Support, and moves the old
   `Documents/Received` across on first launch.
-- "Wipe all" shreds every file in that folder, including ones the user put there.
+- **Choosing another folder** (Settings → Storage → "Inbox folder", "Use the default folder" to go back):
+  - *Desktop*: native folder picker → `AppContainer.setInboxFolder(dir)`. Same guard as a shared drive
+    (`VaultHostManager.isShareable`: not the home folder, `~/Library`, system or app-state folders) and refused while a
+    transfer runs (its half-written files belong to the old folder). `InboxStore.switchTo` flips `dir`/`delta` at runtime
+    (so **read them each time, never keep them**); `moveFrom` carries the finished files across on a background thread
+    (names kept as they are, numbered on a clash; dot-files, `.part` and sub-folders stay). Saved in prefs `inbox_dir`
+    (empty = default); a saved folder that has gone at launch (unplugged drive) means the default for that run, without
+    forgetting the choice.
+  - *Android*: a SAF tree from `OpenDocumentTree` with a persisted grant, pref `inbox_tree` (SharedPreferences `inbox`).
+    `publish` then copies into the tree instead of MediaStore (a taken name is numbered, a failed copy leaves no half
+    file and the original stays in the private dir, still listed). `list()` merges the tree (one `DocumentsContract`
+    children query, not a `DocumentFile` round trip per file), whatever is still in `Download/CrossDrop/` and the private
+    dir, so switching never hides earlier receives; they are **not** moved. Shredding a picked-folder file goes through
+    `DocumentsContract.deleteDocument`. Android refuses `Download` itself and `Android/*` in its own picker.
+  - *iOS*: not offered. iPhone/iPad can't write outside the app container; Mac Catalyst would need a security-scoped
+    bookmark plus the `files.user-selected.read-write` entitlement.
+  - Tests: `InboxLocationTest` (switch + move, clash numbering, names kept, leaving files behind). The Android SAF path
+    and both native pickers are not exercised by tests.
+- **The inbox may hold the person's own things, and the sender picks the names.** So CrossDrop only ever lists, counts, moves or
+  wipes what it received itself:
+  - *Folders*: it remembers the ones it created (desktop `.crossdrop-folders-<hash>.txt` in the state folder, Android prefs
+    `inbox_tree_folders`; `Download/CrossDrop/**` in MediaStore only ever shows what this app published). A received folder
+    never merges into one of the person's own that has the same name (it becomes `Name (1)`).
+  - *Loose files in a folder the person picked*: only the ones CrossDrop received are listed and wiped (desktop
+    `.crossdrop-files-<hash>.txt`, Android `inbox_tree_loose`); their own files are invisible to the inbox. In CrossDrop's own
+    folder every loose file counts, as before.
+  - *Never over a file CrossDrop didn't assemble* (desktop `placeFor` + `FileDeltaStore.knows`: the index must exist **and match the
+    file's size and time**; the delta path would otherwise write over a same-named file it takes for an earlier copy). A deleted
+    file's leftover index is dropped on wipe (`shred` → `forget`) and could not vouch for another file anyway.
+  - *Links* are never listed, followed or overwritten (`shred` of a link only removes the link).
+  - **Leaving a folder the person picked moves nothing** (`InboxStore.moveFrom` only empties CrossDrop's own folder), and the
+    Settings dialog doesn't offer the move.
+  - *Names*: `core/protocol/FileNames.sanitize` keeps letters/marks/digits/emoji of every script (NFC), strips everything
+    unsafe and clips by UTF-8 bytes (200). `NameClaims` makes sure two different originals that still clean to the same place
+    (`a:b` / `a_b`) never share it: the first keeps it, the other becomes `name (1)`, and each keeps its answer. (The old ASCII-only
+    rule turned every non-ASCII character into `_`, so two different Georgian names of equal length were one file: the second
+    silently replaced the first.) Index file names longer than 200 bytes are named by their hash; failing to write an index never
+    fails a finished transfer; `canPush` creates nothing.
 
 ## Look & feel ("Sonar" design)
 
@@ -555,7 +592,7 @@ Computers can't shake: they answer SHAKE and add the sender to their radar, noth
 ## "My devices" and phone backups
 
 A phone pairs once with a computer, then backs its photos and videos up to it whenever both are on the same network, and can free up space
-once the computer has re-checked the files. Phone → computer only (the desktop app is the target; phones decline pairing requests).
+once the computer has re-checked the files. Backups are phone → computer only (the desktop app is the target). A phone does answer pairing requests now, but only for "Add a device" (see below): a `backup=false` pairing never keeps backups.
 
 - **Pairing** (`core/pairing/PairingStore`, `ControlChannel.pair`): a sealed PAIR exchange; the receiving human compares the 6-digit code
   (both screens) and agrees (`TransferHub.pairPrompt` → shared `ui/pairing/PairPromptSheet`). Both sides derive the key from the session,
@@ -600,8 +637,8 @@ iOS doesn't send it yet: unknown means no tile. Older builds ignore the field (`
 
 - **Sending** (`apps/InstalledApps`, `ui/apps/AppPickerScreen`): lists launchable, non-system apps through a launcher
   `<queries>` intent (no `QUERY_ALL_PACKAGES`), with search. Each app goes as its base APK plus every split
-  (`ApplicationInfo.splitSourceDirs`: language, density, CPU), named `<label>.apk` / `<label> - <split>.apk` (only
-  `A-Za-z0-9._ -` survive the receiving inbox), `FileMeta.pkg` = package, offer kind `app`. The files are read when the
+  (`ApplicationInfo.splitSourceDirs`: language, density, CPU), named `<label>.apk` / `<label> - <split>.apk` (names are cleaned by
+  `FileNames.sanitize`), `FileMeta.pkg` = package, offer kind `app`. The files are read when the
   offer is accepted: an app updated or removed in between fails that send.
 - **Receiving** (`apps/AppInbox`, `ui/apps/ReceivedAppsScreen`): the prompt groups pieces into apps ("wants to send you
   an app", "Receive"). Accepted APKs are staged in `filesDir/apps-in/<transfer id>/` (never the shared inbox), then the
@@ -625,6 +662,141 @@ iOS doesn't send it yet: unknown means no tile. Older builds ignore the field (`
   dialog, Open. Also proven between two fresh emulators that found each other by real mDNS (2026-11-20; that run is
   the demo video for the Play declaration). **Not proven**: two real phones, large Play apps (asset packs / Play
   Feature Delivery are not sent).
+
+## "Add a device": my own devices send without asking
+
+Settings → **My devices** → "Add a device" pairs any two devices that run CrossDrop (phone ↔ computer, phone ↔ phone, a
+computer ↔ a computer): both screens show the 6-digit code, the other human agrees (`PairPromptSheet`, now shown on Android
+too). The same pairing machinery as backups, with two flags on `PairedDevice` (`core/pairing/PairingStore`):
+
+- `accept` — files from this device are accepted **without a prompt**. On for "Add a device", off for old/backup pairings
+  (never silently widened); a per-device switch in My devices, on each side (`PairingStore.setAccept`).
+- `backup` — the pairing is for phone backups (`true` for everything written before the flags; `false` for "Add a device").
+  `TransferHub.decideBackup` only matches `secrets(backupOnly = true)`, and Android's `BackupManager` only looks at
+  `backup` pairings, so a friend's phone can never be mistaken for the backup computer (nor back up to you).
+- Wire: `PairRequest.purpose` (`"devices"`; absent = backup, as older builds ask), `ControlHandler.pairRequested/paired`
+  4-argument overloads (the old ones remain the defaults). `TransferHub.pairWith(peer, onCode)` initiates; shared UI is
+  `ui/pairing/MyDevices.kt` (`MyDevicesSection`, `AddDeviceDialog`; in `sharedUi`).
+- **Recognising the sender**: before a plain-files send to anyone, `TransferHub.pairKeyFor` runs one short PAIR_CHECK
+  connection (3 s cap, only when we hold any pairing) and, on a match, sends the offer with `pairKey`. The receiver's
+  `decide()` finds the pairing from `Offer.pairProof`, auto-accepts **only plain files** (`kind` null/files; text, contacts,
+  apps… are always shown first) when `accept` is on and the transfer id is new (`rememberTransfer`, the replay guard shared
+  with backups), and **every** accepted answer proves the pairing back (`Accept.pairProof`), prompted or not, because the
+  sender checks it before sending a byte. A device that only borrows the name has no key: it gets the normal prompt.
+  One-sided Unpair is safe: the sender's PAIR_CHECK no longer matches, so it just sends and is asked.
+- **A device that keeps no backups refuses the old backup-only pair request** (`pairRequested` returns false when
+  `purpose != devices && backupReceiver == null`, so a phone never shows it): agreeing would make the asker the phone's
+  "backup computer" and Android's `BackupManager` would start sending it every photo. Test: `aDeviceThatKeepsNoBackupsNeverAcceptsABackupPairing`.
+- iPhone/iPad: not part of this yet. The Swift engine answers PAIR with "no" and PAIR_CHECK with no proofs, so an iPhone is
+  never auto-accepted and never auto-accepts. Android keeps the service alive for a receive nobody tapped
+  (`Root` starts `TransferService` while a receive runs).
+- Tests: `desktop` `TrustedDevicesTest` (auto-accept both ways, switch off, name-borrowing impostor, one-sided unpair, a
+  devices pairing can't back up, an old `pairings.json`).
+
+## Auto-resume (a send that loses its connection finishes by itself)
+
+A plain-files send (`TransferHub.send` groups; not backups/camera/switch/text) whose connection drops **after the channel
+was up** (a Wi-Fi blip, the other device locking its screen) no longer fails: `startResume` keeps the session
+`CONNECTING` with `SessionState.resuming` (labels say "Reconnecting…", the note says "Lost the connection to X. Trying again as
+soon as it's back; what already arrived is kept.") and retries with growing pauses (`core/transfer/ResumePolicy`: 2 s → 60 s,
+10-minute window), each try only when the device is on the radar again. Once resuming, an "unreachable" attempt keeps waiting;
+a full disk, a damaged file or a version mismatch ends it. When the window passes it becomes the usual "Lost the connection…"
+failure. Cancelling stops it. What had arrived is kept by the receiver's resume pool, so a retry only moves what is left.
+
+- **Which device is "back"**: the same radar id (same launch), or, for one of "My devices" that restarted, the radar entry that
+  proves the same pairing (`PairedPresence`, below). A same-*name* device is never enough: a stranger borrowing the name would
+  otherwise be offered your files. `hub.radar` / `hub.presence` are set by the containers; with no radar the hub just retries.
+- **The receiver doesn't ask twice**: `core/transfer/ResumableOffers` remembers an accepted plain-files offer for 10 min,
+  keyed by `InboundRequest.sessionKey` (a hash of the session binding: only the same two app launches can reproduce it) and
+  a fingerprint of the files (names, folders, sizes, in order). The same sender repeating exactly that, before it completed,
+  is accepted without a prompt, and replaces the dead first receive (a silent network cut may still be holding it). Different
+  files, another launch, another device, a completed transfer or the passing of 10 minutes all mean "new offer, ask". Older
+  receivers and iPhones just ask again (nothing on the wire changed).
+- **Rules that keep it safe**: a retry of a send that already proved a paired device must prove it again (`spec.pairIds`; whoever
+  now answers at that radar id, or a timed-out check, means "still away", never "send unproven": the id is public, so anyone can
+  advertise it). Moving again after a pause starts a fresh 10-minute window next time. A receive the person cancelled, or that failed
+  for its own reasons (a full disk), is remembered as *stopped* (`ResumableOffers.stop`): its retries are asked about, and a "no" ends
+  the sender's retrying (to a sender mid-stream a receiver's Cancel looks like a dropped connection). The receive is registered for
+  resume *before* it becomes visible (a Cancel in between used to be lost), and a paired device's auto-accepted repeat also replaces the
+  stale half-open receive.
+- iOS: the Swift coordinator has no resume yet (and doesn't take repeats unasked); it sends and receives as before.
+- Tests: `AutoResumeTest` (a TCP relay cuts the connection after 2 MB: no second prompt, never "failed", bytes skipped, the
+  dead receive replaced; gives up after the window with a plain message; cancel stops the retries), `ResumeTest`.
+
+## Send when it's back (outbox) and `PairedPresence`
+
+Quick "is this one of mine?" checks pass `engine.control(..., readTimeoutMs = 3000)`: a coroutine timeout can't interrupt a blocked socket read, so the 3 s cap has to be the socket's own.
+
+`PairedPresence` (shared net file): every radar device is asked **once** whether it holds one of our pairings
+(`pairCheck`, proven both ways, nothing linkable to strangers) and the verdict lives as long as its radar entry; no
+pairings → no work. `present: pairId → Peer` is what auto-resume and the outbox use, and what the UI shows as "Here now / Not here".
+
+`Outbox` (shared; `outbox.json`, app-private) holds things picked for one of **My devices that isn't here**; `OutboxRunner` sends
+an entry when that device appears **and proves the pairing** (`PairedPresence`, then `SendOptions.pairKey` makes the engine
+check the receiver's proof before a byte moves), via `hub.sendNow(quiet = true)` (history records it; no transfer screen
+pops up). One try per entry per visit: a "no" or a real failure is counted (3 and it is dropped) and waits for the device's
+next visit; the device going away again isn't counted. Entries expire after 7 days or when the pairing is removed; at most
+20 entries / 50 items each. If the other device doesn't have "Accept files without asking" on, it prompts as usual.
+
+- **Queue**: the radar's "offline devices" strip (`OfflineDevicesStrip`, shared) and each device's row in Settings → My
+  devices ("Send when it's back", "Clear", "n items waiting", "Sending…", "Sent to X"). Desktop queues paths (files and
+  folders); Android queues document URIs with a persisted read grant (`OpenMultipleDocuments`), or a private copy under
+  `filesDir/outbox/` when the grant can't be kept (the photo picker's); copies and grants are released when an entry leaves
+  (`AppContainer.forgetQueued`). Android also posts a "Sent to X" notification (`OutboxNotifier`).
+- **Details**: a pick of more than 100 items becomes several entries; a transfer cut off while the device is still on the radar is
+  retried (3×, 5 s apart) instead of waiting for it to leave and return; a read error counts as a failed try, only a truly empty
+  result drops the entry; a verdict from `PairedPresence` is tied to the address it was proven at and dropped when the pairing it
+  named goes away; when a device holds two pairings with us the one that accepts files is reported (`secrets()` sorts them first).
+- **Limit worth knowing**: it works while CrossDrop is running on the sending device (Android discovery only lives while the
+  process does; the desktop app stays in the tray). There is no background job that wakes a closed app.
+- Tests: `OutboxTest` (delivered when it appears; a device that only borrowed the name never gets it; a "no" waits for the
+  next visit; the queue survives a restart; limits/age/failures).
+
+## Sending a folder
+
+A folder goes as **one offer** whose files each carry `FileMeta.dir` (`"<picked folder>/<sub>/<sub>"`, `/`-separated; absent for
+loose files, and older receivers ignore it and get flat files, numbered on a name clash — so an iPhone receiving a folder gets
+its files without the tree). `core/protocol/Folders.kt` has the rules: at most `MAX_FILES` = 5 000 per offer (an offer lists
+every file and must fit one 4 MiB frame; more throws `TooManyFilesException`, which the hub turns into a plain "too many
+files" failure rather than sending half), `MAX_DEPTH` = 16, `relativePath` (every segment cleaned by the platform's
+sanitizer; `..`, separators, Windows device names can't climb out or alias), `topFolder`, junk names left behind
+(`.DS_Store`, `Thumbs.db`, `desktop.ini`).
+
+- **Sending**: desktop — "Send a folder" on the radar, dropping a folder on the window, "Open With"/Send to (`toOutgoingFolder`
+  walks it, **links are not followed**); Android — the send sheet's **Folder** tile (`OpenDocumentTree`, a persisted read grant
+  because the send outlives the screen; `Context.outgoingFolder` walks it with one provider query per folder, `storage/SafTree`).
+  iOS cannot send folders yet.
+- **Receiving**: the tree is rebuilt under the inbox (`<inbox>/<folder>/<sub>/<file>`). `FileDeltaStore` keys its index by
+  the path inside the inbox (`$` for `/`), so same-named files in different folders don't share one.
+  **CrossDrop only lists, moves or wipes the folders it created itself**: desktop remembers their names per inbox in
+  `<state>/folders-<hash>.txt`, Android in prefs `inbox_tree_folders` (picked folder) and `Download/CrossDrop/**` in MediaStore
+  (which only ever shows what this app published). A folder of the person's own in the same place is never looked into, so
+  "Wipe inbox" can't reach it. Received folders appear in the Inbox list as `folder/sub/name` rows; shredding the last
+  file removes the emptied folders; moving the inbox carries them (`InboxStore.moveFrom`).
+- Tests: `FolderTransferTest` (real send/receive twice with no duplicates, hostile `dir`/names, wipe and move scope, too many
+  files, links), `FoldersTest` (rules and wire compatibility).
+
+## Failure messages
+
+`core/transfer/FailureAdvice.kt` (Swift twin: `CrossDropCore/FailureKind.swift` + `CrossDrop/Services/FailureAdvice.swift`)
+turns what a transfer died with into a title and a hint ("Couldn't reach Anna's phone — open CrossDrop there and check you're
+on the same Wi-Fi"; "Lost the connection… what already arrived is kept"; full disk; unreadable file; damaged file; version
+mismatch). `TransferEvent.Failed(message, cause, kind)` carries the exception; `ProtocolException` is only "update CrossDrop on both devices"
+(`INCOMPATIBLE`) while the handshake is still going, a changed/short source is its own `SourceChangedException`
+(`SOURCE_UNREADABLE`, sender only) and a failed hash check is `INTEGRITY`; the hub's `reduce` fills `SessionState.error`
+(the title) and `.hint`; "connected" = the session had reached the offer (before that a timeout means nothing was listening).
+A declined send gets its own hint; **while sending to an iPhone/iPad** (`SessionState.peerOS == ios`, from TXT `os` / the
+handshake, which iOS now sends) the transfer screen says it only receives with CrossDrop open and the screen on. `.other`
+shows the raw message, so nothing is ever hidden. Tests: `FailureAdviceTest`, Swift `FailureKindTests`.
+
+## Rating prompt
+
+`core/review/ReviewPolicy.kt` (Swift twin in `CrossDropCore`, same numbers and keys): ask after **3 successful transfers in a
+row** (a failure resets the run; declines/cancels count neither way; camera/switch/backup sessions aren't counted), at most
+**3 times ever**, **120 days** apart, and only when the person **closes a finished transfer that all went well**
+(`finishTransfer` in Android `Root`, `TransferCoordinator.finishGroup` on iOS). Android uses Play's in-app review
+(`com.google.android.play:review`, ~nothing after R8; `ReviewPrompter`); iOS `AppStore.requestReview(in:)`. The ask counts the
+moment it is made (neither store says whether a sheet appeared). Desktop has none. Nothing is sent by us.
 
 ## Wire protocol
 
@@ -668,7 +840,7 @@ on push (v2 manifest path keeps it). v2 peers on either side negotiate down.
 `SHAKE 0x24` `{port}` → `{port: 0}` (shake to connect, see above); `PAIR_CHECK 0x22` `{nonce, proofs}` → `{nonce, proofs: [0 or 1]}` with HMAC(key, "check-i"/"check-r" ‖ 0 ‖ binding ‖ nonce); then any number
 of `BACKUP_VERIFY 0x23` `{items:[{key,root,size}]}` → `{ok:[key]}` on the same connection. Builds that predate these fail the unknown
 frame before any session exists, so nothing shows on their side (Kotlin hub and Swift coordinator both ignore failures before an accept).
-Pairing proofs on transfers: `Offer.pairProof` = HMAC(key, "offer" ‖ 0 ‖ binding ‖ transferId), `Accept.pairProof` the same with "accept";
+`PairRequest.purpose` (`devices` = "Add a device"; absent = backup) tells the receiver what the pairing is for. Pairing proofs on transfers: `Offer.pairProof` = HMAC(key, "offer" ‖ 0 ‖ binding ‖ transferId), `Accept.pairProof` the same with "accept";
 backup batches use `OfferKind.BACKUP` and `FileMeta.key`. `TransferEvent.Completed.roots` carries the agreed per-file BLAKE3 roots (v2/v3).
 
 ## Build / verify

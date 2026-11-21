@@ -33,6 +33,9 @@ struct TransferScreen: View {
                         if status == .failed, let err = session.error {
                             Text(err).body(13, CD.dangerText).multilineTextAlignment(.center).frame(maxWidth: .infinity)
                         }
+                        if let note = session.note {
+                            Text(note).body(13, CD.textDim).multilineTextAlignment(.center).frame(maxWidth: .infinity)
+                        }
                     }
                     .padding(.top, 16)
                 }

@@ -96,11 +96,25 @@ fun SettingsScreen(
     inboxStats: () -> Pair<Int, Long>,
     onWipeInbox: () -> Unit,
     onClearHistory: () -> Unit,
+    inboxFolder: String? = null,
+    inboxIsCustom: Boolean = false,
+    onSetInboxFolder: (android.net.Uri?) -> Boolean = { true },
     onShowWelcome: () -> Unit = {},
     vaultState: com.crossdrop.net.VaultHostManager.State? = null,
     onOpenDrive: () -> Unit = {},
     backup: com.crossdrop.backup.BackupManager.State? = null,
     onOpenBackup: () -> Unit = {},
+    myDevices: List<com.crossdrop.core.pairing.PairedDevice> = emptyList(),
+    peers: List<com.crossdrop.core.Peer> = emptyList(),
+    onAccept: (String, Boolean) -> Unit = { _, _ -> },
+    onUnpair: (String) -> Unit = {},
+    onPairDevice: suspend (com.crossdrop.core.Peer, (String) -> Unit) -> com.crossdrop.ui.pairing.AddDeviceResult = { _, _ -> com.crossdrop.ui.pairing.AddDeviceResult.FAILED },
+    presentIds: Set<String> = emptySet(),
+    queued: Map<String, Int> = emptyMap(),
+    sendingIds: Set<String> = emptySet(),
+    outboxNote: String? = null,
+    onQueue: ((com.crossdrop.core.pairing.PairedDevice) -> Unit)? = null,
+    onClearQueue: (String) -> Unit = {},
     onSelfTest: (() -> Unit)?,
     onAddPeer: ((String, Int) -> Unit)?,
     refreshSignal: Any?,
@@ -109,7 +123,28 @@ fun SettingsScreen(
     var addingPeer by remember { mutableStateOf(false) }
     var confirmWipe by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
-    val stats = remember(refreshSignal) { inboxStats() }
+    var inboxProblem by remember { mutableStateOf<String?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val folderPicker = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            // Keep the grant across restarts: without it the folder is forgotten when the app closes.
+            val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            val held = ctx.contentResolver.persistedUriPermissions.any { it.uri == uri }
+            runCatching { ctx.contentResolver.takePersistableUriPermission(uri, flags) }
+            inboxProblem = if (onSetInboxFolder(uri)) null else {
+                // not usable: do not keep a grant to a folder we won't write to (they count against Android's cap)
+                if (!held) runCatching { ctx.contentResolver.releasePersistableUriPermission(uri, flags) }
+                tr("CrossDrop can't save files in that folder. Pick another one.")
+            }
+        }
+    }
+    // Counting the inbox may query MediaStore and a picked folder: not on the main thread.
+    var stats by remember { mutableStateOf(0 to 0L) }
+    androidx.compose.runtime.LaunchedEffect(refreshSignal) {
+        stats = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { inboxStats() }
+    }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     Box(Modifier.fillMaxSize()) {
@@ -178,6 +213,11 @@ fun SettingsScreen(
                 // ------------------------------------------- wireless drive --
                 DriveCard(vaultState, onOpenDrive)
                 BackupCard(backup, onOpenBackup)
+                com.crossdrop.ui.pairing.MyDevicesSection(
+                    devices = myDevices, peers = peers, onAccept = onAccept, onUnpair = onUnpair, onPair = onPairDevice,
+                    present = presentIds, queued = queued, sending = sendingIds, onQueue = onQueue, onClearQueue = onClearQueue,
+                    note = outboxNote,
+                )
 
                 // -------------------------------------------------- storage --
                 SectionLabel(tr("Storage"), Modifier.padding(top = 4.dp))
@@ -189,6 +229,23 @@ fun SettingsScreen(
                             "${trPlural(storedCount, "1 file", "{n} files")} · ${formatBytes(stats.second)}",
                             style = monoStyle(12, TextSecondary),
                         )
+                    }
+                    if (inboxFolder != null) {
+                        RowSeparator()
+                        NavRow(CdIcons.Folder, tr("Inbox folder"), inboxFolder) {
+                            inboxProblem = null
+                            folderPicker.launch(null)
+                        }
+                        if (inboxIsCustom) {
+                            RowSeparator()
+                            ActionRow(tr("Use the default folder"), TextPrimary) {
+                                inboxProblem = null
+                                onSetInboxFolder(null)
+                            }
+                        }
+                        inboxProblem?.let {
+                            Text(it, color = DangerText, fontSize = 12.sp, modifier = Modifier.padding(bottom = 12.dp))
+                        }
                     }
                     RowSeparator()
                     ActionRow(tr("Wipe inbox"), DangerText, enabled = stats.first > 0) { confirmWipe = true }

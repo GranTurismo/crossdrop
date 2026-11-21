@@ -110,6 +110,8 @@ fun IncomingOfferSheet(
     val contactCount = cards.size.coerceAtLeast(1)
     val apps = remember(offer) { if (kind == OfferKind.APP) appGroups(files) else emptyList() }
     val app = apps.isNotEmpty()
+    // A whole folder: say so by name, instead of "{n} files" that the person never picked one by one.
+    val folder = remember(offer) { if (kind == null || kind == OfferKind.FILES) com.crossdrop.core.protocol.Folders.topFolder(files) else null }
     val clipboard = LocalClipboardManager.current
     val uriHandler = LocalUriHandler.current
     val startedAt = remember(offer) { System.currentTimeMillis() }
@@ -175,6 +177,7 @@ fun IncomingOfferSheet(
                                 app -> trPlural(apps.size, "{0} wants to send you an app", "{0} wants to send you {n} apps", offer.peerName)
                                 camera -> tr("{0} wants to share their camera", offer.peerName)
                                 switch -> tr("{0} wants to move to this device", offer.peerName)
+                                folder != null -> tr("{0} wants to send you the folder {1}", offer.peerName, folder)
                                 else -> trPlural(files.size, "{0} wants to send you a file", "{0} wants to send you {n} files", offer.peerName)
                             },
                             style = displayStyle(28, tracking = -0.035f).copy(lineHeight = 31.sp),
