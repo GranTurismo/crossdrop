@@ -171,7 +171,7 @@ final class ControlTests: XCTestCase {
         XCTAssertTrue(msg.contains("expected OFFER"), msg)
     }
 
-    // MARK: pairing frames (this build keeps no pairings)
+    // MARK: pairing frames on a listener that holds no pairings (and agrees to none)
 
     func testPairRequestIsDeclined() throws {
         let host = try Host(control: Recorder())

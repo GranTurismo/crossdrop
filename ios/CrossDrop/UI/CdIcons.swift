@@ -88,6 +88,8 @@ enum CdIcons {
     static let shield = CdIcon(d("M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"), d("M8.5 12l2.5 2.5 4.5-5"))
     static let trash = CdIcon(d("M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"), stroke: 2)
     static let pencil = CdIcon(d("M4 20h4L19 9l-4-4L4 16z"), d("M13.5 6.5l4 4"))
+    /// "Add a device" / pairing: two chain links.
+    static let link = CdIcon(d("M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"), d("M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"))
     static let copy = CdIcon(.rect(8, 8, 12, 12, 2.5), d("M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"), stroke: 2.2)
     static let help = CdIcon(.circle(12, 12, 9), d("M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5v.4M12 17h.01"))
     static let globe = CdIcon(.circle(12, 12, 9), d("M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"))

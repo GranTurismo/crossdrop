@@ -61,8 +61,13 @@ final class TransferCoordinator: ObservableObject {
     var autoAcceptOnce = false
     var autoAcceptAll = false
     var onOfferArrived: ((IncomingOffer) -> Void)?
-    /// Connections that carry no files (ANNOUNCE; pairing frames are declined by the engine). Never a session.
+    /// Connections that carry no files (announce, shake, pairing, clipboard). Never a session.
     var control: ControlHandler?
+    /// "My devices": files from a paired device with "Accept files without asking" on go straight in, and plain-file sends
+    /// to a paired device prove the pairing (so it can take them without asking too).
+    var pairings: PairingStore?
+    /// Transfer ids taken without asking: a recorded session played back verbatim must not be accepted again.
+    nonisolated let autoTaken = SeenIds(limit: 512)
     /// Called once per session as it ends (camera shots and switch batches excluded) — app-layer hooks.
     var onSessionEnded: ((SessionState) -> Void)?
 
@@ -213,8 +218,17 @@ final class TransferCoordinator: ObservableObject {
         let token = CancelToken()
         tokens[sid] = token
         let engine = self.engine, trust = self.trust, port = peer.port, peerKey = peer.instanceId
-        let sendOpts = opts
+        // Plain files to one of "My devices": prove the pairing first (one short connection, only when we hold any).
+        let pairings = (kind == nil || kind == OfferKind.files) && opts.pairKey == nil && peer.vault == nil ? self.pairings : nil
+        let baseOpts = opts
         Thread.detachNewThread { [weak self] in
+            var sendOpts = baseOpts
+            if let pairings, case let held = pairings.secrets(), !held.isEmpty,
+               let match = (try? engine.control(host: host, port: port, connectTimeout: 2, readTimeout: 3) { try $0.pairCheck(held) }) ?? nil {
+                sendOpts.pairKey = match.key
+                pairings.seen(match.id)
+            }
+            if token.isCancelled { DispatchQueue.main.async { self?.reduce(.cancelled, id: sid) }; return }
             engine.send(host: host, port: port, files: files, options: sendOpts, cancel: token) { event in
                 switch event {
                 case .trustGranted(let g): trust.remember(peerKey: peerKey, grant: g)
@@ -307,11 +321,23 @@ final class TransferCoordinator: ObservableObject {
         let switchRx = self.switchReceiver
         let contactRx = self.contactReceiver
         let control = self.control
+        let pairings = self.pairings, autoTaken = self.autoTaken
         Thread.detachNewThread { [weak self] in
             engine.receive(socket: socket, cancel: token, control: control, decideRequest: { req in
                 let offer = req.offer
+                // One of "My devices" proves it with the offer (a device that only borrowed the name can't). Plain files from
+                // it go straight in when the person said so; anything else is shown as usual. Either way the answer proves the
+                // pairing back, which the sender checks before sending a byte.
+                let secret = pairings.flatMap { req.pairedWith($0.secrets()) }
+                let device = secret.flatMap { pairings?.get($0.id) }
+                if let device { pairings?.seen(device.id, name: req.peerName) }
+                let pairKey = secret?.key
+                let plainFiles = offer.kind == nil || offer.kind == OfferKind.files
+                let auto = device?.accept == true && plainFiles && autoTaken.insert(offer.transferId)
                 var route: Route?
-                if let g = trust.match(req) {
+                if auto {
+                    route = .files
+                } else if let g = trust.match(req) {
                     switch offer.kind {
                     case OfferKind.camera: route = .camera(g.id, nil)
                     case OfferKind.switchPhones where switchRx != nil: route = .switchBatch(nil)
@@ -343,7 +369,7 @@ final class TransferCoordinator: ObservableObject {
                 case .text:
                     conn.kind = OfferKind.text
                     DispatchQueue.main.async { self?.register(sid, conn: conn, peer: req.peerName, sas: sas, offer: offer, kind: OfferKind.text, quiet: true) }
-                    return .accept(sinkFor: { _ in DiscardSink() }, delta: nil)
+                    return .accept(sinkFor: { _ in DiscardSink() }, delta: nil, pairKey: pairKey)
                 case .contact:
                     guard let rx = contactRx else { return .reject("unsupported") }
                     conn.kind = OfferKind.contact
@@ -354,7 +380,7 @@ final class TransferCoordinator: ObservableObject {
                         let (url, sink) = try rx.stagingFile(meta)
                         conn.lock.lock(); conn.v1Files.append(url); conn.lock.unlock()
                         return sink
-                    }, delta: nil)
+                    }, delta: nil, pairKey: pairKey)
                 case .files:
                     conn.kind = offer.kind
                     conn.store = inbox.delta
@@ -363,7 +389,7 @@ final class TransferCoordinator: ObservableObject {
                         let (url, sink) = try inbox.newFile(meta)
                         conn.lock.lock(); conn.v1Files.append(url); conn.lock.unlock()
                         return sink
-                    }, delta: inbox.delta)
+                    }, delta: inbox.delta, pairKey: pairKey)
                 case .camera(let grantId, let grant):
                     conn.kind = OfferKind.camera
                     conn.store = inbox.delta
@@ -375,7 +401,7 @@ final class TransferCoordinator: ObservableObject {
                         let (url, sink) = try inbox.newFile(meta)
                         conn.lock.lock(); conn.v1Files.append(url); conn.lock.unlock()
                         return sink
-                    }, delta: inbox.delta, grant: grant)
+                    }, delta: inbox.delta, grant: grant, pairKey: pairKey)
                 case .switchBatch(let grant):
                     guard let rx = switchRx else { return .reject("unsupported") }
                     let store = rx.store(for: offer)
@@ -389,7 +415,7 @@ final class TransferCoordinator: ObservableObject {
                         let (url, sink) = try rx.batchFile(offer, meta)
                         conn.lock.lock(); conn.v1Files.append(url); conn.lock.unlock()
                         return sink
-                    }, delta: store, grant: grant)
+                    }, delta: store, grant: grant, pairKey: pairKey)
                 }
             }, emit: { event in
                 DispatchQueue.main.async { self?.inboundEvent(event, conn: conn) }
@@ -678,3 +704,20 @@ extension TransferCoordinator {
     }
 }
 #endif
+
+/// A bounded, thread-safe set of ids (oldest forgotten first).
+final class SeenIds: @unchecked Sendable {
+    private let lock = NSLock()
+    private var set = Set<String>()
+    private var order: [String] = []
+    private let limit: Int
+    init(limit: Int) { self.limit = limit }
+    /// True the first time `id` is seen.
+    func insert(_ id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard set.insert(id).inserted else { return false }
+        order.append(id)
+        while order.count > limit { set.remove(order.removeFirst()) }
+        return true
+    }
+}

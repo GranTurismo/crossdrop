@@ -547,7 +547,7 @@ just joins; discovery takes over. iPhones scan and join too, but can't host: `io
 (`NEHotspotConfiguration`, `joinOnce`; entitlement `com.apple.developer.networking.HotspotConfiguration` in
 `CrossDrop/CrossDrop.entitlements`, iPhone/iPad only; everything NetworkExtension is compiled out on Mac Catalyst), AVFoundation
 scanner `UI/Connect/ScanCodeScreen.swift`, announced peers `Services/AnnouncedPeers.swift`; the help card's button is "Scan a code".
-The Swift engine answers ANNOUNCE, declines PAIR and answers PAIR_CHECK with no proofs (iPhones don't keep backups).
+The Swift engine answers ANNOUNCE; it agrees to PAIR only for "Add a device" (`purpose: devices`) and refuses the old backup request (iPhones don't keep backups).
 iOS debug launch args: `-dev_join '<code>'`, `-dev_join_skip_wifi '<code>'`, `-dev_scan YES`. `crossdrop-cli announce --to h:p --port N`
 and `recv` (prints `ANNOUNCED-FROM …`) cover it; `SwiftInteropTest` checks ANNOUNCE both ways and the pairing crypto has the same
 known-answer vectors in Kotlin `ControlTest` and Swift `ControlTests`.
@@ -687,16 +687,23 @@ too). The same pairing machinery as backups, with two flags on `PairedDevice` (`
 - **A device that keeps no backups refuses the old backup-only pair request** (`pairRequested` returns false when
   `purpose != devices && backupReceiver == null`, so a phone never shows it): agreeing would make the asker the phone's
   "backup computer" and Android's `BackupManager` would start sending it every photo. Test: `aDeviceThatKeepsNoBackupsNeverAcceptsABackupPairing`.
-- iPhone/iPad: not part of this yet. The Swift engine answers PAIR with "no" and PAIR_CHECK with no proofs, so an iPhone is
-  never auto-accepted and never auto-accepts. Android keeps the service alive for a receive nobody tapped
-  (`Root` starts `TransferService` while a receive runs).
+- iPhone/iPad/Mac App Store app (from 1.6.0): the same, in Swift. `CrossDropCore/Control.swift` serves PAIR (blocks the engine
+  thread on `ControlHandler.pairRequested` until the person answers `PairPromptView`), PAIR_CHECK with real proofs and CLIPBOARD;
+  `ControlChannel.pair/pairCheck/clipboard` initiate. `InboundRequest.pairedWith` + `ReceiveDecision.accept(…, pairKey:)` prove a
+  pairing back on every accepted offer; `SendOptions.pairKey` proves it on plain-file sends and the send fails ("This isn't your
+  paired device") unless the receiver proves it back. App side: `Services/PairingStore.swift` (same JSON as Kotlin, Application
+  Support, excluded from backups), `PairedPresence.swift`, `MyDevicesServices.swift` (`DevicesControl` = the listener's handler,
+  `PairPrompt`), `TransferCoordinator` (auto-accept plain files when `accept` is on, `SeenIds` replay guard; a PAIR_CHECK before
+  plain-file sends), UI `UI/Pairing/MyDevicesUI.swift` (Settings → My devices, `AddDeviceSheet`, `PairPromptView`). An iPhone
+  only takes part while CrossDrop is open (iOS suspends it). Older iOS builds (≤ 1.5.0) decline PAIR and prove nothing.
+  Android keeps the service alive for a receive nobody tapped (`Root` starts `TransferService` while a receive runs).
 - Tests: `desktop` `TrustedDevicesTest` (auto-accept both ways, switch off, name-borrowing impostor, one-sided unpair, a
   devices pairing can't back up, an old `pairings.json`).
 
 ## Shared clipboard ("My devices")
 
-Copy on one paired device, paste on another. Text only (`MAX_CLIPBOARD_BYTES` = 256 KB), Android + desktop (iOS doesn't
-pair). Per-device switch **Share clipboard** in My devices (`PairedDevice.clipboard`, `PairingStore.setClipboard`, off by
+Copy on one paired device, paste on another. Text only (`MAX_CLIPBOARD_BYTES` = 256 KB), Android, desktop, and (from 1.6.0)
+iPhone/iPad and the Mac App Store app. Per-device switch **Share clipboard** in My devices (`PairedDevice.clipboard`, `PairingStore.setClipboard`, off by
 default and never on for a backup pairing's row); both sides must have it on.
 
 - **Wire**: `CLIPBOARD 0x25` `{id, text}` → `{accepted}`, only after a successful PAIR_CHECK on the same connection (the
@@ -726,10 +733,29 @@ default and never on for a backup pairing's row); both sides must have it on.
   is there (even sensitive: the person asked) and toasts the outcome. Arrivals go straight to `setPrimaryClip`, also in the
   background. Android 12+ shows its own "CrossDrop pasted from your clipboard" notice on each read; Android 13+ shows its
   copy preview on each arrival. Debug builds log lengths (never text) under tag `Clipboard`.
+- **iPhone/iPad** (`Services/ClipboardSync.swift`, the Swift twin of `net/ClipboardSync.kt`, same rules; `PasteboardShare` in
+  `MyDevicesServices.swift`): iOS asks the person every time an app reads the clipboard in code, so CrossDrop never does. When the
+  app comes to the front, it compares `UIPasteboard.changeCount` with the last one it handled (stored as `clipboard_seen_count`) and
+  checks `hasStrings` and the nspasteboard.org markers in `types` (none of which ask); if there is a new copy, the radar shows
+  `ClipboardShareCard` with SwiftUI's system `PasteButton`, which hands the text over without a prompt, then `shareNow` and a result
+  line. Arrivals go straight onto `UIPasteboard` (writing never asks) and count as handled (no card for them). Only while CrossDrop
+  is open: a copy made elsewhere waits the usual minute for it. **Mac App Store app** (Catalyst): like the desktop app, it polls
+  `changeCount` every 0.7 s while sharing is on, never shares what was there when watching began, skips marked copies.
+  Debug launch args: `-dev_pair h:p`, `-dev_autopair YES`, `-dev_clip_on YES`, `-dev_paste_text T` (answers the card as if Paste
+  had handed over T). Proven on the iOS 27 simulator (2026-11-23) against the Kotlin desktop code (`LinkInteropProbe.macSharesClipboard`
+  with `-Dcrossdrop.peer=127.0.0.1:<sim port> -Dcrossdrop.clipFile=<file> -Dcrossdrop.pairFirst=1 [-Dcrossdrop.sendAfterPair=1]`,
+  which keeps the real Mac clipboard out of it): the pairing prompt with the same code, a file from the Mac taken without asking,
+  Mac → iPhone (Unicode), no card for what arrived, the card for a new copy, iPhone → Mac with "Clipboard sent to …". Simulator
+  gotchas: a headless simulator doesn't sync its pasteboard with the Mac (Simulator.app does: keep it closed or switch that off);
+  the one-time notifications alert keeps the app inactive (set `asked_notifications` in the app container's plist before the
+  first launch). **Not proven**: the system Paste button itself (simulators can't tap), a real iPhone, the Catalyst watcher.
 - Tests: `ClipboardSyncTest` (desktop: real loopback devices; lands and isn't sent back, either way and in Georgian; refused while
   off there + `WANTED`; a device at the paired id's address that can't prove the pairing gets nothing; waits for a device
   for a minute, not longer; quick copies end on the newest; too long/empty; `shareNow`; the watcher with and without a change
-  counter, secrets, busy clipboard, write-back), `ControlTest` (only over a proven pairing, fresh ids, refused).
+  counter, secrets, busy clipboard, write-back), `ControlTest` (only over a proven pairing, fresh ids, refused), Swift
+  `PairingTests` (pairing both ways, PAIR_CHECK, clipboard only after a proven pairing, files proven both ways), `SwiftInteropTest`
+  (Kotlin ⇄ Swift: pair, clipboard and paired sends both ways; an impostor gets nothing). `crossdrop-cli pair|clip`, `recv --agree
+  --clips --pairing id:keyHex`, `send --pairing id:keyHex` drive them.
   Mac-side partner with the **real macOS clipboard**: `JAVA_TOOL_OPTIONS="-Dcrossdrop.clipProbe=1 -Dcrossdrop.adbSerial=emulator-5554"
   ./gradlew :desktop:test --tests 'com.crossdrop.LinkInteropProbe.macSharesClipboard' --rerun -i` (auto-pairs, turns sharing on,
   forwards the emulator's port itself) with the emulator started `-e dev_peer 10.0.2.2:47000`. **The emulator syncs its own

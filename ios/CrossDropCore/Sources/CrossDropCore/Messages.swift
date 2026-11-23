@@ -214,10 +214,29 @@ public struct Shake: Codable, Equatable {
     enum K: String, CodingKey { case port }
 }
 
-/// PAIR, first frame: the initiator asks to become one of the receiver's devices under `pairId` (32 hex).
+/// What a pairing is for (`PairRequest.purpose`).
+public enum PairPurpose {
+    /// "Add a device": the two send each other files without asking (and may share their clipboards).
+    public static let devices = "devices"
+}
+
+/// PAIR, first frame: the initiator asks to become one of the receiver's devices under `pairId` (32 hex). `purpose`
+/// is `PairPurpose.devices` for "Add a device"; absent means a phone that wants to back up here, as older builds ask.
 public struct PairRequest: Codable, Equatable {
     public var pairId: String
-    public init(pairId: String) { self.pairId = pairId }
+    public var purpose: String?
+    public init(pairId: String, purpose: String? = nil) { self.pairId = pairId; self.purpose = purpose }
+    public init(from d: Decoder) throws {
+        let c = try d.container(keyedBy: K.self)
+        pairId = try c.decode(String.self, forKey: .pairId)
+        purpose = try c.decodeIfPresent(String.self, forKey: .purpose)
+    }
+    public func encode(to e: Encoder) throws {
+        var c = e.container(keyedBy: K.self)
+        try c.encode(pairId, forKey: .pairId)
+        try c.encodeIfPresent(purpose, forKey: .purpose)
+    }
+    enum K: String, CodingKey { case pairId, purpose }
 }
 
 /// PAIR, answer: the human on the receiving side agreed (or not, or didn't answer in time).
@@ -240,6 +259,23 @@ public struct PairCheck: Codable, Equatable {
     }
     enum K: String, CodingKey { case nonce, proofs }
 }
+
+/// CLIPBOARD (only after a successful PAIR_CHECK on the same connection): text just copied on the sending device. `id` is
+/// fresh for every copy (16 random bytes, hex): the receiver refuses one it has seen, so a recorded connection can't be replayed.
+public struct ClipboardPush: Codable, Equatable {
+    public var id: String
+    public var text: String
+    public init(id: String, text: String) { self.id = id; self.text = text }
+}
+
+/// The receiver put the copy on its clipboard (`false`: clipboard sharing with the sender is off there).
+public struct ClipboardReply: Codable, Equatable {
+    public var accepted: Bool
+    public init(accepted: Bool) { self.accepted = accepted }
+}
+
+/// The largest copy that is shared (UTF-8 bytes), as the Kotlin core's `MAX_CLIPBOARD_BYTES`.
+public let maxClipboardBytes = 256 * 1024
 
 /// One backed-up item as the phone remembers it: its key, whole-file BLAKE3 root and size.
 public struct VerifyItem: Codable, Equatable {

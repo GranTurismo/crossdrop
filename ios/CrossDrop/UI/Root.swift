@@ -114,6 +114,12 @@ struct RootView: View {
                     .zIndex(6)
                 }
 
+                if let prompt = container.pairPrompt {
+                    PairPromptView(prompt: prompt) { yes in container.answerPairPrompt(prompt, yes) }
+                        .transition(.opacity)
+                        .zIndex(6)
+                }
+
                 if guideOpen {
                     ConnectGuideScreen(onClose: { guideOpen = false })
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -145,6 +151,8 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.3), value: container.switchTarget == nil)
         .animation(.easeInOut(duration: 0.3), value: coordinator.live == nil || liveHidden)
         .animation(.easeInOut(duration: 0.25), value: coordinator.incomingOffer?.id)
+        .animation(.easeInOut(duration: 0.25), value: container.pairPrompt?.id)
+        .onChange(of: container.pairPrompt?.id) { id in if id != nil { sheets.dismiss() } }
         .animation(.easeInOut(duration: 0.3), value: welcome)
         .animation(.easeInOut(duration: 0.3), value: guideOpen)
         .animation(.easeInOut(duration: 0.3), value: scanOpen)
@@ -199,7 +207,7 @@ struct RootView: View {
     private var radarCovered: Bool {
         (coordinator.focusedGroup != nil && !transferHidden) || container.cameraTargets != nil
             || (coordinator.live != nil && !liveHidden) || container.switchTarget != nil || container.driveOpen
-            || coordinator.incomingOffer != nil || sheets.item != nil || guideOpen || scanOpen || welcome
+            || coordinator.incomingOffer != nil || container.pairPrompt != nil || sheets.item != nil || guideOpen || scanOpen || welcome
     }
 
     @ViewBuilder private var overlays: some View {

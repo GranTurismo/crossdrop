@@ -30,7 +30,9 @@ public protocol OutputSink: AnyObject {
 public enum ReceiveDecision {
     /// `sinkFor` serves the v1 monolithic path; `delta` (when non-nil and the peer speaks v2+)
     /// engages chunked delta/resume storage instead. `grant` goes back inside the ACCEPT.
-    case accept(sinkFor: (FileMeta) throws -> OutputSink, delta: DeltaReceiver?, grant: TrustGrant? = nil)
+    /// `pairKey`: the pairing the offer proved (`InboundRequest.pairedWith`); the ACCEPT proves it back, which the sender
+    /// checks before sending a byte.
+    case accept(sinkFor: (FileMeta) throws -> OutputSink, delta: DeltaReceiver?, grant: TrustGrant? = nil, pairKey: [UInt8]? = nil)
     case reject(String?)
 }
 
@@ -51,8 +53,12 @@ public struct SendOptions {
     public var text: String?
     public var trust: TrustCredential?
     public var batch: BatchInfo?
-    public init(kind: String? = nil, text: String? = nil, trust: TrustCredential? = nil, batch: BatchInfo? = nil) {
-        self.kind = kind; self.text = text; self.trust = trust; self.batch = batch
+    /// The key of the pairing the receiver proved it holds ("My devices"): the offer proves it too, so the receiver can
+    /// take it without asking, and nothing is sent unless the receiver proves it back.
+    public var pairKey: [UInt8]?
+    public init(kind: String? = nil, text: String? = nil, trust: TrustCredential? = nil, batch: BatchInfo? = nil,
+                pairKey: [UInt8]? = nil) {
+        self.kind = kind; self.text = text; self.trust = trust; self.batch = batch; self.pairKey = pairKey
     }
 }
 
@@ -68,10 +74,14 @@ public struct InboundRequest {
     public func provesTrust(token: [UInt8]) -> Bool {
         guard let p = offer.trustProof, let proof = Data(base64Encoded: p) else { return false }
         let expected = SessionCrypto.trustProof(token: token, binding: binding, transferId: offer.transferId)
-        guard proof.count == expected.count else { return false }
-        var diff: UInt8 = 0
-        for (a, b) in zip(proof, expected) { diff |= a ^ b }
-        return diff == 0
+        return constantTimeEqual([UInt8](proof), expected)
+    }
+
+    /// The pairing among `held` this offer proves, or nil (no proof, or a device we aren't paired with).
+    public func pairedWith(_ held: [PairSecret]) -> PairSecret? {
+        guard let p = offer.pairProof, let proof = Data(base64Encoded: p) else { return nil }
+        let tid = Array(offer.transferId.utf8)
+        return held.first { constantTimeEqual([UInt8](proof), SessionCrypto.pairProof(key: $0.key, label: "offer", binding: binding, extra: tid)) }
     }
 }
 
@@ -210,7 +220,9 @@ extension TransferEngine {
 /// Payload paths by negotiated version: v1 DATA*, v2 CHUNK_MAP/CHUNK_REQ/CHUNK, v3 PUSH_CHUNK/PUSH_END.
 public final class TransferEngine {
     public static let chunkSize = 256 * 1024
-    static let controlTimeout: TimeInterval = 15
+    public static let controlTimeout: TimeInterval = 15
+    /// The failure when whoever answered a send meant for one of "My devices" couldn't prove the pairing (the app translates it).
+    public static let notThePairedDevice = "This isn't your paired device"
     static let dataTimeout: TimeInterval = 60
     static let deltaTimeout: TimeInterval = 600
 
@@ -266,7 +278,8 @@ public final class TransferEngine {
                 text: options.text.flatMap { $0.utf16.count <= maxInlineText ? $0 : nil },
                 trustId: options.trust?.id,
                 trustProof: options.trust.map { b64(SessionCrypto.trustProof(token: $0.token, binding: keys.binding, transferId: transferId)) },
-                batch: options.batch)
+                batch: options.batch,
+                pairProof: options.pairKey.map { b64(SessionCrypto.pairProof(key: $0, label: "offer", binding: keys.binding, extra: Array(transferId.utf8))) })
 
             let offerBytes = try offer.encodeBytes()
             guard offerBytes.count < FrameIO.maxFrame - 64 else {
@@ -283,6 +296,15 @@ public final class TransferEngine {
             }
 
             let accept = try ansPayload.decodeJSON(Accept.self)
+            if let key = options.pairKey {
+                // Only the paired device can answer this; anyone else (a borrowed name) gets nothing.
+                let want = SessionCrypto.pairProof(key: key, label: "accept", binding: keys.binding, extra: Array(transferId.utf8))
+                guard let got = accept.pairProof.flatMap({ try? unb64($0) }), constantTimeEqual(got, want) else {
+                    try? fio.write(.cancel, Cancel(reason: "not the paired device").encodeBytes())
+                    emit(.failed(TransferEngine.notThePairedDevice, .other))
+                    return
+                }
+            }
             if let grant = accept.trust { emit(.trustGranted(grant)) }
             let tail: (TransferEvent) -> Void = emit
             if ack.version >= 3 && accept.delta && accept.push {
@@ -504,11 +526,15 @@ public final class TransferEngine {
             case .reject(let reason):
                 try fio.write(.decline, Decline(transferId: offer.transferId, reason: reason).encodeBytes())
                 emit(.declinedByPeer)
-            case .accept(let sinkFor, let delta, let grant):
+            case .accept(let sinkFor, let delta, let grant, let pairKey):
                 let useDelta = negotiated >= 2 && delta != nil
                 let metas = delta.map { TransferEngine.uniqueMetas(offer.files, $0) } ?? offer.files
                 let push = negotiated >= 3 && (delta?.canPush(metas) ?? false)
-                try fio.write(.accept, Accept(transferId: offer.transferId, delta: useDelta, push: push, trust: grant).encodeBytes())
+                let pairProof = pairKey.map {
+                    b64(SessionCrypto.pairProof(key: $0, label: "accept", binding: keys.binding, extra: Array(offer.transferId.utf8)))
+                }
+                try fio.write(.accept, Accept(transferId: offer.transferId, delta: useDelta, push: push, trust: grant,
+                                              pairProof: pairProof).encodeBytes())
                 if useDelta, let delta {
                     delta.prunePool()
                     if push { try receivePush(fio, offer, metas, delta, started, cancel, emit) }

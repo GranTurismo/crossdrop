@@ -216,4 +216,138 @@ class SwiftInteropTest {
             inbox.deleteRecursively()
         }
     }
+
+    // ------------------------------------------------------------------ "My devices" across languages --
+
+    private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
+
+    /** A Swift `recv` with extra flags; its output is read line by line through the returned reader. */
+    private fun startSwift(inbox: File, vararg extra: String): Triple<Process, Int, BufferedReader> {
+        val p = ProcessBuilder(listOf(cli!!, "recv", inbox.absolutePath) + extra).redirectErrorStream(true).start()
+        val reader = p.inputStream.bufferedReader()
+        val port = generateSequence { reader.readLine() }.first { it.startsWith("LISTENING ") }.removePrefix("LISTENING ").trim().toInt()
+        return Triple(p, port, reader)
+    }
+
+    private fun BufferedReader.lineStarting(prefix: String): String =
+        generateSequence { readLine() }.firstOrNull { it.startsWith(prefix) }?.trim() ?: error("no line starting with $prefix")
+
+    /** An Android phone or computer pairs with an iPhone, then shares its clipboard and sends files that prove the pairing. */
+    @Test
+    fun `kotlin pairs with swift, shares its clipboard and sends as one of my devices`() = runBlocking<Unit> {
+        assumeTrue(cli != null)
+        val inbox = Files.createTempDirectory("pair-ks").toFile()
+        val (proc, port, out) = startSwift(inbox, "--agree", "--clips", "--count", "1")
+        try {
+            val kotlin = engine("kotlin", 3)
+            val id = com.crossdrop.core.pairing.PairingStore.newId()
+            val (sas, key) = kotlin.control(Endpoint("127.0.0.1", port), readTimeoutMs = 20_000) {
+                sas to pair(id, purpose = com.crossdrop.core.protocol.PairPurpose.DEVICES)
+            }
+            assertNotNull("swift agreed", key)
+            assertEquals("PAIR-ASKED kotlin $sas devices", out.lineStarting("PAIR-ASKED"))
+            assertEquals("both derive the same key", "PAIRED-FROM $id ${hex(key!!)}", out.lineStarting("PAIRED-FROM"))
+
+            val secret = com.crossdrop.core.transfer.PairSecret(id, key)
+            val taken = kotlin.control(Endpoint("127.0.0.1", port)) {
+                assertEquals(id, pairCheck(listOf(secret))?.id)
+                clipboard("გამარჯობა 👋 https://example.com/a?b=c")
+            }
+            assertTrue("swift took the copy", taken)
+            assertEquals("CLIP-FROM $id გამარჯობა 👋 https://example.com/a?b=c", out.lineStarting("CLIP-FROM"))
+
+            // A stranger's key: not recognised, so no copy can go.
+            val stranger = kotlin.control(Endpoint("127.0.0.1", port)) { pairCheck(listOf(com.crossdrop.core.transfer.PairSecret(id, ByteArray(32)))) }
+            assertNull(stranger)
+
+            // Files that prove the pairing: the iPhone proves it back, which the sender checks before sending a byte.
+            val bytes = content(300_000, 11)
+            val events = kotlin.send(Endpoint("127.0.0.1", port), listOf(OutgoingFile(FileMeta("paired.bin", bytes.size.toLong())) { ByteArrayInputStream(bytes) }),
+                com.crossdrop.core.transfer.SendOptions(pairKey = key)).toList()
+            assertTrue("sender: ${events.last()}", events.last() is TransferEvent.Completed)
+            assertEquals("PAIRED-OFFER $id", out.lineStarting("PAIRED-OFFER"))
+            assertTrue(proc.waitFor(30, TimeUnit.SECONDS))
+            assertArrayEquals(bytes, File(inbox, "paired.bin").readBytes())
+        } finally {
+            proc.destroy()
+            inbox.deleteRecursively()
+        }
+    }
+
+    /** A paired iPhone's send to a computer that can't prove the pairing (it borrowed the name) moves nothing. */
+    @Test
+    fun `a swift send to one of my devices fails unless the receiver proves the pairing`() = runBlocking<Unit> {
+        assumeTrue(cli != null)
+        val listener = ServerSocket(0)
+        val inbox = Files.createTempDirectory("pair-imp").toFile()
+        val served = async(kotlinx.coroutines.Dispatchers.IO) {
+            engine("impostor", 3).receive(listener.accept()) { _, _ ->
+                ReceiveDecision.Accept(sinkFor = { meta -> File(inbox, meta.name).outputStream() })
+            }.toList()
+        }
+        val f = File(inbox.parentFile, "to-impostor-${System.nanoTime()}.bin").apply { writeBytes(content(50_000, 3)) }
+        val p = ProcessBuilder(cli, "send", "127.0.0.1", listener.localPort.toString(), "--pairing", "${"ab".repeat(16)}:${"cd".repeat(32)}", f.absolutePath)
+            .redirectErrorStream(true).start()
+        assertTrue(p.waitFor(30, TimeUnit.SECONDS))
+        val out = p.inputStream.bufferedReader().readText()
+        served.await()
+        listener.close()
+        assertTrue(out, out.contains("EVENT failed This isn't your paired device"))
+        assertFalse("nothing arrived", File(inbox, f.name).exists() && File(inbox, f.name).length() > 0)
+        f.delete(); inbox.deleteRecursively()
+    }
+
+    /** An iPhone asks a computer or Android phone to pair, then shares its clipboard and sends files as one of its devices. */
+    @Test
+    fun `swift pairs with kotlin, shares its clipboard and sends as one of my devices`() = runBlocking<Unit> {
+        assumeTrue(cli != null)
+        val listener = ServerSocket(0)
+        val inbox = Files.createTempDirectory("pair-sk").toFile()
+        val held = java.util.concurrent.CopyOnWriteArrayList<com.crossdrop.core.transfer.PairSecret>()
+        val asked = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val clips = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val handler = object : com.crossdrop.core.transfer.ControlHandler {
+            override suspend fun pairRequested(name: String, sas: String, purpose: String?): Boolean { asked += "$name $sas $purpose"; return true }
+            override fun paired(pairId: String, name: String, key: ByteArray, purpose: String?) { held += com.crossdrop.core.transfer.PairSecret(pairId, key) }
+            override fun pairings() = held.toList()
+            override fun clipboard(pairId: String, clipId: String, text: String): Boolean { clips += "$pairId $text"; return true }
+        }
+        val kotlin = engine("kotlin", 3)
+        val proved = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val served = async(kotlinx.coroutines.Dispatchers.IO) {
+            repeat(3) {
+                val sock = listener.accept()
+                kotlin.receiveRequest(sock, handler) { req ->
+                    val match = req.pairedWith(held.toList())
+                    match?.let { proved += it.id }
+                    ReceiveDecision.Accept(sinkFor = { meta -> File(inbox, meta.name).outputStream() }, pairKey = match?.key)
+                }.toList()
+            }
+        }
+        try {
+            val pairOut = finish(ProcessBuilder(cli, "pair", "--to", "127.0.0.1:${listener.localPort}", "--name", "iPhone").redirectErrorStream(true).start(), "s→k pair")
+            val code = pairOut.lines().first { it.startsWith("CODE ") }.removePrefix("CODE ").trim()
+            val (id, keyHex) = pairOut.lines().first { it.startsWith("PAIRED ") }.trim().split(" ").drop(1)
+            assertEquals(listOf("iPhone $code devices"), asked.toList())
+            assertEquals("both derive the same key", keyHex, hex(held.single().key))
+            assertEquals(id, held.single().id)
+
+            val clipOut = finish(ProcessBuilder(cli, "clip", "--to", "127.0.0.1:${listener.localPort}", "--pairing", "$id:$keyHex", "--text", "from the iPhone ✓")
+                .redirectErrorStream(true).start(), "s→k clip")
+            assertTrue(clipOut, clipOut.lines().any { it.trim() == "CLIP accepted" })
+            assertEquals(listOf("$id from the iPhone ✓"), clips.toList())
+
+            val f = File(inbox.parentFile, "from-iphone-${System.nanoTime()}.bin").apply { writeBytes(content(120_000, 5)) }
+            val sendOut = finish(ProcessBuilder(cli, "send", "127.0.0.1", listener.localPort.toString(), "--pairing", "$id:$keyHex", f.absolutePath)
+                .redirectErrorStream(true).start(), "s→k paired send")
+            assertTrue(sendOut, sendOut.contains("EVENT completed"))
+            served.await()
+            assertEquals(listOf(id), proved.toList())
+            assertArrayEquals(f.readBytes(), File(inbox, f.name).readBytes())
+            f.delete()
+        } finally {
+            listener.close()
+            inbox.deleteRecursively()
+        }
+    }
 }
