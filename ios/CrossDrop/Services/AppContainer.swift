@@ -58,6 +58,15 @@ final class AppContainer: ObservableObject {
     let announced = AnnouncedPeers()
     /// "Scan a code": join another phone's private link (or any Wi-Fi code) and connect to it.
     let wifiJoin: WifiJoin
+    /// "My devices": the pairings this device holds, which of them are here, and clipboard sharing with them.
+    let pairings = PairingStore()
+    let presence: PairedPresence
+    let clipboard: ClipboardSync
+    let pasteboard: PasteboardShare
+    /// A device asking to pair, waiting for the person here.
+    @Published private(set) var pairPrompt: PairPrompt?
+    private var devicesWatch: AnyCancellable?
+    private var presenceWatch: AnyCancellable?
     /// Live camera open, sending to these devices.
     @Published var cameraTargets: [Peer]?
     /// "Switch phones" screen open for this device.
@@ -91,6 +100,13 @@ final class AppContainer: ObservableObject {
         nameBox = box
         engine = TransferEngine(identity: identity, deviceName: { box.value }, instanceId: id, os: AppPlatform.wireName)
         coordinator = TransferCoordinator(engine: engine, inbox: inbox, history: history)
+        // "My devices": copies from them go onto this clipboard through `pasteboard` (made right after, hence the box).
+        let pasteBox = PasteboardBox()
+        presence = PairedPresence(engine: engine, pairings: pairings)
+        clipboard = ClipboardSync(engine: engine, pairings: pairings) { text in pasteBox.target?.write(text) }
+        pasteboard = PasteboardShare(sync: clipboard, pairings: pairings)
+        pasteBox.target = pasteboard
+        coordinator.pairings = pairings
         switchImporter = SwitchImporter(inbox: inbox, history: history)
         switchSender = SwitchSender(coordinator: coordinator, history: history)
         coordinator.switchReceiver = switchImporter
@@ -117,7 +133,7 @@ final class AppContainer: ObservableObject {
         let announced = self.announced
         announced.onChange = { [weak self] in self?.mergePeers() }
         let coord = coordinator
-        coordinator.control = AnnounceRelay({ name, instanceId, host, port in
+        let relay = AnnounceRelay({ name, instanceId, host, port in
             DispatchQueue.main.async { announced.add(instanceId: instanceId, name: name, host: host, port: port) }
         }, onShake: { [weak coord] name, instanceId, host, port in
             // Make sure we can reach it back, even if Bonjour never showed it here (queued before the match, so the
@@ -125,7 +141,31 @@ final class AppContainer: ObservableObject {
             if port > 0 { DispatchQueue.main.async { announced.add(instanceId: instanceId, name: name, host: host, port: port) } }
             coord?.shaken(instanceId: instanceId, name: name)
         })
+        coordinator.control = DevicesControl(relay: relay, pairings: pairings, clipboard: clipboard) { [weak self] name, sas in
+            // Engine thread: show the request, wait for the answer (a little less than the asking side waits).
+            let prompt = PairPrompt(peerName: name, sas: sas)
+            DispatchQueue.main.async { self?.showPairPrompt(prompt) }
+            let answer = prompt.await(timeout: ControlChannel.pairWait - 5)
+            DispatchQueue.main.async { if self?.pairPrompt?.id == prompt.id { self?.pairPrompt = nil } }
+            return answer
+        }
         shakeSensor.onShake = { [weak self] in self?.shakeNow() }
+        let presence = self.presence, clipboard = self.clipboard, pasteboard = self.pasteboard
+        presenceWatch = presence.$present.sink { map in clipboard.presentChanged(map) }
+        let store = pairings
+        devicesWatch = pairings.objectWillChange.sink { _ in
+            DispatchQueue.main.async {
+                #if DEBUG
+                if UserDefaults.standard.bool(forKey: "dev_clip_on") {
+                    for d in store.devices where !d.clipboard { store.setClipboard(d.id, true) }
+                }
+                NSLog("CrossDrop pairings %@", store.devices.map { "\($0.name) accept=\($0.accept) clip=\($0.clipboard)" }.joined(separator: "; "))
+                #endif
+                presence.pairingsChanged()
+                clipboard.pairingsChanged()
+                pasteboard.refresh()
+            }
+        }
         wifiJoin.listenPort = { [weak self] in self?.listenerPort ?? 0 }
         // Radar only shows peers whose listener still answers (mDNS alone keeps a vanished device for an hour).
         liveness.onChange = { [weak self] in self?.mergePeers() }
@@ -312,6 +352,7 @@ final class AppContainer: ObservableObject {
         hasNetwork = Self.localNetworkUp()
         pathMonitor.start(queue: .global(qos: .utility))
         announced.start()
+        pasteboard.refresh()
         coordinator.onOfferArrived = { [weak self] offer in self?.notifyOffer(offer) }
         // Ask for notifications in context — after the first finished transfer, not at launch.
         if !UserDefaults.standard.bool(forKey: "asked_notifications") {
@@ -397,6 +438,16 @@ final class AppContainer: ObservableObject {
         if args.bool(forKey: "dev_autoaccept") { coordinator.autoAcceptAll = true }
         // Screenshot drivers.
         if args.bool(forKey: "dev_seed_inbox") { inbox.seedDebug() }
+        // "My devices": `-dev_pair h:p` asks that device to pair (as "Add a device" does) 2 s after launch;
+        // `-dev_autopair YES` agrees to a pairing request 4 s after it shows (time for a screenshot);
+        // `-dev_clip_on YES` turns "Share clipboard" on for every pairing as it is made;
+        // `-dev_paste_text T` answers the radar's "You copied something" card as if Paste had handed over T.
+        if let v = args.string(forKey: "dev_pair"), let (h, p) = hostPort(v) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                _ = self.pair(with: Peer(instanceId: "manual-\(h):\(p)", name: "\(h):\(p)", host: h, port: p, sources: [.manual]),
+                              onCode: { NSLog("CrossDrop pair code %@", $0) }, done: { NSLog("CrossDrop pair result %@", "\($0)") })
+            }
+        }
         if let kind = args.string(forKey: "dev_fake_session") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { self.coordinator.debugFakeSession(kind) }
         }
@@ -450,6 +501,7 @@ final class AppContainer: ObservableObject {
     func resume() {
         vaultExplorer.livePaused = false
         guard started else { return }
+        pasteboard.refresh()
         wifiJoin.resumed()
         inbox.refresh()
         KeepAwake.shared.refresh()
@@ -481,6 +533,61 @@ final class AppContainer: ObservableObject {
         vaultDiscovery.start()
     }
 
+    // MARK: My devices
+
+    private func showPairPrompt(_ p: PairPrompt) {
+        pairPrompt?.resolve(false)        // a newer request replaces one nobody answered
+        pairPrompt = p
+        #if DEBUG
+        NSLog("CrossDrop pair request from %@ code %@", p.peerName, p.sas)
+        if UserDefaults.standard.bool(forKey: "dev_autopair") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.answerPairPrompt(p, true) }
+        }
+        #endif
+    }
+
+    /// The person answered the pairing request on screen.
+    func answerPairPrompt(_ p: PairPrompt, _ yes: Bool) {
+        if pairPrompt?.id == p.id { pairPrompt = nil }
+        p.resolve(yes)
+    }
+
+    /// Ask `peer` to become one of "My devices": both screens show the code `onCode` gets, the other person agrees. `done`
+    /// says how it ended (main thread). Cancel the returned token to stop waiting.
+    func pair(with peer: Peer, onCode: @escaping (String) -> Void, done: @escaping (AddDeviceResult) -> Void) -> CancelToken {
+        let token = CancelToken()
+        guard let host = peer.host else { done(.failed); return token }
+        let engine = self.engine, store = pairings, port = peer.port, id = ControlChannel.newPairId()
+        Thread.detachNewThread {
+            let result: AddDeviceResult
+            do {
+                let got = try engine.control(host: host, port: port, readTimeout: ControlChannel.pairWait, cancel: token) { ch -> ([UInt8], String)? in
+                    let code = ch.sas
+                    DispatchQueue.main.async { onCode(code) }
+                    return try ch.pair(pairId: id).map { ($0, ch.peerName) }
+                }
+                if let (key, name) = got {
+                    store.add(id: id, name: name, key: key, accept: true)
+                    result = .paired
+                } else {
+                    result = .declined
+                }
+            } catch {
+                result = .failed
+            }
+            DispatchQueue.main.async { if !token.isCancelled { done(result) } }
+        }
+        return token
+    }
+
+    func unpair(_ id: String) {
+        pairings.remove(id)
+        clipboard.forget(id)
+    }
+
+    func setAccept(_ id: String, _ on: Bool) { pairings.setAccept(id, on) }
+    func setClipboard(_ id: String, _ on: Bool) { pairings.setClipboard(id, on) }
+
     // MARK: manual peers (debug / "add by address")
 
     func addManualPeer(name: String?, host: String, port: Int) {
@@ -502,6 +609,7 @@ final class AppContainer: ObservableObject {
         let sighted = sightedPeers()
         peers = sighted.filter(liveness.admits)
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        presence.update(radar: peers)
         if !peers.isEmpty { networkNotice = nil }       // discovery clearly works now
         if sighted.contains(where: { $0.probeable && !liveness.admits($0) }) { liveness.poke() }   // verify newcomers now
     }
@@ -540,3 +648,8 @@ final class AppContainer: ObservableObject {
 }
 
 import UserNotifications
+
+/// Lets the clipboard sync reach the pasteboard glue, which is made after it.
+private final class PasteboardBox: @unchecked Sendable {
+    weak var target: PasteboardShare?
+}

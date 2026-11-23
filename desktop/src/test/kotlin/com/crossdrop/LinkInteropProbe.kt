@@ -3,6 +3,7 @@ package com.crossdrop
 import com.crossdrop.core.Endpoint
 import com.crossdrop.core.connect.WifiQr
 import com.crossdrop.net.SessionStatus
+import com.crossdrop.net.isTerminal
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -89,18 +90,59 @@ class LinkInteropProbe {
         val sync = com.crossdrop.net.ClipboardSync(mac.scope, mac.engine, pairs, presence.present, apply = {
             println("PROBE from the phone: \"${it.take(80)}\" -> Mac clipboard"); watcher.write(it)
         }).also { mac.coordinator.hub.clipboardReceiver = it }
-        watcher = com.crossdrop.platform.ClipboardWatcher(com.crossdrop.platform.SystemClipboard, sync.active, onCopy = {
+        // `-Dcrossdrop.clipFile=<path>`: a file stands in for the Mac clipboard (write it to "copy"; what arrives lands in it),
+        // so a test never touches the real one.
+        val source: com.crossdrop.platform.ClipboardSource = System.getProperty("crossdrop.clipFile")?.let { path ->
+            val file = File(path)
+            object : com.crossdrop.platform.ClipboardSource {
+                override fun stamp(): Long? = if (file.exists()) file.lastModified() * 1_000_003 + file.length() else 0L
+                override fun read() = if (file.exists()) com.crossdrop.platform.ClipRead(file.readText(), false) else null
+                override fun write(text: String) { file.writeText(text) }
+            }
+        } ?: com.crossdrop.platform.SystemClipboard
+        watcher = com.crossdrop.platform.ClipboardWatcher(source, sync.active, onCopy = {
             println("PROBE Mac copied \"${it.take(80)}\": ${sync.copied(it)}")
         })
         watcher.start(mac.scope)
         println("PROBE clipboard Mac listening on 10.0.2.2:47000")
         val minutes = System.getProperty("crossdrop.probeMinutes")?.toIntOrNull() ?: 6
+        // `-Dcrossdrop.peer=host:port`: a device the Mac reaches directly (the iOS Simulator shares the Mac's network), instead
+        // of an emulator found through adb. `-Dcrossdrop.pairFirst=1`: the Mac asks it to pair (its person sees the code);
+        // `-Dcrossdrop.sendAfterPair=1`: then sends it a file as one of its devices (taken without asking when its switch is on).
+        val direct = System.getProperty("crossdrop.peer")
+        if (direct != null) {
+            val peer = com.crossdrop.core.Peer("sim", "Simulator", Endpoint(direct.substringBeforeLast(':'), direct.substringAfterLast(':').toInt()))
+            radar.value = mapOf("sim" to peer)
+            if (System.getProperty("crossdrop.pairFirst") == "1") {
+                val made = runCatching { mac.coordinator.hub.pairWith(peer) { code -> println("PROBE asking ${peer.name} to pair, code $code") } }
+                println("PROBE pairing: ${made.getOrNull()?.let { "paired with ${it.name}" } ?: "not paired (${made.exceptionOrNull()?.message})"}")
+                if (made.getOrNull() != null && System.getProperty("crossdrop.sendAfterPair") == "1") {
+                    delay(4_000)
+                    val f = File(home, "from-mac.bin").apply { writeBytes(ByteArray(300_000) { (it % 251).toByte() }) }
+                    val gid = mac.coordinator.sendTo(peer, listOf(f))
+                    for (i in 0 until 60) {
+                        val ss = mac.coordinator.hub.sessions.value.filter { it.groupId == gid }
+                        if (ss.isNotEmpty() && ss.all { it.status.isTerminal }) { println("PROBE file to the phone: ${ss.map { "${it.status} ${it.error ?: ""}".trim() }}"); break }
+                        delay(500)
+                    }
+                }
+            }
+        }
+        val historySeen = mac.history.list().size
+        var historyShown = historySeen
         // The test JVM doesn't get the shell's PATH (it is forked by the Gradle daemon), and another device attached
         // makes a bare `adb shell` ambiguous: `-Dcrossdrop.adb=<path>`, `-Dcrossdrop.adbSerial=emulator-5554`.
         val adb = listOf(System.getProperty("crossdrop.adb") ?: "${System.getProperty("user.home")}/Library/Android/sdk/platform-tools/adb") +
             (System.getProperty("crossdrop.adbSerial")?.let { listOf("-s", it) } ?: emptyList())
         var forwarded = 0
         repeat(minutes * 12) {
+            if (direct != null) {
+                delay(5_000)
+                val h = mac.history.list()
+                if (h.size != historyShown) { historyShown = h.size; println("PROBE history: ${h.take(h.size - historySeen).map { "${it.direction} ${it.peerName} ${it.status} ${it.summary}" }}") }
+                println("PROBE present=${presence.present.value.keys.map { pairs.get(it)?.name }} status=${sync.status.value.mapKeys { pairs.get(it.key)?.name }}")
+                return@repeat
+            }
             // The emulator's listener isn't reachable from the Mac: find its port and forward it (again after a restart).
             val log = runCatching {
                 ProcessBuilder(adb + listOf("shell", "logcat -d | grep 'listening on :'")).start().inputStream.bufferedReader().readText()

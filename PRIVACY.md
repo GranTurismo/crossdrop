@@ -1,6 +1,6 @@
 # CrossDrop Privacy Policy
 
-**Last updated:** November 2026 (sharing the clipboard with your own devices)
+**Last updated:** November 2026 (sharing the clipboard with your own devices, now on iPhone and iPad too)
 
 ## The short version
 
@@ -66,7 +66,10 @@ The one exception is the store's own rating sheet, described below.
   watches its clipboard only while sharing is on for some device, and leaves
   alone copies that password managers mark as secret. An Android phone reads
   the clipboard only when you open CrossDrop or tap its Quick Settings tile
-  (Android shows a notice when it does). Nothing copied is stored or logged.
+  (Android shows a notice when it does). An iPhone or iPad never reads it on
+  its own: it only sees whether something new was copied, and shares it when
+  you tap the system's Paste button in CrossDrop. Nothing copied is stored or
+  logged.
 - **Backups to your computer** — a paired phone copies its photos and videos to
   that computer over your local network, encrypted like every transfer, and never
   anywhere else. The computer keeps them in a folder you can see and move. The

@@ -95,6 +95,9 @@ struct RadarScreen: View {
                     }
                     if connectHint.hint != .none { ConnectHelpCard(hint: connectHint.hint, onGuide: onShowConnectGuide, onScan: onScanCode) }
                     JoinedLinkRow(join: container.wifiJoin)
+                    #if !targetEnvironment(macCatalyst)
+                    ClipboardShareCard(share: container.pasteboard, pairings: container.pairings)
+                    #endif
                     SendToAnyoneCard { startAnyoneFlow() }
                     ForEach(drives.prefix(2)) { d in DriveRow(peer: d) { startSendFlow(d) } }
                 }

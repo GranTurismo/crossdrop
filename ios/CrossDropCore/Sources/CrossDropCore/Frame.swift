@@ -21,6 +21,8 @@ public enum FrameType: UInt8 {
     case announce = 0x20, pair = 0x21, pairCheck = 0x22, backupVerify = 0x23
     /// "I was just shaken" (shake to connect); see `ShakeMatcher`.
     case shake = 0x24
+    /// A copy for the other device's clipboard ("Share clipboard"); only after a successful PAIR_CHECK on the same connection.
+    case clipboard = 0x25
 }
 
 /// `[u32 BE bodyLen][body]`, body = `[u8 type][payload]` or `seal(type || payload)`.

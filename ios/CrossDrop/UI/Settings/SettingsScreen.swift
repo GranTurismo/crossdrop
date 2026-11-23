@@ -53,6 +53,8 @@ struct SettingsScreen: View {
                         }
                     }
 
+                    MyDevicesSection(pairings: container.pairings, clipboard: container.clipboard)
+
                     DriveSettingsCard(host: container.vaultHost) { container.driveOpen = true }
 
                     SectionLabel(tr("Storage")).padding(.top, 4)

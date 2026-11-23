@@ -27,6 +27,7 @@ enum FailureAdvice {
         case .incompatible:
             return Advice(title: tr("Couldn't talk to {0}", peerName), hint: tr("Update CrossDrop on both devices and try again."))
         case .other:
+            if raw == TransferEngine.notThePairedDevice { return Advice(title: tr("This isn't your paired device"), hint: nil) }
             return Advice(title: raw.isEmpty ? tr("transfer failed") : raw, hint: nil)
         }
     }
