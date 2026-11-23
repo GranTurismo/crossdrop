@@ -1,0 +1,1 @@
+No changes to the Windows app in this release. iPhones, iPads and the Mac App Store version can now be added to My devices too: they send this PC files without asking and share the clipboard with it. Update CrossDrop on those devices from the App Store.

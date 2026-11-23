@@ -1,0 +1,1 @@
+No changes to the Android app in this release. iPhones and iPads can now be added to My devices too: they send your phone files without asking and share the clipboard with it. Update CrossDrop on the iPhone or iPad from the App Store.
