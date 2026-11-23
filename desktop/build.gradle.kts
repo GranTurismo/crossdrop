@@ -60,7 +60,7 @@ val sharedUi = listOf(
     "pairing/MyDevices.kt",
 )
 // Platform-free transfer state (sessions, groups, trust, routing) shared the same way.
-val sharedNet = listOf("TransferHub.kt", "BackupRunner.kt", "PairedPresence.kt", "Outbox.kt")
+val sharedNet = listOf("TransferHub.kt", "BackupRunner.kt", "PairedPresence.kt", "Outbox.kt", "ClipboardSync.kt")
 val syncSharedUi by tasks.registering(Sync::class) {
     from(rootProject.file("app/src/main/java/com/crossdrop/ui")) {
         include(sharedUi)

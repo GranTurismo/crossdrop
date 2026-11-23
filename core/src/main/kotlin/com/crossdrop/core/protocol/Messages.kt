@@ -227,6 +227,21 @@ data class VerifyRequest(val items: List<VerifyItem>)
 @Serializable
 data class VerifyReply(val ok: List<String>)
 
+/**
+ * CLIPBOARD (only after a successful PAIR_CHECK on the same connection): "this is what I just copied". [id] is fresh
+ * for every copy: the same two app launches derive the same session keys, so a recorded connection could otherwise be
+ * played again to put an old copy back on the clipboard.
+ */
+@Serializable
+data class ClipboardPush(val id: String, val text: String)
+
+/** The answer: [accepted] is false when clipboard sharing with the sender is off on this side (or the copy was refused). */
+@Serializable
+data class ClipboardReply(val accepted: Boolean)
+
+/** The largest copy shared, in UTF-8 bytes. Android's clipboard goes through a 1 MB binder buffer, shared with everything else. */
+const val MAX_CLIPBOARD_BYTES = 256 * 1024
+
 @Serializable
 data class Error(val message: String)
 

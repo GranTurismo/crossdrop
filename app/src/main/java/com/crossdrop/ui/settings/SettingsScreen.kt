@@ -115,6 +115,8 @@ fun SettingsScreen(
     outboxNote: String? = null,
     onQueue: ((com.crossdrop.core.pairing.PairedDevice) -> Unit)? = null,
     onClearQueue: (String) -> Unit = {},
+    onClipboard: ((String, Boolean) -> Unit)? = null,
+    clipboardStatus: Map<String, com.crossdrop.net.ClipShare> = emptyMap(),
     onSelfTest: (() -> Unit)?,
     onAddPeer: ((String, Int) -> Unit)?,
     refreshSignal: Any?,
@@ -217,6 +219,8 @@ fun SettingsScreen(
                     devices = myDevices, peers = peers, onAccept = onAccept, onUnpair = onUnpair, onPair = onPairDevice,
                     present = presentIds, queued = queued, sending = sendingIds, onQueue = onQueue, onClearQueue = onClearQueue,
                     note = outboxNote,
+                    onClipboard = onClipboard, clipboard = clipboardStatus,
+                    clipboardNote = tr("This phone shares a copy when you open CrossDrop or tap Share clipboard in Quick Settings."),
                 )
 
                 // -------------------------------------------------- storage --

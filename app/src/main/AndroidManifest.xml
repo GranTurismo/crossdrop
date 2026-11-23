@@ -113,6 +113,27 @@
             </intent-filter>
         </activity>
 
+        <!-- Clipboard sharing: the Quick Settings tile, and the invisible screen it opens (reading the clipboard needs focus). -->
+        <activity
+            android:name=".clipboard.ClipboardShareActivity"
+            android:exported="false"
+            android:theme="@style/Theme.CrossDrop.Share"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity="com.crossdrop.clipboard"
+            android:launchMode="singleTask" />
+
+        <service
+            android:name=".clipboard.ClipboardTileService"
+            android:exported="true"
+            android:label="@string/tile_share_clipboard"
+            android:icon="@drawable/ic_tile_clipboard"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <service
             android:name=".service.TransferService"
             android:exported="false"

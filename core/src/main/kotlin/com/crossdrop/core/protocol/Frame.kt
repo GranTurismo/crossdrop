@@ -26,7 +26,9 @@ enum class FrameType(val code: Int) {
      */
     ANNOUNCE(0x20), PAIR(0x21), PAIR_CHECK(0x22), BACKUP_VERIFY(0x23),
     /** "I was just shaken" (shake to connect); see [com.crossdrop.core.shake.ShakeMatcher]. */
-    SHAKE(0x24);
+    SHAKE(0x24),
+    /** Clipboard sharing between paired devices (only after a successful PAIR_CHECK on the same connection). */
+    CLIPBOARD(0x25);
 
     companion object {
         private val byCode = entries.associateBy { it.code }

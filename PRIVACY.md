@@ -1,6 +1,6 @@
 # CrossDrop Privacy Policy
 
-**Last updated:** November 2026 (whole folders, "My devices" that send without asking, send when it's back, and the rating prompt)
+**Last updated:** November 2026 (sharing the clipboard with your own devices)
 
 ## The short version
 
@@ -59,6 +59,14 @@ The one exception is the store's own rating sheet, described below.
   shared secret key in their own app storage so they can recognise each other
   later. It is never sent over the network or advertised, and a device that is
   not paired learns nothing from the check. Unpair at any time in Settings.
+- **Shared clipboard (My devices)** — only if you turn on **Share clipboard** for
+  one of your paired devices (off by default, per device, on both sides). Then
+  text you copy goes to that device, encrypted over your local network and
+  nowhere else, and text copied there is put on your clipboard. A computer
+  watches its clipboard only while sharing is on for some device, and leaves
+  alone copies that password managers mark as secret. An Android phone reads
+  the clipboard only when you open CrossDrop or tap its Quick Settings tile
+  (Android shows a notice when it does). Nothing copied is stored or logged.
 - **Backups to your computer** — a paired phone copies its photos and videos to
   that computer over your local network, encrypted like every transfer, and never
   anywhere else. The computer keeps them in a folder you can see and move. The
