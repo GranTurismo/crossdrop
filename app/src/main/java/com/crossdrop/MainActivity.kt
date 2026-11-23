@@ -32,10 +32,25 @@ class MainActivity : ComponentActivity() {
         foreground = true
         (application as CrossDropApp).container.vaultExplorer.livePaused = false
         com.crossdrop.service.OfferNotifier.clear(this)
+        // A dialog that was open when the person left takes the focus on return instead of this window, so
+        // onWindowFocusChanged doesn't come; Android lets us read the clipboard once any of our windows has focus.
+        window.decorView.removeCallbacks(clipboardCheck)
+        window.decorView.postDelayed(clipboardCheck, 400)
+    }
+
+    private val clipboardCheck = Runnable {
+        if (foreground) runCatching { (application as CrossDropApp).container.phoneClipboard.onFocus() }
+    }
+
+    /** Android lets an app read the clipboard only while it has focus: the moment to share a copy made elsewhere. */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) runCatching { (application as CrossDropApp).container.phoneClipboard.onFocus() }
     }
 
     override fun onPause() {
         super.onPause()
+        window.decorView.removeCallbacks(clipboardCheck)
         foreground = false
         (application as CrossDropApp).container.vaultExplorer.livePaused = true     // nobody is watching the drive list
     }

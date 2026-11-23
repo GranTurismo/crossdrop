@@ -336,6 +336,19 @@ class AppContainer(private val app: Context) {
     /** Accept (or ask about) files from a paired device. */
     fun setAccept(id: String, on: Boolean) = pairings.setAccept(id, on)
 
+    // ------------------------------------------------ clipboard sharing --
+
+    /** This phone's clipboard: read only while CrossDrop has focus (Android's rule), written whenever a copy arrives. */
+    val phoneClipboard = com.crossdrop.clipboard.PhoneClipboard(app, scope, pairings) { clipboard }
+
+    /** Copy on one of "My devices", paste on another (text only; each device's switch in Settings → My devices). */
+    val clipboard: com.crossdrop.net.ClipboardSync by lazy {
+        com.crossdrop.net.ClipboardSync(scope, engine, pairings, presence.present, apply = phoneClipboard::write)
+            .also { coordinator.hub.clipboardReceiver = it }
+    }
+
+    fun setClipboard(id: String, on: Boolean) = pairings.setClipboard(id, on)
+
     /** "Add a device": pair with [peer] as one of "My devices" (both screens show the code). */
     suspend fun pairDevice(peer: com.crossdrop.core.Peer, onCode: (String) -> Unit): com.crossdrop.ui.pairing.AddDeviceResult =
         if (coordinator.hub.pairWith(peer, onCode) != null) com.crossdrop.ui.pairing.AddDeviceResult.PAIRED
@@ -362,7 +375,7 @@ class AppContainer(private val app: Context) {
     fun start() {
         // Interrupted sends and "send when it's back" look at the radar and at which paired devices are on it.
         coordinator.hub.radar = peers
-        presence; outboxRunner
+        presence; outboxRunner; clipboard
         // Camera shots and contact exports from an earlier run are only temporary copies.
         runCatching { java.io.File(app.cacheDir, "camera").deleteRecursively() }
         runCatching { java.io.File(app.cacheDir, "switch").deleteRecursively() }

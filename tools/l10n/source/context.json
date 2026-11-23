@@ -31,7 +31,7 @@
   "ios/CrossDrop/UI/IncomingOfferSheet.swift:126"
  ],
  "Accept files without asking": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:117"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:124"
  ],
  "Add": [
   "app/src/main/java/com/crossdrop/ui/DeviceNameDialog.kt:96",
@@ -39,8 +39,8 @@
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:850"
  ],
  "Add a device": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:126",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:184"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:144",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:202"
  ],
  "Add to contacts": [
   "app/src/main/java/com/crossdrop/ui/IncomingOfferSheet.kt:279",
@@ -86,13 +86,13 @@
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:49"
  ],
  "After switching networks or allowing CrossDrop through Windows Firewall": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:193"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:195"
  ],
  "After switching networks or allowing CrossDrop through your firewall": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:194"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:196"
  ],
  "After switching networks or approving CrossDrop under Local Network": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:195"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:197"
  ],
  "All": [
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:88",
@@ -181,7 +181,7 @@
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:275"
  ],
  "Android will ask to find nearby devices and to show notifications. Anything else, like camera or contacts, is asked only when you use it.": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:394"
+  "app/src/main/java/com/crossdrop/ui/Root.kt:397"
  ],
  "Any type, pick several": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:763",
@@ -216,7 +216,7 @@
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:191"
  ],
  "Ask {0} to check the code and tap Pair.": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:221"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:239"
  ],
  "Audio": [
   "app/src/main/java/com/crossdrop/ui/FileTypeTile.kt:28",
@@ -247,21 +247,21 @@
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:251"
  ],
  "Back up to a computer": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:374",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:378",
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:102"
  ],
  "Backing up {0} of {1}": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:379",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:383",
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:231"
  ],
  "Backs up to this computer": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:209"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:212"
  ],
  "Backup": [
   "app/src/main/java/com/crossdrop/backup/BackupManager.kt:204"
  ],
  "Backups go to": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:423"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:426"
  ],
  "Backups stop. The copies already on {0} stay there.": [
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:292"
@@ -351,7 +351,7 @@
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:297"
  ],
  "Change": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:429"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:432"
  ],
  "Change language": [
   "app/src/main/java/com/crossdrop/ui/language/LanguageUi.kt:62",
@@ -384,7 +384,7 @@
   "ios/CrossDrop/UI/Drive/DriveGuideScreen.swift:71"
  ],
  "Choose a folder to send": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:184"
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:185"
  ],
  "Choose a folder to share": [
   "desktop/src/main/kotlin/com/crossdrop/platform/SystemActions.kt:79"
@@ -393,23 +393,23 @@
   "desktop/src/main/kotlin/com/crossdrop/platform/SystemActions.kt:57"
  ],
  "Choose files to send": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:180"
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:181"
  ],
  "Choose what to send": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:214"
  ],
  "Choose what to send to {0} when it's back": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:113"
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:114"
  ],
  "Choose where backups go": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:243"
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:246"
  ],
  "Choose where received files go": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:248"
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:251"
  ],
  "Clear": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:316",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:114",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:320",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:121",
   "app/src/main/java/com/crossdrop/ui/contacts/ContactPickerScreen.kt:192"
  ],
  "Clear finished": [
@@ -419,14 +419,20 @@
   "ios/CrossDrop/UI/Transfers/TransfersScreen.swift:37"
  ],
  "Clear transfer history": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:253",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:250",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:257",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:253",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:71"
  ],
  "Clear transfer history?": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:314",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:318",
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:148",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:302"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:305"
+ ],
+ "Clipboard sent to {0}": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:83"
+ ],
+ "Clipboard sharing is off on {0}": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:86"
  ],
  "Close": [
   "app/src/main/java/com/crossdrop/ui/camera/CameraScreen.kt:141",
@@ -502,7 +508,7 @@
   "ios/CrossDrop/UI/Camera/CameraScreen.swift:285"
  ],
  "Connecting…": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:217",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:235",
   "app/src/main/java/com/crossdrop/ui/transfer/GroupTransferScreen.kt:225",
   "app/src/main/java/com/crossdrop/service/TransferService.kt:165"
  ],
@@ -549,6 +555,10 @@
   "desktop/src/main/kotlin/com/crossdrop/ui/qrshare/QrShareScreen.kt:121",
   "ios/CrossDrop/UI/QrShare/QrShareScreen.swift:56"
  ],
+ "Copy on one device, paste on the other (text)": [
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:129",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:132"
+ ],
  "Copy the link, show a QR": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:794",
   "desktop/src/main/kotlin/com/crossdrop/ui/radar/RadarScreen.kt:350",
@@ -567,12 +577,15 @@
  "Couldn't create the link": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:285"
  ],
+ "Couldn't find {0}. Open CrossDrop there, on the same Wi-Fi.": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:90"
+ ],
  "Couldn't join {0}": [
   "app/src/main/java/com/crossdrop/ui/connect/ScanCodeScreen.kt:188",
   "ios/CrossDrop/UI/Connect/ScanCodeScreen.swift:199"
  ],
  "Couldn't reach {0}": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:189",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:207",
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:196",
   "core/src/main/kotlin/com/crossdrop/core/transfer/FailureAdvice.kt:80"
  ],
@@ -602,7 +615,7 @@
  "Couldn't send to {0}": [
   "app/src/main/java/com/crossdrop/di/AppContainer.kt:255",
   "app/src/main/java/com/crossdrop/service/OutboxNotifier.kt:32",
-  "desktop/src/main/kotlin/com/crossdrop/di/AppContainer.kt:242"
+  "desktop/src/main/kotlin/com/crossdrop/di/AppContainer.kt:243"
  ],
  "Couldn't take the photo": [
   "ios/CrossDrop/UI/Camera/CameraScreen.swift:117"
@@ -626,8 +639,8 @@
   "app/src/main/java/com/crossdrop/ui/switchphones/SwitchScreens.kt:164"
  ],
  "CrossDrop can't save files in that folder. Pick another one.": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:139",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:129"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:141",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:131"
  ],
  "CrossDrop for Mac, Windows and Linux: github.com/GranTurismo/crossdrop/releases": [
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:156"
@@ -719,8 +732,8 @@
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:367"
  ],
  "Discovery": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:197",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:184",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:199",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:186",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:36"
  ],
  "Discovery off": [
@@ -744,7 +757,7 @@
   "app/src/main/java/com/crossdrop/ui/pairing/PairPromptSheet.kt:77"
  ],
  "Done": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:242",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:260",
   "app/src/main/java/com/crossdrop/ui/contacts/ContactDropCard.kt:91",
   "app/src/main/java/com/crossdrop/ui/contacts/ContactDropCard.kt:94"
  ],
@@ -771,9 +784,9 @@
   "app/src/main/java/com/crossdrop/ui/radar/RadarCanvas.kt:242"
  ],
  "Drive is on": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:432",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:436",
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:230",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:404"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:407"
  ],
  "Drive · PIN": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarCanvas.kt:242"
@@ -833,15 +846,15 @@
   "ios/CrossDrop/UI/IncomingOfferSheet.swift:75"
  ],
  "Every received file is overwritten with zeros and deleted. This can't be undone.": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:306",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:283",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:310",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:286",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:92"
  ],
  "Everything is backed up.": [
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:271"
  ],
  "Everything is on {0}": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:380"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:384"
  ],
  "Everything stays on this Wi-Fi — nothing touches the internet.": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:185",
@@ -892,8 +905,8 @@
   "ios/CrossDrop/UI/Inbox/InboxScreen.swift:202"
  ],
  "Find devices on this network": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:200",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:187",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:202",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:189",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:38"
  ],
  "Five wrong passcodes lock a device out for 60 seconds.": [
@@ -982,7 +995,7 @@
   "ios/CrossDrop/UI/Drive/DriveHostScreen.swift:198"
  ],
  "Here now": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:103"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:110"
  ],
  "Hide": [
   "app/src/main/java/com/crossdrop/ui/transfer/TransferScreen.kt:212",
@@ -1005,12 +1018,12 @@
  ],
  "Inbox": [
   "app/src/main/java/com/crossdrop/ui/Root.kt:87",
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:226",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:230",
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:133"
  ],
  "Inbox folder": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:235",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:232"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:239",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:235"
  ],
  "Incoming app": [
   "app/src/main/java/com/crossdrop/ui/IncomingOfferSheet.kt:153"
@@ -1126,7 +1139,7 @@
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:245"
  ],
  "Last backup {0}": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:209"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:212"
  ],
  "Last backup: {0}": [
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:247"
@@ -1257,12 +1270,12 @@
   "ios/CrossDrop/UI/SwitchPhones/SwitchScreens.swift:92"
  ],
  "My devices": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:89"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:96"
  ],
  "Name others see": [
   "app/src/main/java/com/crossdrop/ui/DeviceNameDialog.kt:46",
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:173",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:160"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:175",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:162"
  ],
  "Nearby device": [
   "core/src/main/kotlin/com/crossdrop/core/Peer.kt:12",
@@ -1290,7 +1303,7 @@
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:230"
  ],
  "New files will be saved in {0}. Your {n} received files move there too.": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:293"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:296"
  ],
  "Next": [
   "app/src/main/java/com/crossdrop/ui/welcome/WelcomeScreen.kt:178",
@@ -1335,12 +1348,12 @@
   "ios/CrossDrop/UI/Connect/ScanCodeScreen.swift:173"
  ],
  "No cloud. No accounts. No tracking.": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:270",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:267",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:274",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:270",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:177"
  ],
  "No devices found. Open CrossDrop on the other device, on this Wi-Fi.": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:200"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:218"
  ],
  "No free Wi-Fi channel right now": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:281"
@@ -1366,8 +1379,8 @@
   "ios/CrossDrop/Services/FailureAdvice.swift:23"
  ],
  "Not here": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:103",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:282"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:110",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:300"
  ],
  "Not on Wi-Fi — connect to a network to share": [
   "ios/CrossDrop/Services/QrShareManager.swift:66"
@@ -1421,6 +1434,9 @@
   "desktop/src/main/kotlin/com/crossdrop/ui/drive/DriveHostScreen.kt:307",
   "ios/CrossDrop/UI/Components.swift:344"
  ],
+ "Off on {0}: turn it on there too": [
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:130"
+ ],
  "Off: guests can only view and download": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:164",
   "desktop/src/main/kotlin/com/crossdrop/ui/drive/DriveHostScreen.kt:143",
@@ -1469,10 +1485,13 @@
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:127"
  ],
  "Only from {0}": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:117"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:124"
  ],
  "Only one of you shows a code. The link is private to your two phones and ends when you stop it.": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:532"
+ ],
+ "Only text can be shared": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:68"
  ],
  "Only the photos you selected are visible to CrossDrop. Allow all photos to move your whole gallery.": [
   "app/src/main/java/com/crossdrop/ui/switchphones/SwitchScreens.kt:177"
@@ -1497,7 +1516,7 @@
   "ios/CrossDrop/UI/Connect/ConnectHelp.swift:109"
  ],
  "Open CrossDrop on that device and make sure you're both on the same Wi-Fi.": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:229",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:247",
   "core/src/main/kotlin/com/crossdrop/core/transfer/FailureAdvice.kt:81",
   "ios/CrossDrop/Services/FailureAdvice.swift:14"
  ],
@@ -1568,13 +1587,13 @@
   "app/src/main/java/com/crossdrop/ui/apps/AppScreens.kt:196"
  ],
  "Open this phone from Finder, Windows or any browser": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:408"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:412"
  ],
  "Open this {0} from Finder, Windows or any browser": [
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:268"
  ],
  "Open this {0} from other computers, phones or any browser": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:380"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:383"
  ],
  "Open transfer": [
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:167"
@@ -1632,11 +1651,11 @@
   "app/src/main/java/com/crossdrop/ui/pairing/PairPromptSheet.kt:53"
  ],
  "Paired with {0}": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:381",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:187"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:385",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:205"
  ],
  "Pairing with {0}": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:185"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:203"
  ],
  "Passcode": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:269",
@@ -1692,7 +1711,7 @@
   "app/src/main/java/com/crossdrop/ui/switchphones/SwitchScreens.kt:342"
  ],
  "Photos and videos to your own computer. No cloud.": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:378"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:382"
  ],
  "Photos, movies, work files — any folder you choose": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:171",
@@ -1707,7 +1726,7 @@
   "desktop/src/main/kotlin/com/crossdrop/ui/radar/RadarScreen.kt:473"
  ],
  "Pick a device that has CrossDrop open. Both screens show a code: check that they match.": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:201"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:219"
  ],
  "Pick a folder": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:171",
@@ -1854,15 +1873,15 @@
   "app/src/main/java/com/crossdrop/ui/radar/RadarCanvas.kt:201"
  ],
  "Rename this device": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:176",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:163",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:178",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:165",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:130"
  ],
  "Rescan Network": [
   "ios/CrossDrop/CrossDropApp.swift:36"
  ],
  "Rescan network": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:191",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:193",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:48"
  ],
  "Rescanning…": [
@@ -2019,8 +2038,8 @@
   "desktop/src/main/kotlin/com/crossdrop/ui/radar/RadarScreen.kt:475"
  ],
  "Send when it's back": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:113",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:287"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:120",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:305"
  ],
  "Send with CrossDrop": [
   "app/src/main/java/com/crossdrop/share/ShareActivity.kt:334",
@@ -2055,8 +2074,8 @@
   "app/src/main/java/com/crossdrop/service/TransferService.kt:134"
  ],
  "Sending…": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:104",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:280"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:111",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:298"
  ],
  "Sent": [
   "app/src/main/java/com/crossdrop/ui/transfer/TransferScreen.kt:178",
@@ -2066,7 +2085,7 @@
  "Sent to {0}": [
   "app/src/main/java/com/crossdrop/di/AppContainer.kt:255",
   "app/src/main/java/com/crossdrop/service/OutboxNotifier.kt:32",
-  "desktop/src/main/kotlin/com/crossdrop/di/AppContainer.kt:242"
+  "desktop/src/main/kotlin/com/crossdrop/di/AppContainer.kt:243"
  ],
  "Sent when it was back": [
   "app/src/main/java/com/crossdrop/service/OutboxNotifier.kt:30"
@@ -2076,7 +2095,7 @@
  ],
  "Settings": [
   "app/src/main/java/com/crossdrop/ui/Root.kt:88",
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:158",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:160",
   "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:79"
  ],
  "Settings → Hotspot (Personal Hotspot on iPhone).": [
@@ -2089,17 +2108,21 @@
   "app/src/main/java/com/crossdrop/ui/radar/ShakeHint.kt:62"
  ],
  "Shake to connect": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:208",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:210",
   "app/src/main/java/com/crossdrop/ui/radar/ShakeHint.kt:52",
   "app/src/main/java/com/crossdrop/ui/radar/ShakeHint.kt:61"
  ],
  "Shake two phones at the same time to find each other": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:208",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:210",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:43"
  ],
  "Share a card": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:448",
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:601"
+ ],
+ "Share clipboard": [
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:134",
+  "app/src/main/java/com/crossdrop/clipboard/ClipboardTileService.kt:15"
  ],
  "Share the CrossDrop vault": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:175",
@@ -2131,6 +2154,9 @@
  "Sharing via browser link": [
   "app/src/main/java/com/crossdrop/service/TransferService.kt:208"
  ],
+ "Sharing your clipboard…": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:75"
+ ],
  "Shots from {0} appear here\nthe moment they're taken.": [
   "app/src/main/java/com/crossdrop/ui/live/LiveViewerScreen.kt:132",
   "ios/CrossDrop/UI/Live/LiveViewerScreen.swift:46"
@@ -2159,15 +2185,15 @@
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:227"
  ],
  "Show the welcome tour": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:271",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:268",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:275",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:271",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:178"
  ],
  "Show {0} in {1}": [
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:274"
  ],
  "Shows how close each device is": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:204"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:206"
  ],
  "Skip": [
   "app/src/main/java/com/crossdrop/ui/welcome/WelcomeScreen.kt:154",
@@ -2239,8 +2265,8 @@
   "ios/CrossDrop/UI/SwitchPhones/SwitchScreens.swift:96"
  ],
  "Storage": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:223",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:221",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:227",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:224",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:58"
  ],
  "Stored on this device only. Keeps your last {0} sessions.": [
@@ -2313,12 +2339,15 @@
   "ios/CrossDrop/Services/VaultHostManager.swift:83"
  ],
  "That folder has more than {0} files. Send part of it, or zip it first.": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:430"
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:440"
  ],
  "That passcode didn't work — try again": [
   "app/src/main/java/com/crossdrop/ui/vault/VaultExplorerScreen.kt:433",
   "desktop/src/main/kotlin/com/crossdrop/ui/vault/VaultExplorerScreen.kt:427",
   "ios/CrossDrop/UI/Vault/VaultExplorerScreen.swift:213"
+ ],
+ "That's too long to share": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:81"
  ],
  "The computer refused the backup. Pair again.": [
   "app/src/main/java/com/crossdrop/net/BackupRunner.kt:117"
@@ -2382,6 +2411,10 @@
  "There are no contacts on this phone yet.": [
   "app/src/main/java/com/crossdrop/ui/contacts/ContactPickerScreen.kt:149"
  ],
+ "There's nothing on the clipboard": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:68",
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:82"
+ ],
  "They can copy it or open the link with one tap.": [
   "app/src/main/java/com/crossdrop/ui/DeviceNameDialog.kt:121",
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:721"
@@ -2430,9 +2463,9 @@
   "ios/CrossDrop/UI/Vault/VaultExplorerScreen.swift:136"
  ],
  "This forgets the log of past transfers. Received files stay in your inbox.": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:315",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:319",
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:149",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:303"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:306"
  ],
  "This isn't your paired device": [
   "core/src/main/kotlin/com/crossdrop/core/transfer/TransferEngine.kt:207"
@@ -2452,6 +2485,9 @@
  ],
  "This phone makes a private link. The other phone scans the code with CrossDrop, or with its camera if it doesn't have CrossDrop.": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:136"
+ ],
+ "This phone shares a copy when you open CrossDrop or tap Share clipboard in Quick Settings.": [
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:223"
  ],
  "To anyone": [
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:363"
@@ -2483,7 +2519,7 @@
   "ios/CrossDrop/UI/Drive/DriveGuideScreen.swift:24"
  ],
  "Try again": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:240",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:258",
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:303",
   "app/src/main/java/com/crossdrop/ui/apps/AppScreens.kt:238"
  ],
@@ -2495,8 +2531,8 @@
   "ios/CrossDrop/UI/Connect/ConnectHelp.swift:120"
  ],
  "Turn into drive": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:406",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:378",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:410",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:381",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:267"
  ],
  "Turn off any VPN on both devices.": [
@@ -2508,6 +2544,9 @@
  ],
  "Turn on Location": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:275"
+ ],
+ "Turn on Share clipboard for one of your devices in Settings → My devices": [
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:72"
  ],
  "Turn on a hotspot on one phone": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectHelp.kt:152",
@@ -2526,15 +2565,15 @@
   "ios/CrossDrop/UI/Vault/VaultExplorerScreen.swift:230"
  ],
  "Unpair": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:109",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:138",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:116",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:156",
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:293"
  ],
  "Unpair {0}": [
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:289"
  ],
  "Unpair {0}?": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:136",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:154",
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:291"
  ],
  "Up one folder": [
@@ -2546,6 +2585,10 @@
  "Update CrossDrop on both devices and try again.": [
   "core/src/main/kotlin/com/crossdrop/core/transfer/FailureAdvice.kt:102",
   "ios/CrossDrop/Services/FailureAdvice.swift:28"
+ ],
+ "Update CrossDrop on {0} first": [
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:131",
+  "app/src/main/java/com/crossdrop/clipboard/PhoneClipboard.kt:87"
  ],
  "Upload": [
   "app/src/main/java/com/crossdrop/ui/vault/VaultExplorerScreen.kt:186",
@@ -2575,14 +2618,14 @@
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:318"
  ],
  "Use the default folder": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:241",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:238"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:245",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:241"
  ],
  "Use this folder": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:294"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:297"
  ],
  "Use this folder?": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:292"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:295"
  ],
  "Vault": [
   "app/src/main/java/com/crossdrop/discovery/VaultDiscovery.kt:133",
@@ -2616,7 +2659,7 @@
   "ios/CrossDrop/UI/Root.swift:441"
  ],
  "Wait for the transfer in progress to finish, then try again.": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:130"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:132"
  ],
  "Waiting for a scan": [
   "app/src/main/java/com/crossdrop/ui/qrshare/QrShareScreen.kt:153",
@@ -2697,14 +2740,14 @@
   "desktop/src/main/kotlin/com/crossdrop/ui/inbox/InboxScreen.kt:129"
  ],
  "Wipe inbox": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:251",
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:307",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:248"
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:255",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:311",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:251"
  ],
  "Wipe the inbox?": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:305",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:309",
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:193",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:282"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:285"
  ],
  "Wireless Drive": [
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:113",
@@ -2736,7 +2779,7 @@
   "ios/CrossDrop/UI/Welcome/WelcomeScreen.swift:236"
  ],
  "You can now send each other files without asking. Turn that off any time in Settings.": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:227"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:245"
  ],
  "You shook phones with": [
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:416",
@@ -2764,7 +2807,7 @@
   "ios/CrossDrop/UI/Welcome/WelcomeScreen.swift:24"
  ],
  "Your own phones and computers can then send each other files without asking.": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:127"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:145"
  ],
  "Your phone makes a private link and shows a code. The other person scans it with their camera. No Wi-Fi, router or typing needed.": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectHelp.kt:143"
@@ -2798,7 +2841,7 @@
   "ios/CrossDrop/Services/VaultExplorerManager.swift:442"
  ],
  "connection lost": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:593",
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:603",
   "app/src/main/java/com/crossdrop/net/BackupRunner.kt:119",
   "app/src/main/java/com/crossdrop/switchphones/SwitchSender.kt:203"
  ],
@@ -2806,17 +2849,17 @@
   "ios/CrossDrop/Services/AppContainer.swift:298"
  ],
  "couldn't add the items: {0}": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:990"
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:1003"
  ],
  "device has no address": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:450",
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:460",
   "ios/CrossDrop/Services/TransferCoordinator.swift:207"
  ],
  "device unreachable": [
   "ios/CrossDrop/Services/SwitchPhones.swift:392"
  ],
  "devices nearby": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:378"
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:381"
  ],
  "direct · encrypted": [
   "app/src/main/java/com/crossdrop/ui/welcome/WelcomeScreen.kt:329",
@@ -2846,7 +2889,7 @@
   "core/src/main/kotlin/com/crossdrop/core/transfer/TransferEngine.kt:622"
  ],
  "just now": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:357"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:360"
  ],
  "lost connection": [
   "app/src/main/java/com/crossdrop/net/VaultExplorerManager.kt:224",
@@ -2871,17 +2914,17 @@
   "ios/CrossDrop/UI/Drive/DriveGuideScreen.swift:124"
  ],
  "new every launch": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:185",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:172",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:187",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:174",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:150"
  ],
  "no one connected": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:436",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:408",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:440",
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:411",
   "ios/CrossDrop/UI/Settings/SettingsScreen.swift:252"
  ],
  "nothing readable selected": [
-  "app/src/main/java/com/crossdrop/net/TransferHub.kt:438",
+  "app/src/main/java/com/crossdrop/net/TransferHub.kt:448",
   "ios/CrossDrop/Services/QrShareManager.swift:61",
   "ios/CrossDrop/Services/TransferCoordinator.swift:132"
  ],
@@ -2895,7 +2938,7 @@
   "ios/CrossDrop/UI/Drive/DriveGuideScreen.swift:125"
  ],
  "port :{0} · new every launch": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:172"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:174"
  ],
  "read-only": [
   "app/src/main/java/com/crossdrop/service/TransferService.kt:225"
@@ -2989,9 +3032,9 @@
   "core/src/main/kotlin/com/crossdrop/core/transfer/TransferEngine.kt:400"
  ],
  "{0} connected": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:436",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:440",
   "app/src/main/java/com/crossdrop/ui/drive/DriveHostScreen.kt:233",
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:408"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:411"
  ],
  "{0} couldn't confirm any of these files, so nothing will be deleted.": [
   "app/src/main/java/com/crossdrop/backup/BackupManager.kt:267"
@@ -3002,7 +3045,7 @@
   "ios/CrossDrop/UI/Camera/CameraScreen.swift:286"
  ],
  "{0} didn't pair": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:188",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:206",
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:186"
  ],
  "{0} failed integrity check": [
@@ -3028,6 +3071,9 @@
  ],
  "{0} is connected": [
   "app/src/main/java/com/crossdrop/ui/connect/ConnectDirectScreen.kt:208"
+ ],
+ "{0} is sharing its clipboard. Turn this on to get it.": [
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:128"
  ],
  "{0} item(s) couldn't be added to Photos and were put in your inbox.": [
   "ios/CrossDrop/UI/SwitchPhones/SwitchScreens.swift:171"
@@ -3128,7 +3174,7 @@
   "app/src/main/java/com/crossdrop/ui/pairing/PairPromptSheet.kt:59"
  ],
  "{0} will have to ask before sending files, and can no longer back up here.": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:137"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:155"
  ],
  "{0} {1}%": [
   "ios/CrossDrop/UI/Camera/CameraScreen.swift:284"
@@ -3143,8 +3189,8 @@
   "ios/CrossDrop/UI/Camera/CameraScreen.swift:282"
  ],
  "{0}, transfer in progress": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:730",
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:452",
+  "app/src/main/java/com/crossdrop/ui/Root.kt:733",
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:455",
   "ios/CrossDrop/UI/Root.swift:333"
  ],
  "{0}, {1}": [
@@ -3153,8 +3199,8 @@
   "app/src/main/java/com/crossdrop/ui/radar/RadarCanvas.kt:262"
  ],
  "{0}, {n} files": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:729",
-  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:451",
+  "app/src/main/java/com/crossdrop/ui/Root.kt:732",
+  "desktop/src/main/kotlin/com/crossdrop/ui/Root.kt:454",
   "ios/CrossDrop/UI/Root.swift:332"
  ],
  "{0}. {1}": [
@@ -3179,11 +3225,11 @@
   "app/src/main/java/com/crossdrop/service/TransferService.kt:226"
  ],
  "{n} days ago": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:360"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:363"
  ],
  "{n} devices": [
-  "app/src/main/java/com/crossdrop/ui/Root.kt:498",
-  "app/src/main/java/com/crossdrop/ui/Root.kt:516",
+  "app/src/main/java/com/crossdrop/ui/Root.kt:501",
+  "app/src/main/java/com/crossdrop/ui/Root.kt:519",
   "app/src/main/java/com/crossdrop/ui/radar/RadarScreen.kt:475"
  ],
  "{n} devices nearby": [
@@ -3192,7 +3238,7 @@
   "ios/CrossDrop/UI/Radar/RadarScreen.swift:320"
  ],
  "{n} files": [
-  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:229",
+  "app/src/main/java/com/crossdrop/ui/settings/SettingsScreen.kt:233",
   "app/src/main/java/com/crossdrop/ui/inbox/InboxScreen.kt:236",
   "app/src/main/java/com/crossdrop/ui/transfers/TransfersScreen.kt:210"
  ],
@@ -3210,18 +3256,18 @@
   "desktop/src/main/kotlin/com/crossdrop/Main.kt:171"
  ],
  "{n} hours ago": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:359"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:362"
  ],
  "{n} items": [
   "app/src/main/java/com/crossdrop/service/OutboxNotifier.kt:40",
   "app/src/main/java/com/crossdrop/share/ShareActivity.kt:170"
  ],
  "{n} items waiting": [
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:104",
-  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:281"
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:111",
+  "app/src/main/java/com/crossdrop/ui/pairing/MyDevices.kt:299"
  ],
  "{n} min ago": [
-  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:358"
+  "desktop/src/main/kotlin/com/crossdrop/ui/settings/SettingsScreen.kt:361"
  ],
  "{n} new items ({0}) to back up": [
   "app/src/main/java/com/crossdrop/ui/backup/BackupScreen.kt:272"

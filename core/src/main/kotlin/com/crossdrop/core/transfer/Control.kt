@@ -3,8 +3,11 @@ package com.crossdrop.core.transfer
 import com.crossdrop.core.crypto.SessionCrypto
 import com.crossdrop.core.crypto.SessionKeys
 import com.crossdrop.core.protocol.Announce
+import com.crossdrop.core.protocol.ClipboardPush
+import com.crossdrop.core.protocol.ClipboardReply
 import com.crossdrop.core.protocol.FrameIO
 import com.crossdrop.core.protocol.FrameType
+import com.crossdrop.core.protocol.MAX_CLIPBOARD_BYTES
 import com.crossdrop.core.protocol.PairCheck
 import com.crossdrop.core.protocol.PairReply
 import com.crossdrop.core.protocol.PairRequest
@@ -56,6 +59,13 @@ interface ControlHandler {
 
     /** A paired device asks which of [items] this device still holds intact (re-read, not remembered). */
     fun verify(pairId: String, items: List<VerifyItem>): List<String> = emptyList()
+
+    /**
+     * The device holding pairing [pairId] (proven on this connection) copied [text]. Put it on this device's clipboard
+     * if clipboard sharing with that device is on here, and return whether it was taken. [clipId] is fresh for every
+     * copy: one seen before is a replay and must be refused.
+     */
+    fun clipboard(pairId: String, clipId: String, text: String): Boolean = false
 }
 
 /**
@@ -125,6 +135,22 @@ class ControlChannel internal constructor(
         return matched
     }
 
+    /**
+     * After a successful [pairCheck]: offer [text] (just copied here) for the other device's clipboard. True when it took
+     * it; false when clipboard sharing with this device is off over there. Throws when the other device is an older build
+     * that doesn't know the message (it drops the connection).
+     */
+    fun clipboard(text: String, waitMs: Int = CLIPBOARD_WAIT_MS): Boolean {
+        check(matched != null) { "clipboard needs a successful pairCheck first" }
+        require(text.toByteArray(Charsets.UTF_8).size <= MAX_CLIPBOARD_BYTES) { "copy too large" }
+        val id = ByteArray(16).also(SecureRandom()::nextBytes).joinToString("") { "%02x".format(it) }
+        socket.soTimeout = waitMs
+        io.write(FrameType.CLIPBOARD, ClipboardPush(id, text).encode())
+        val (type, payload) = io.read()
+        if (type != FrameType.CLIPBOARD) throw ProtocolException("expected CLIPBOARD, got $type")
+        return payload.decode<ClipboardReply>().accepted
+    }
+
     /** After a successful [pairCheck]: the keys of [items] the other device re-read and found intact. */
     fun verify(items: List<VerifyItem>, waitMs: Int = VERIFY_WAIT_MS): Set<String> {
         check(matched != null) { "verify needs a successful pairCheck first" }
@@ -145,6 +171,8 @@ class ControlChannel internal constructor(
         const val PAIR_WAIT_MS = 75_000
         /** Re-hashing large videos takes a while on the other side. */
         const val VERIFY_WAIT_MS = 600_000
+        /** Putting text on a clipboard is quick; a device that takes longer is gone. */
+        const val CLIPBOARD_WAIT_MS = 5_000
         const val MAX_PROOFS = 64
         const val MAX_VERIFY_ITEMS = 2_000
         val PAIR_ID = Regex("[0-9a-f]{32}")
@@ -201,14 +229,24 @@ internal suspend fun serveControl(
             val answer = listOfNotNull(match?.let { b64(SessionCrypto.pairProof(it.key, "check-r", keys.binding, nonce)) })
             io.write(FrameType.PAIR_CHECK, PairCheck(check.nonce, answer).encode())
             if (match == null) return
-            // A paired device may now ask about its backups, as long as it keeps the connection open.
+            // A paired device may now ask about its backups, or share its clipboard, as long as it keeps the connection open.
             socket.soTimeout = ControlChannel.VERIFY_WAIT_MS
             while (true) {
                 val (t, p) = try { io.read() } catch (_: EOFException) { return }
-                if (t != FrameType.BACKUP_VERIFY) return
-                val items = p.decode<VerifyRequest>().items.take(ControlChannel.MAX_VERIFY_ITEMS)
-                val ok = runCatching { handler.verify(match.id, items) }.getOrDefault(emptyList())
-                io.write(FrameType.BACKUP_VERIFY, VerifyReply(ok).encode())
+                when (t) {
+                    FrameType.BACKUP_VERIFY -> {
+                        val items = p.decode<VerifyRequest>().items.take(ControlChannel.MAX_VERIFY_ITEMS)
+                        val ok = runCatching { handler.verify(match.id, items) }.getOrDefault(emptyList())
+                        io.write(FrameType.BACKUP_VERIFY, VerifyReply(ok).encode())
+                    }
+                    FrameType.CLIPBOARD -> {
+                        val push = p.decode<ClipboardPush>()
+                        val fits = push.id.length in 16..64 && push.text.toByteArray(Charsets.UTF_8).size <= MAX_CLIPBOARD_BYTES
+                        val taken = fits && runCatching { handler.clipboard(match.id, push.id, push.text) }.getOrDefault(false)
+                        io.write(FrameType.CLIPBOARD, ClipboardReply(taken).encode())
+                    }
+                    else -> return
+                }
             }
         }
         else -> throw ProtocolException("expected OFFER, got $type")

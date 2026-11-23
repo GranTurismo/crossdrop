@@ -33,6 +33,7 @@ import com.crossdrop.core.i18n.tr
 import com.crossdrop.core.i18n.trPlural
 import com.crossdrop.core.pairing.PairedDevice
 import com.crossdrop.core.transfer.FailureAdvice
+import com.crossdrop.net.ClipShare
 import com.crossdrop.ui.CdIcon
 import com.crossdrop.ui.CdIcons
 import com.crossdrop.ui.ChipButton
@@ -82,6 +83,12 @@ fun MyDevicesSection(
     onClearQueue: (id: String) -> Unit = {},
     /** A line about the last queued send ("Sent to Laptop"). */
     note: String? = null,
+    /** Clipboard sharing, per device; null hides the switch. */
+    onClipboard: ((id: String, on: Boolean) -> Unit)? = null,
+    /** Pairing id → what last happened with that device's clipboard ([com.crossdrop.net.ClipboardSync.status]). */
+    clipboard: Map<String, ClipShare> = emptyMap(),
+    /** What a platform needs to say about sharing its clipboard (Android: only while CrossDrop is open). */
+    clipboardNote: String? = null,
     extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     var adding by remember { mutableStateOf(false) }
@@ -115,6 +122,17 @@ fun MyDevicesSection(
                 }
             }
             ToggleRow(tr("Accept files without asking"), tr("Only from {0}", d.name), d.accept, { onAccept(d.id, it) })
+            // A backup pairing is the phone's "backup computer": managed on the backup screen, which has no such switch.
+            if (onClipboard != null && !d.backup) {
+                val sub = when {
+                    !d.clipboard && clipboard[d.id] == ClipShare.WANTED -> tr("{0} is sharing its clipboard. Turn this on to get it.", d.name)
+                    !d.clipboard -> tr("Copy on one device, paste on the other (text)")
+                    clipboard[d.id] == ClipShare.OFF_THERE -> tr("Off on {0}: turn it on there too", d.name)
+                    clipboard[d.id] == ClipShare.OLD_VERSION -> tr("Update CrossDrop on {0} first", d.name)
+                    else -> clipboardNote ?: tr("Copy on one device, paste on the other (text)")
+                }
+                ToggleRow(tr("Share clipboard"), sub, d.clipboard, { onClipboard(d.id, it) })
+            }
             RowSeparator()
         }
         Row(

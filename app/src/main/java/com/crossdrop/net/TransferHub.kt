@@ -211,6 +211,14 @@ interface AppReceiver {
     suspend fun received(peerName: String, offer: Offer, files: List<File>)
 }
 
+/**
+ * Takes the clipboard of one of "My devices" (see [ClipboardSync]). [received] runs on the listener's thread, after the
+ * sender proved the pairing on that connection; it returns whether the text was put on this device's clipboard.
+ */
+interface ClipboardReceiver {
+    fun received(pairId: String, clipId: String, text: String): Boolean
+}
+
 /** A device asking to become one of "My devices"; both screens show [sas]. */
 class PairPrompt(
     val peerName: String,
@@ -255,6 +263,8 @@ class TransferHub(
     var contactReceiver: ContactReceiver? = null
     var backupReceiver: BackupReceiver? = null
     var appReceiver: AppReceiver? = null
+    /** Clipboard sharing with "My devices"; without it every shared copy is refused. */
+    var clipboardReceiver: ClipboardReceiver? = null
 
     /** "My devices". Without it this device can't pair, and backup offers are declined. */
     var pairings: PairingStore? = null
@@ -912,6 +922,9 @@ class TransferHub(
 
         override fun verify(pairId: String, items: List<VerifyItem>): List<String> =
             backupReceiver?.verify(pairId, items).orEmpty()
+
+        override fun clipboard(pairId: String, clipId: String, text: String): Boolean =
+            clipboardReceiver?.received(pairId, clipId, text) ?: false
     }
 
     /** Answer exactly the pairing request the human was looking at. */

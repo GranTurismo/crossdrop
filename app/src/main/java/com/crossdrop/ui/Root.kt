@@ -112,6 +112,7 @@ fun Root(container: AppContainer) {
     val pairPrompt by container.coordinator.hub.pairPrompt.collectAsState()
     val pairedDevices by container.pairings.devices.collectAsState()
     val here by container.presence.present.collectAsState()
+    val clipboardStatus by container.clipboard.status.collectAsState()
     val outboxEntries by container.outbox.entries.collectAsState()
     val outboxSending by container.outboxRunner.sending.collectAsState()
     val outboxNote by container.outboxNote.collectAsState()
@@ -353,7 +354,7 @@ fun Root(container: AppContainer) {
                     myDevices = pairedDevices.filter { !it.backup },
                     peers = peers.values.sortedBy { it.lastSeenMs },
                     onAccept = container::setAccept,
-                    onUnpair = { id -> container.pairings.remove(id) },
+                    onUnpair = { id -> container.pairings.remove(id); container.clipboard.forget(id) },
                     onPairDevice = container::pairDevice,
                     presentIds = here.keys,
                     queued = queuedCounts,
@@ -361,6 +362,8 @@ fun Root(container: AppContainer) {
                     outboxNote = outboxNote,
                     onQueue = queueFor,
                     onClearQueue = { id -> container.outbox.clearFor(id) },
+                    onClipboard = container::setClipboard,
+                    clipboardStatus = clipboardStatus,
                     onSelfTest = if (com.crossdrop.BuildConfig.DEBUG)
                         ({ container.coordinator.selfTransfer() }) else null,
                     onAddPeer = if (com.crossdrop.BuildConfig.DEBUG)

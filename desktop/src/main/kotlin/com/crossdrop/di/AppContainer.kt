@@ -168,6 +168,7 @@ class AppContainer {
     fun unpair(id: String) {
         pairings.remove(id)
         backups.forget(id)
+        clipboard.forget(id)
     }
 
     /** Files or text waiting for the user to pick devices (drag-and-drop, Open With, Send to…). */
@@ -244,6 +245,19 @@ class AppContainer {
         },
     )
 
+    // ------------------------------------------------ clipboard sharing --
+
+    /** Copy on one of "My devices", paste on another (text only; each device's switch in Settings → My devices). */
+    val clipboard: com.crossdrop.net.ClipboardSync = com.crossdrop.net.ClipboardSync(scope, engine, pairings, presence.present, apply = { clipboardWatcher.write(it) })
+        .also { coordinator.hub.clipboardReceiver = it }
+
+    /** Watches this computer's clipboard, only while some device has sharing on. */
+    private val clipboardWatcher: com.crossdrop.platform.ClipboardWatcher = com.crossdrop.platform.ClipboardWatcher(
+        com.crossdrop.platform.SystemClipboard, clipboard.active, onCopy = { clipboard.copied(it) },
+    )
+
+    fun setClipboard(id: String, on: Boolean) = pairings.setClipboard(id, on)
+
     /** Queue [files] (and folders) for [device]; they go the next time it is here. */
     fun queueFor(device: com.crossdrop.core.pairing.PairedDevice, files: List<java.io.File>) {
         val ok = files.filter { (it.isFile || it.isDirectory) && it.canRead() && !com.crossdrop.platform.isNetworkPath(it.path) }
@@ -262,6 +276,7 @@ class AppContainer {
             runCatching { vaultDiscovery.start() }
         }
         coordinator.start()
+        clipboardWatcher.start(scope)
 
         // Don't let App Nap throttle the NIC mid-transfer or while serving the drive.
         combine(coordinator.hub.busy, qrShare.state, vaultHost.state, vaultExplorer.state) { busy, q, v, x ->

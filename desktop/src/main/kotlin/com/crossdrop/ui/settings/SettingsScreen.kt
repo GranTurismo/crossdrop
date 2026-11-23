@@ -108,6 +108,8 @@ fun SettingsScreen(
     outboxNote: String? = null,
     onQueue: ((com.crossdrop.core.pairing.PairedDevice) -> Unit)? = null,
     onClearQueue: (String) -> Unit = {},
+    onClipboard: ((String, Boolean) -> Unit)? = null,
+    clipboardStatus: Map<String, com.crossdrop.net.ClipShare> = emptyMap(),
     inboxFolder: java.io.File? = null,
     inboxIsCustom: Boolean = false,
     onPickInboxFolder: () -> java.io.File? = { null },
@@ -204,6 +206,7 @@ fun SettingsScreen(
                     devices = myDevices, peers = peers, onAccept = onAccept, onUnpair = onUnpair, onPair = onPairDevice,
                     present = presentIds, queued = queued, sending = sendingIds, onQueue = onQueue, onClearQueue = onClearQueue,
                     note = outboxNote,
+                    onClipboard = onClipboard, clipboard = clipboardStatus,
                     subtitleFor = { d ->
                         if (!d.backup) null
                         else lastBackups[d.id]?.let { tr("Last backup {0}", relativeTime(it.lastAt)) } ?: tr("Backs up to this computer")

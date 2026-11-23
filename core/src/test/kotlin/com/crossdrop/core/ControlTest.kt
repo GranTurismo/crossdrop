@@ -131,6 +131,44 @@ class ControlTest {
     }
 
     @Test
+    fun `a clipboard copy goes only over a proven pairing, with a fresh id each time`() {
+        val shared = PairSecret("00112233445566778899aabbccddeeff", random(32))
+        val got = mutableListOf<Triple<String, String, String>>()
+        val computer = object : ControlHandler {
+            override fun pairings() = listOf(shared)
+            override fun clipboard(pairId: String, clipId: String, text: String): Boolean {
+                got += Triple(pairId, clipId, text)
+                return text != "refuse me"
+            }
+        }
+        val phone = engine("Pixel", idA)
+        val (answers, events) = exchange(engine("MacBook", idB), computer, phone) { ep ->
+            phone.control(ep) { pairCheck(listOf(shared)); listOf(clipboard("first"), clipboard("ünïcødé ✓"), clipboard("refuse me")) }
+        }
+        assertEquals(listOf(true, true, false), answers)
+        assertEquals(listOf("first", "ünïcødé ✓", "refuse me"), got.map { it.third })
+        assertTrue(got.all { it.first == shared.id })
+        assertEquals("every copy has its own id", 3, got.map { it.second }.toSet().size)
+        assertTrue(events.none { it is TransferEvent.Failed })
+
+        // Without a proven pairing the copy is never even written to the connection.
+        val stranger = object : ControlHandler {
+            override fun pairings() = listOf(PairSecret(shared.id, random(32)))
+            override fun clipboard(pairId: String, clipId: String, text: String): Boolean { got += Triple(pairId, clipId, text); return true }
+        }
+        val (refused, _) = exchange(engine("MacBook?", idB), stranger, phone) { ep ->
+            phone.control(ep) { if (pairCheck(listOf(shared)) == null) "not proven" else runCatching { clipboard("secret") }.toString() }
+        }
+        assertEquals("not proven", refused)
+        assertEquals(3, got.size)
+        val unchecked = runCatching {
+            exchange(engine("MacBook", idB), computer, phone) { ep -> phone.control(ep) { clipboard("skipped the check") } }
+        }
+        assertTrue("clipboard needs a pairCheck first", unchecked.exceptionOrNull() is IllegalStateException)
+        assertEquals(3, got.size)
+    }
+
+    @Test
     fun `a backup offer goes only to the device that proves the pairing`() {
         val key = random(32)
         val bytes = random(100_000)

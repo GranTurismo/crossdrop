@@ -23,6 +23,8 @@ data class PairedDevice(
     val accept: Boolean = false,
     /** This pairing is for phone backups (the computer keeps them). Pairings made by "Add a device" are not; old ones are. */
     val backup: Boolean = true,
+    /** Share the clipboard with this device: copies made here go there, and its copies are taken here. Off until turned on. */
+    val clipboard: Boolean = false,
 ) {
     fun secret(): PairSecret = PairSecret(id, Base64.getDecoder().decode(key))
 }
@@ -71,6 +73,15 @@ class PairingStore(private val file: File) {
         val cur = get(id) ?: return
         if (cur.accept == on) return
         _devices.value = _devices.value.map { if (it.id == id) it.copy(accept = on) else it }
+        save()
+    }
+
+    /** Share the clipboard with this device (both ways, as far as this side is concerned). */
+    @Synchronized
+    fun setClipboard(id: String, on: Boolean) {
+        val cur = get(id) ?: return
+        if (cur.clipboard == on) return
+        _devices.value = _devices.value.map { if (it.id == id) it.copy(clipboard = on) else it }
         save()
     }
 

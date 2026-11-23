@@ -103,6 +103,7 @@ fun Root(container: AppContainer) {
     val pairPrompt by container.coordinator.hub.pairPrompt.collectAsState()
     val pairedDevices by container.pairings.devices.collectAsState()
     val here by container.presence.present.collectAsState()
+    val clipboardStatus by container.clipboard.status.collectAsState()
     val outboxEntries by container.outbox.entries.collectAsState()
     val outboxSending by container.outboxRunner.sending.collectAsState()
     val outboxNote by container.outboxNote.collectAsState()
@@ -239,6 +240,8 @@ fun Root(container: AppContainer) {
                         outboxNote = outboxNote,
                         onQueue = queueFor,
                         onClearQueue = { id -> container.outbox.clearFor(id) },
+                        onClipboard = container::setClipboard,
+                        clipboardStatus = clipboardStatus,
                         onChangeBackupFolder = {
                             com.crossdrop.platform.SystemActions.pickFolder(title = tr("Choose where backups go"))?.let(container::setBackupRoot)
                         },

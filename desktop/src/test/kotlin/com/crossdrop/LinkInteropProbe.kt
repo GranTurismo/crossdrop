@@ -60,6 +60,68 @@ class LinkInteropProbe {
     }
 
     /**
+     * Clipboard sharing against an emulator (`-Dcrossdrop.clipProbe=1`), with this Mac's **real** clipboard: listens on
+     * :47000, agrees to the first pairing request and turns clipboard sharing on for it, finds the emulator's listener
+     * through adb (logcat "listening on") and forwards it, then for `crossdrop.probeMinutes` shares what is copied on
+     * the Mac and puts on the Mac's clipboard what the emulator shares. Launch the emulator with `-e dev_peer 10.0.2.2:47000`,
+     * add the Mac in Settings → My devices and turn "Share clipboard" on there.
+     */
+    @Test fun macSharesClipboard() = runBlocking {
+        assumeTrue(System.getProperty("crossdrop.clipProbe") == "1")
+        val home = Files.createTempDirectory("crossdrop-clip-probe").toFile()
+        System.setProperty("crossdrop.home", File(home, "support").path)
+        val mac = LinkAndBackupTest.Node("Mac clipboard", File(home, "mac"), instanceId = "manual-10.0.2.2:47000")
+        val pairs = com.crossdrop.core.pairing.PairingStore(File(mac.root, "pairings.json")).also { mac.coordinator.hub.pairings = it }
+        val listener = ServerSocket(47_000)
+        mac.server.stop()
+        mac.scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            while (true) { val s = runCatching { listener.accept() }.getOrNull() ?: break; mac.coordinator.hub.onInboundSocket(s) }
+        }
+        mac.scope.launch {
+            mac.coordinator.hub.pairPrompt.collect { p ->
+                if (p != null) { println("PROBE pair request from ${p.peerName}, code ${p.sas}: agreeing"); mac.coordinator.hub.respondToPair(p, true) }
+            }
+        }
+        mac.scope.launch { pairs.devices.collect { ds -> ds.filter { !it.clipboard }.forEach { println("PROBE paired with ${it.name}: sharing on"); pairs.setClipboard(it.id, true) } } }
+        val radar = kotlinx.coroutines.flow.MutableStateFlow<Map<String, com.crossdrop.core.Peer>>(emptyMap())
+        val presence = com.crossdrop.net.PairedPresence(mac.scope, mac.engine, pairs, radar, retryMs = 2_000)
+        lateinit var watcher: com.crossdrop.platform.ClipboardWatcher
+        val sync = com.crossdrop.net.ClipboardSync(mac.scope, mac.engine, pairs, presence.present, apply = {
+            println("PROBE from the phone: \"${it.take(80)}\" -> Mac clipboard"); watcher.write(it)
+        }).also { mac.coordinator.hub.clipboardReceiver = it }
+        watcher = com.crossdrop.platform.ClipboardWatcher(com.crossdrop.platform.SystemClipboard, sync.active, onCopy = {
+            println("PROBE Mac copied \"${it.take(80)}\": ${sync.copied(it)}")
+        })
+        watcher.start(mac.scope)
+        println("PROBE clipboard Mac listening on 10.0.2.2:47000")
+        val minutes = System.getProperty("crossdrop.probeMinutes")?.toIntOrNull() ?: 6
+        // The test JVM doesn't get the shell's PATH (it is forked by the Gradle daemon), and another device attached
+        // makes a bare `adb shell` ambiguous: `-Dcrossdrop.adb=<path>`, `-Dcrossdrop.adbSerial=emulator-5554`.
+        val adb = listOf(System.getProperty("crossdrop.adb") ?: "${System.getProperty("user.home")}/Library/Android/sdk/platform-tools/adb") +
+            (System.getProperty("crossdrop.adbSerial")?.let { listOf("-s", it) } ?: emptyList())
+        var forwarded = 0
+        repeat(minutes * 12) {
+            // The emulator's listener isn't reachable from the Mac: find its port and forward it (again after a restart).
+            val log = runCatching {
+                ProcessBuilder(adb + listOf("shell", "logcat -d | grep 'listening on :'")).start().inputStream.bufferedReader().readText()
+            }.getOrDefault("")
+            val port = Regex("listening on :(\\d+)").findAll(log).lastOrNull()?.groupValues?.get(1)?.toInt() ?: 0
+            if (port != 0 && port != forwarded) {
+                ProcessBuilder(adb + listOf("forward", "tcp:$port", "tcp:$port")).start().waitFor()
+                forwarded = port
+                radar.value = mapOf("emulator" to com.crossdrop.core.Peer("emulator", "Emulator", Endpoint("127.0.0.1", port)))
+                println("PROBE emulator listener :$port forwarded")
+            }
+            delay(5_000)
+            println("PROBE present=${presence.present.value.keys.map { pairs.get(it)?.name }} status=${sync.status.value.mapKeys { pairs.get(it.key)?.name }}")
+        }
+        if (forwarded != 0) ProcessBuilder(adb + listOf("forward", "--remove", "tcp:$forwarded")).start().waitFor()
+        listener.close(); mac.close()
+        home.deleteRecursively()
+        Unit
+    }
+
+    /**
      * The Mac as a paired backup computer for an emulator (`-Dcrossdrop.backupProbe=1`): listens on :47000,
      * agrees to the first pairing request, files what arrives, answers re-checks, and prints what it holds
      * every 10 s for [minutes]. The emulator reaches it at 10.0.2.2:47000 (`-e dev_peer 10.0.2.2:47000`).
