@@ -1,0 +1,1 @@
+No changes to the iPhone and iPad app in this release. Android phones that share their internet (hotspot) now show up on the radar of an iPhone joined to them, once the Android phone has the update.
