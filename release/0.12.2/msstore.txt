@@ -1,0 +1,1 @@
+No changes to the Windows app in this release; its version number moves with it. Phones that share their internet (hotspot) now show up on this PC's radar when the PC is joined to them, and the PC shows up on theirs. Update CrossDrop on the phone.

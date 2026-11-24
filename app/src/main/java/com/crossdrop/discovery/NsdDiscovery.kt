@@ -17,7 +17,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
@@ -26,12 +29,16 @@ import java.util.concurrent.ConcurrentHashMap
  * mDNS discovery via NsdManager: we register `_crossdrop._tcp.` on our
  * listener port and continuously resolve peers advertising the same type.
  * Works on any shared LAN — including between emulators on one host.
+ *
+ * NsdManager does not run on a network this phone hosts (its own hotspot): there [hosted] speaks mDNS
+ * itself, and what it sees is merged in with what NSD sees.
  */
 class NsdDiscovery(
     private val nsd: NsdManager,
     private val wifi: WifiManager?,
     private val deviceName: () -> String,
     private val instanceId: String,
+    private val hosted: HostedMdns? = null,
 ) : PeerDiscovery {
 
     /** Set once [com.crossdrop.net.TransferServer] binds; (re)registers the service. */
@@ -39,12 +46,16 @@ class NsdDiscovery(
         set(value) {
             if (value == field || value == 0) return
             field = value
+            hosted?.port = value
             registerService()
         }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /** What NsdManager has resolved (never the hosted links' sightings). */
     private val _peers = MutableStateFlow<Map<String, Peer>>(emptyMap())
-    override val peers: StateFlow<Map<String, Peer>> = _peers
+    override val peers: StateFlow<Map<String, Peer>> = hosted
+        ?.let { h -> combine(_peers, h.peers) { nsd, own -> own + nsd }.stateIn(scope, SharingStarted.Eagerly, emptyMap()) }
+        ?: _peers
 
     private val names = ServiceNames()
     private val infoCallbacks = ConcurrentHashMap.newKeySet<NsdManager.ServiceInfoCallback>()
@@ -71,12 +82,14 @@ class NsdDiscovery(
             // NEARBY_WIFI_DEVICES denied, no LAN, … — NSD layer stays dormant.
             Log.w(TAG, "NSD start failed", it)
         }
+        hosted?.start()
     }
 
     @Synchronized
     override fun stop() {
         started = false
         publishPending = false
+        hosted?.stop()
         dropRegistration()
         discovery?.let { runCatching { nsd.stopServiceDiscovery(it) } }
         if (Build.VERSION.SDK_INT >= 34) {

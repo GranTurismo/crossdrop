@@ -466,6 +466,37 @@ the merged sightings with it.
 - Android `NsdDiscovery.publish` waits for an in-flight unregister before re-registering (same
   name registered too early gets the `(2)` rename).
 
+## A phone that hosts the network (hotspot): our own mDNS there
+
+Android's system mDNS service (`NsdManager`) **does not run on a network the phone itself hosts**. Found 2026-11-24 on a Honor
+600 Pro, Android 17: with the hotspot on (`wlan2`) CrossDrop's registration and browse were accepted, but the system never
+opened a socket on `wlan2`, sent no query and announced nothing, so a laptop joined to the hotspot and the phone never appeared
+on each other's radar (QR and web shares, plain TCP, kept working). Passing the hotspot's `Network` to `NsdManager` did not
+help either: the system logged `requestSocket for net:<hotspot>` and still never created the socket. (A
+`registerNetworkCallback` for LOCAL_NETWORK is never satisfied by the hotspot for an app targeting an older SDK; `allNetworks`
+does list it.) Evidence is in the phone's `dumpsys servicediscovery` and `dumpsys tethering`; Honor hides Info-level app logs,
+so use `Log.e`/`Log.w` when debugging there.
+
+So CrossDrop speaks mDNS itself on those interfaces, wire-compatible with Bonjour/JmDNS/NSD, so no other platform changes:
+
+- `core/discovery/MdnsCodec` (DNS wire format, strict decoder: bounds-checked, compression loops refused, fuzz-tested),
+  `LinkMdns` (one interface: answers for `_crossdrop._tcp.local` with PTR + SRV/TXT/A, browses with a query schedule 1,2,4,8,15,
+  then every 30 s, completes half-heard services, goodbye on stop, drops senders outside the interface's subnet because a
+  wildcard socket also hears other interfaces, known-answer suppression for our PTR, unicast reply to legacy resolvers) and
+  `MulticastTransport` (the real socket: port 5353, SO_REUSEADDR, joined on that interface only). Pure JVM in `:core`.
+- Android: `net/HostedLinks` finds the interfaces the phone hosts (up, multicast, private IPv4, named like tethering — `wlan#`,
+  `ap#`, `swlan#`, `softap#`, `p2p-*`, `rndis#`, `usb#`, `bt-pan`, `eth#` — and not a network the phone joined as a client);
+  `discovery/HostedMdns` keeps one `LinkMdns` per such link (looked at every 4 s, retries a failed one after 30 s) and
+  `NsdDiscovery` merges its sightings with NSD's (NSD wins for the same id). It starts and stops with `NsdDiscovery`.
+  On the Wi-Fi the phone joined as a client nothing changes: NSD works there and the link is excluded.
+- Tests: `MdnsCodecTest`, `LinkMdnsTest` (in-memory segment, fake clock), and `LinkMdnsInteropTest` in `:desktop` against real
+  JmDNS on the machine's interface (needs real multicast, opt in with
+  `JAVA_TOOL_OPTIONS=-Dcrossdrop.mdnsInterop=1 ./gradlew :desktop:test --tests '*LinkMdnsInteropTest*' --rerun -i`).
+- Proven 2026-11-24 on the Honor 600 Pro (Android 17) hosting a hotspot with the Mac joined: the Mac's Bonjour saw
+  `crossdrop-<id>` with port + TXT, and both radars showed each other. Not proven: other makers/Android versions, USB and
+  Bluetooth tethering, the vault service (`_crossdrop-vault._tcp`) on a hosted link (not advertised there yet), iPhone as the
+  guest. When the app targets Android 17, the new `ACCESS_LOCAL_NETWORK` permission (auto-granted below that) must be requested.
+
 ## Languages (localization)
 
 CrossDrop is translated into Georgian, Hindi, Indonesian, Arabic, Persian, Spanish (neutral Latin American), Brazilian
@@ -644,7 +675,11 @@ iOS doesn't send it yet: unknown means no tile. Older builds ignore the field (`
   an app", "Receive"). Accepted APKs are staged in `filesDir/apps-in/<transfer id>/` (never the shared inbox), then the
   screen lists each app as read *from the APK itself* (label, icon, version, package; nothing the sender claims) with
   Install / Update / Reinstall (re-checked on resume). Install = one `PackageInstaller` session with all the pieces;
-  Android's own confirmation follows (`STATUS_PENDING_USER_ACTION`). Needs `REQUEST_INSTALL_PACKAGES` and the person's
+  Android's own confirmation follows (`STATUS_PENDING_USER_ACTION`): that screen is an Intent from the status broadcast's
+  `EXTRA_INTENT`, and **is never launched as it comes** (Play flagged that as Intent Redirection on version code 15, act
+  by 2027-02-22): `AppInbox.checkedConfirm` copies it, strips selector/clip/URI-grant flags, and
+  `core/connect/InstallConfirm.allow` refuses anything aimed at our own package or at a resolvable non-system app (tested in
+  `InstallConfirmTest`; the Honor's installer resolves to the system `com.google.android.packageinstaller`). Needs `REQUEST_INSTALL_PACKAGES` and the person's
   "Install unknown apps" switch: the screen shows a card that opens it. "Done" deletes the batch; a new receive sweeps
   leftovers older than 10 min; launch clears it all.
 - **Google Play**: `REQUEST_INSTALL_PACKAGES` is allowed for file sharing / transfer and phone transfer, with a

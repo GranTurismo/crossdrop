@@ -1,0 +1,1 @@
+Phones that share their internet (hotspot) now show up on the radar of the devices joined to them, and the other way round, so you can send files straight away. Installing an app another phone sent you is now checked more strictly before Android's installer opens.
