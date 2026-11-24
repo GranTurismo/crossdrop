@@ -5,6 +5,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -12,6 +13,8 @@ import android.os.Build
 import android.provider.Settings
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.crossdrop.core.connect.ConfirmTarget
+import com.crossdrop.core.connect.InstallConfirm
 import com.crossdrop.core.protocol.FileMeta
 import com.crossdrop.core.protocol.Offer
 import com.crossdrop.net.AppReceiver
@@ -198,8 +201,13 @@ class AppInbox(private val context: Context, private val scope: CoroutineScope) 
                 @Suppress("DEPRECATION")
                 val confirm = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
                     else intent.getParcelableExtra(Intent.EXTRA_INTENT)
-                if (confirm == null) { update(pkg) { it.copy(status = Status.FAILED) }; return }
-                runCatching { context.startActivity(confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+                val screen = confirm?.let(::checkedConfirm)
+                if (screen == null) {
+                    if (confirm != null) Log.w(TAG, "refused to open the install confirmation for $pkg: it does not go to the system installer")
+                    update(pkg) { it.copy(status = Status.FAILED) }
+                    return
+                }
+                runCatching { context.startActivity(screen.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                     .onFailure { e -> update(pkg) { it.copy(status = Status.FAILED, error = e.message) } }
             }
             PackageInstaller.STATUS_SUCCESS -> {
@@ -214,6 +222,34 @@ class AppInbox(private val context: Context, private val scope: CoroutineScope) 
                 update(pkg) { it.copy(status = Status.FAILED, error = message) }
             }
         }
+    }
+
+    /**
+     * The screen PackageInstaller wants shown is an Intent it put in the status broadcast. It is not launched as it
+     * comes (Play's "Intent Redirection"): a copy loses anything that could grant access to our files or redirect it
+     * elsewhere, and is used only if it is aimed at another app, a system installer, never at one of our components.
+     */
+    private fun checkedConfirm(raw: Intent): Intent? {
+        val forward = Intent(raw).apply {
+            selector = null
+            clipData = null
+            removeFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                    Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION or Intent.FLAG_GRANT_PREFIX_URI_PERMISSION,
+            )
+        }
+        @Suppress("DEPRECATION")
+        val resolved = runCatching {
+            if (Build.VERSION.SDK_INT >= 33) pm.resolveActivity(forward, PackageManager.ResolveInfoFlags.of(0))
+            else pm.resolveActivity(forward, 0)
+        }.getOrNull()
+        val app = resolved?.activityInfo?.applicationInfo
+        val target = ConfirmTarget(
+            namedPackage = forward.component?.packageName ?: forward.`package`,
+            resolvedPackage = resolved?.activityInfo?.packageName,
+            resolvedIsSystem = app?.let { (it.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP)) != 0 },
+        )
+        return forward.takeIf { InstallConfirm.allow(context.packageName, target) }
     }
 
     private companion object {

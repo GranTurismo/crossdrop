@@ -644,7 +644,11 @@ iOS doesn't send it yet: unknown means no tile. Older builds ignore the field (`
   an app", "Receive"). Accepted APKs are staged in `filesDir/apps-in/<transfer id>/` (never the shared inbox), then the
   screen lists each app as read *from the APK itself* (label, icon, version, package; nothing the sender claims) with
   Install / Update / Reinstall (re-checked on resume). Install = one `PackageInstaller` session with all the pieces;
-  Android's own confirmation follows (`STATUS_PENDING_USER_ACTION`). Needs `REQUEST_INSTALL_PACKAGES` and the person's
+  Android's own confirmation follows (`STATUS_PENDING_USER_ACTION`): that screen is an Intent from the status broadcast's
+  `EXTRA_INTENT`, and **is never launched as it comes** (Play flagged that as Intent Redirection on version code 15, act
+  by 2027-02-22): `AppInbox.checkedConfirm` copies it, strips selector/clip/URI-grant flags, and
+  `core/connect/InstallConfirm.allow` refuses anything aimed at our own package or at a resolvable non-system app (tested in
+  `InstallConfirmTest`; the Honor's installer resolves to the system `com.google.android.packageinstaller`). Needs `REQUEST_INSTALL_PACKAGES` and the person's
   "Install unknown apps" switch: the screen shows a card that opens it. "Done" deletes the batch; a new receive sweeps
   leftovers older than 10 min; launch clears it all.
 - **Google Play**: `REQUEST_INSTALL_PACKAGES` is allowed for file sharing / transfer and phone transfer, with a
