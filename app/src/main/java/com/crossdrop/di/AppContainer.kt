@@ -16,6 +16,7 @@ import com.crossdrop.core.discovery.PeerLiveness
 import com.crossdrop.core.discovery.mergePeers
 import com.crossdrop.core.transfer.TransferEngine
 import com.crossdrop.discovery.BleDiscovery
+import com.crossdrop.discovery.HostedMdns
 import com.crossdrop.discovery.ManualDiscovery
 import com.crossdrop.discovery.NsdDiscovery
 import com.crossdrop.net.QrShareManager
@@ -137,6 +138,7 @@ class AppContainer(private val app: Context) {
         wifiManager,
         deviceName::value,
         instanceId,
+        HostedMdns(com.crossdrop.net.HostedLinks(app), deviceName::value, instanceId),
     )
     private val vaultDiscovery = com.crossdrop.discovery.VaultDiscovery(
         nsdManager, wifiManager, { vaultHost.vaultId })
