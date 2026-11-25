@@ -1,45 +1,45 @@
-Envía fotos, videos, apps y archivos a personas cercanas sin internet, sin cuentas y sin anuncios. CrossDrop los pasa directamente de tu celular al otro dispositivo por tu propio Wi-Fi, a toda la velocidad de tu red local. Nada pasa por un servidor.
+Envía fotos, videos, apps y archivos a quien tengas cerca, sin internet, sin registrarte y sin anuncios. CrossDrop los lleva directo de tu celular al otro dispositivo por tu propio Wi-Fi, a la máxima velocidad de tu red local. Nada pasa por ningún servidor.
 
-EL OTRO NO NECESITA INSTALAR NADA
-Toca "Enviar a cualquiera" y aparece un código QR. La otra persona lo escanea con su cámara y descarga los archivos en su navegador. Funciona con iPhone, Android, Mac, Windows, Linux y Chromebook. Varios archivos llegan en un solo zip. El enlace solo funciona en tu red local.
+QUIEN RECIBE NO NECESITA LA APP
+Toca "Enviar a cualquiera" y aparece un código QR. La otra persona lo escanea con la cámara y descarga los archivos en su navegador. Funciona con iPhone, Android, Mac, Windows, Linux y Chromebook. Si son varios archivos, llegan juntos en un zip. El enlace solo funciona en tu red local.
 
 ENCUENTRA DISPOSITIVOS EN EL RADAR
-Abre CrossDrop en dos dispositivos y aparecen en un radar en vivo. Toca un dispositivo, elige tus archivos y envía. La otra persona toca Aceptar, y nada llega sin ese toque. O agita dos celulares al mismo tiempo para ir directo al envío.
+Abre CrossDrop en dos dispositivos y aparecen en un radar en tiempo real. Toca un dispositivo, elige tus archivos y envíalos. La otra persona toca Aceptar: sin ese toque, no llega nada. O agita tu celular al mismo tiempo que la otra persona para ir directo al envío.
 
 ¿SIN WI-FI? CONECTAR DIRECTAMENTE
-Un celular Android muestra un código, el otro lo escanea y los dos quedan conectados, sin router y sin datos móviles.
+Un celular Android muestra un código, el otro lo escanea y listo: quedan conectados sin router ni datos móviles.
 
-APPS, CARPETAS Y CELULARES COMPLETOS
-- Envía apps instaladas a otro celular Android, con todas sus partes. Android pregunta antes de instalar nada.
-- Envía una carpeta completa y llega con sus subcarpetas.
-- Cambiar de teléfono: pasa tus fotos, videos y contactos a un celular nuevo.
+APPS, CARPETAS Y CAMBIO DE CELULAR
+- Envía apps instaladas a otro celular Android, con todas sus partes. Android te pregunta antes de instalar cualquier cosa.
+- Envía una carpeta entera y llega con todas sus subcarpetas.
+- Con "Cambiar de teléfono", pasa tus fotos, videos y contactos a tu celular nuevo.
 
 CONVIERTE TU CELULAR EN UNA UNIDAD INALÁMBRICA
-Comparte una carpeta como unidad en tu Wi-Fi. Explórala y reprodúcela desde cualquier navegador, o ábrela en el Finder de una Mac, en el Explorador de Windows o en cualquier app WebDAV. Es de solo lectura por defecto, con código opcional y un interruptor para que los invitados puedan editar.
+Comparte una carpeta como unidad en tu red Wi-Fi. Explora sus archivos y reprodúcelos desde cualquier navegador, o ábrela en el Finder de una Mac, en el Explorador de archivos de Windows o en cualquier app WebDAV. Por defecto es de solo lectura; si quieres, puedes ponerle un código y activar un interruptor para que los invitados editen.
 
 MIS DISPOSITIVOS
-Agrega una sola vez tu propio celular, tablet y computadora. Los archivos entre ellos llegan sin preguntar, y con "Compartir portapapeles" copias en uno y pegas en otro. Tus fotos y videos pueden respaldarse en tu computadora cuando ambos están en el mismo Wi-Fi, y cuando la computadora los haya verificado puedes liberar espacio en tu celular.
+Agrega tu celular, tu tablet y tu computadora una sola vez. Entre ellos, los archivos llegan sin pedir confirmación, y con "Compartir portapapeles" copias en uno y pegas en otro. Puedes respaldar tus fotos y videos en tu computadora cuando esté en el mismo Wi-Fi que tu celular y, una vez que la computadora los verifique, liberar espacio en el celular.
 
-HECHO PARA ARCHIVOS GRANDES
-- Si una transferencia pierde la conexión, continúa sola cuando el dispositivo vuelve
-- Envía de nuevo un archivo modificado y solo viajan las partes que cambiaron
-- Envía el mismo archivo dos veces y no se vuelve a enviar nada
-- Las fotos y videos salen directo de tu galería, o elige cualquier archivo
+PENSADO PARA ARCHIVOS GRANDES
+- Si se corta la conexión, la transferencia se reanuda sola cuando el dispositivo vuelve
+- Si vuelves a enviar un archivo modificado, solo viajan las partes que cambiaron
+- Si envías el mismo archivo dos veces, la segunda vez no se transfiere nada
+- Elige fotos y videos directo de tu galería, o cualquier otro archivo
 
-PRIVADO DESDE EL DISEÑO
-- Las transferencias entre dispositivos CrossDrop tienen cifrado de extremo a extremo
-- Sin cuentas, sin anuncios, sin analíticas, sin rastreo
-- Los archivos nunca salen de tu red local
-- Los archivos recibidos van a una carpeta CrossDrop en tus Descargas, o a la carpeta que elijas
-- Código abierto bajo la licencia Apache-2.0: github.com/GranTurismo/crossdrop
+PRIVACIDAD DESDE EL DISEÑO
+- Las transferencias entre dispositivos con CrossDrop tienen cifrado de extremo a extremo
+- Sin registro, sin anuncios, sin analíticas, sin rastreo
+- Tus archivos nunca salen de tu red local
+- Lo que recibes se guarda en una carpeta CrossDrop dentro de Descargas, o en la carpeta que elijas
+- Código abierto con licencia Apache-2.0: github.com/GranTurismo/crossdrop
 
 TAMBIÉN EN TU COMPUTADORA Y EN IPHONE
-CrossDrop también funciona en Mac, Windows, Linux, iPhone y iPad, y todos funcionan juntos. Enlaces: github.com/GranTurismo/crossdrop
+CrossDrop también funciona en Mac, Windows, Linux, iPhone y iPad, y todas las versiones se conectan entre sí. Más información en github.com/GranTurismo/crossdrop
 
 IDEAL PARA
-- Pasar fotos y videos a una laptop sin cable
-- Compartir con un amigo que no instaló nada
-- Mover archivos grandes cuando no tienes señal o tienes pocos datos móviles
-- Explorar y reproducir los archivos de tu celular desde tu computadora
+- Pasar fotos y videos a la laptop sin cables
+- Compartir archivos con alguien que no tiene nada instalado
+- Mover archivos pesados cuando no tienes señal o te quedan pocos datos móviles
+- Ver y reproducir los archivos de tu celular desde la computadora
 
-En español, inglés, árabe, georgiano, hindi, indonesio, persa, portugués, ruso y turco. Requiere Android 10 o superior.
+Disponible en español, inglés, árabe, georgiano, hindi, indonesio, persa, portugués, ruso y turco. Requiere Android 10 o superior.

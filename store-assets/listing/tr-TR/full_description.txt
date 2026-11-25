@@ -1,45 +1,45 @@
-Fotoğraf, video, uygulama ve dosyaları yakındaki kişilere internetsiz, hesapsız ve reklamsız gönderin. CrossDrop bunları kendi Wi-Fi ağınız üzerinden, yerel ağınızın tam hızında, telefonunuzdan doğrudan diğer cihaza taşır. Hiçbir şey bir sunucudan geçmez.
+Fotoğrafları, videoları, uygulamaları ve dosyaları yakınınızdaki kişilere internet olmadan, hesap açmadan ve reklam görmeden gönderin. CrossDrop dosyaları telefonunuzdan doğrudan diğer cihaza, kendi Wi-Fi ağınız üzerinden ve yerel ağın tam hızıyla aktarır. Hiçbir şey sunucudan geçmez.
 
 KARŞI TARAFTA UYGULAMA GEREKMEZ
-"Herkese gönder"e dokunun, bir QR kod belirir. Karşıdaki kişi kodu kamerasıyla tarar ve dosyaları tarayıcısından indirir. iPhone, Android, Mac, Windows, Linux ve Chromebook ile çalışır. Birden çok dosya tek bir zip olarak gelir. Bağlantı yalnızca yerel ağınızda çalışır.
+"Herkese gönder" düğmesine dokunun; ekranda bir QR kod belirir. Karşınızdaki kişi kodu kamerasıyla okutup dosyaları tarayıcıdan indirir. iPhone, Android, Mac, Windows, Linux ve Chromebook'ta çalışır. Birden fazla dosya tek bir zip dosyası olarak iner. Bağlantı yalnızca yerel ağınızda çalışır.
 
 CİHAZLARI RADARDA BULUN
-CrossDrop'u iki cihazda açın, canlı bir radarda görünsünler. Bir cihaza dokunun, dosyalarınızı seçin ve gönderin. Karşıdaki kişi Kabul et'e dokunur; bu dokunuş olmadan hiçbir şey gelmez. Ya da iki telefonu aynı anda sallayarak doğrudan gönderime geçin.
+CrossDrop'u iki cihazda açın; ikisi de anında radarda belirir. Bir cihaza dokunun, dosyalarınızı seçin ve gönderin. Karşı taraf "Kabul et" düğmesine dokunmadıkça hiçbir şey gelmez. Ya da iki telefonu aynı anda sallayın ve hemen göndermeye geçin.
 
-WI-FI YOK MU? DOĞRUDAN BAĞLAN
-Bir Android telefon bir kod gösterir, diğer telefon onu tarar ve ikisi modem ya da mobil veri olmadan bağlanır.
+WI-FI YOK MU? DOĞRUDAN BAĞLANIN
+Bir Android telefon kod gösterir, diğer telefon bu kodu okutur ve ikisi modeme ya da mobil veriye gerek kalmadan birbirine bağlanır.
 
-UYGULAMALAR, KLASÖRLER, TÜM TELEFON
-- Yüklü uygulamaları tüm parçalarıyla başka bir Android telefona gönderin. Android bir şey yüklemeden önce sorar.
-- Bütün bir klasörü gönderin, alt klasörleriyle birlikte gelsin.
-- Telefon değiştir: fotoğraflarınızı, videolarınızı ve kişilerinizi yeni telefona taşıyın.
+UYGULAMALAR, KLASÖRLER VE YENİ TELEFONA GEÇİŞ
+- Yüklü uygulamaları tüm parçalarıyla birlikte başka bir Android telefona gönderin. Android, herhangi bir şeyi yüklemeden önce size sorar.
+- Klasörleri olduğu gibi gönderin; alt klasörleriyle birlikte ulaşır.
+- "Telefon değiştir" ile fotoğraflarınızı, videolarınızı ve kişilerinizi yeni telefonunuza taşıyın.
 
 TELEFONUNUZU KABLOSUZ SÜRÜCÜYE DÖNÜŞTÜRÜN
-Bir klasörü Wi-Fi ağınızda sürücü olarak paylaşın. Herhangi bir web tarayıcısından gezin ve oynatın ya da Mac'te Finder'da, Windows Gezgini'nde veya herhangi bir WebDAV uygulamasında açın. Varsayılan olarak salt okunurdur; isteğe bağlı bir şifre ve misafirlerin düzenlemesine izin veren bir anahtar vardır.
+Bir klasörü Wi-Fi ağınızda sürücü olarak paylaşın. Dosyalara herhangi bir web tarayıcısından göz atıp oynatın ya da sürücüyü Mac'te Finder'da, Windows'ta Dosya Gezgini'nde veya herhangi bir WebDAV uygulamasında açın. Sürücü varsayılan olarak salt okunurdur; dilerseniz şifre belirleyebilir ve misafirlerin dosyaları düzenlemesine izin verebilirsiniz.
 
 CİHAZLARIM
-Kendi telefonunuzu, tabletinizi ve bilgisayarınızı bir kez ekleyin. Aralarındaki dosyalar sormadan gelir; "Panoyu paylaş" ile birinde kopyalayıp diğerinde yapıştırırsınız. İkisi aynı Wi-Fi'dayken fotoğraf ve videolarınız bilgisayarınıza yedeklenebilir; bilgisayar onları doğruladıktan sonra telefonunuzda yer açabilirsiniz.
+Kendi telefonunuzu, tabletinizi ve bilgisayarınızı bir kez ekleyin; aralarında gönderilen dosyalar onay beklemeden gelir. "Panoyu paylaş" açıkken birinde kopyaladığınızı diğerinde yapıştırabilirsiniz. Telefon ve bilgisayar aynı Wi-Fi ağındayken fotoğraf ve videolarınız bilgisayara yedeklenebilir; bilgisayar yedekleri doğruladıktan sonra telefonunuzda yer açabilirsiniz.
 
-BÜYÜK DOSYALAR İÇİN
-- Bağlantısı kopan bir aktarım, cihaz geri geldiğinde kendiliğinden devam eder
-- Değişen bir dosyayı yeniden gönderin, yalnızca değişen kısımlar gider
-- Aynı dosyayı iki kez gönderin, hiçbir şey yeniden gönderilmez
-- Fotoğraf ve videolar doğrudan galerinizden gelir ya da herhangi bir dosyayı seçin
+BÜYÜK DOSYALAR İÇİN TASARLANDI
+- Bağlantı koparsa, cihaz yeniden göründüğünde aktarım kendiliğinden devam eder
+- Değiştirdiğiniz bir dosyayı yeniden gönderdiğinizde yalnızca değişen kısımlar aktarılır
+- Aynı dosyayı ikinci kez gönderdiğinizde hiçbir şey yeniden aktarılmaz
+- Fotoğraf ve videoları doğrudan galeriden seçin ya da istediğiniz herhangi bir dosyayı gönderin
 
-TASARIMDAN GİZLİ
-- CrossDrop cihazları arasındaki aktarımlar uçtan uca şifrelenir
-- Hesap yok, reklam yok, analiz yok, takip yok
+GİZLİLİK ODAKLI
+- CrossDrop yüklü cihazlar arasındaki aktarımlar uçtan uca şifrelenir
+- Hesap, reklam, analitik ve takip yok
 - Dosyalar yerel ağınızdan asla çıkmaz
-- Alınan dosyalar İndirilenler'deki CrossDrop klasörüne ya da seçtiğiniz bir klasöre gider
-- Apache-2.0 lisansıyla açık kaynak: github.com/GranTurismo/crossdrop
+- Gelen dosyalar İndirilenler'deki CrossDrop klasörüne ya da seçtiğiniz klasöre kaydedilir
+- Apache-2.0 lisanslı açık kaynak: github.com/GranTurismo/crossdrop
 
 BİLGİSAYARDA VE IPHONE'DA DA
-CrossDrop Mac, Windows, Linux, iPhone ve iPad'de de çalışır ve hepsi birlikte çalışır. Bağlantılar: github.com/GranTurismo/crossdrop
+CrossDrop'u Mac, Windows, Linux, iPhone ve iPad'de de kullanabilirsiniz; tüm sürümler birbiriyle uyumlu çalışır. Ayrıntılar: github.com/GranTurismo/crossdrop
 
 ŞUNLAR İÇİN İDEAL
-- Fotoğraf ve videoları kablosuz olarak dizüstü bilgisayara aktarmak
-- Hiçbir şey yüklememiş bir arkadaşla paylaşmak
-- Çekim yokken ya da mobil veriniz azken büyük dosyaları taşımak
+- Fotoğraf ve videoları kablo kullanmadan dizüstü bilgisayara aktarmak
+- Hiçbir uygulama yüklememiş bir arkadaşınızla dosya paylaşmak
+- Çekim yokken ya da mobil veriniz azken büyük dosyaları aktarmak
 - Telefonunuzdaki dosyalara bilgisayardan göz atmak ve oynatmak
 
-Türkçe, İngilizce, Arapça, Endonezce, Farsça, Gürcüce, Hintçe, İspanyolca, Portekizce ve Rusça. Android 10 veya üstü gerekir.
+Dil seçenekleri: Türkçe, İngilizce, Arapça, Endonezce, Farsça, Gürcüce, Hintçe, İspanyolca, Portekizce ve Rusça. Android 10 veya üzeri gerekir.

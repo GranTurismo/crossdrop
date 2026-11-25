@@ -1,45 +1,45 @@
-Envie fotos, vídeos, apps e arquivos para pessoas por perto sem internet, sem contas e sem anúncios. O CrossDrop leva tudo direto do seu celular para o outro aparelho pelo seu próprio Wi-Fi, na velocidade máxima da sua rede local. Nada passa por um servidor.
+Envie fotos, vídeos, apps e arquivos para quem está por perto, sem internet, sem cadastro e sem anúncios. O CrossDrop leva tudo direto do seu celular para o outro aparelho pelo seu próprio Wi-Fi, na velocidade máxima da rede local. Nada passa por servidor nenhum.
 
-O OUTRO LADO NÃO PRECISA DE APP
-Toque em "Enviar para qualquer um" e aparece um QR code. A outra pessoa escaneia com a câmera e baixa os arquivos no navegador. Funciona com iPhone, Android, Mac, Windows, Linux e Chromebook. Vários arquivos chegam em um único zip. O link só funciona na sua rede local.
+QUEM RECEBE NÃO PRECISA DO APP
+Toque em "Enviar para qualquer um" e um QR code aparece na tela. A outra pessoa escaneia com a câmera e baixa os arquivos pelo navegador. Funciona com iPhone, Android, Mac, Windows, Linux e Chromebook. Se forem vários arquivos, eles chegam juntos em um zip. O link só funciona na sua rede local.
 
 ENCONTRE APARELHOS NO RADAR
-Abra o CrossDrop em dois aparelhos e eles aparecem em um radar ao vivo. Toque em um aparelho, escolha os arquivos e envie. A outra pessoa toca em Aceitar, e nada chega sem esse toque. Ou balance dois celulares ao mesmo tempo para ir direto ao envio.
+Abra o CrossDrop em dois aparelhos e eles aparecem num radar em tempo real. Toque em um aparelho, escolha os arquivos e envie. A outra pessoa toca em Aceitar: sem esse toque, nada chega. Ou balance seu celular ao mesmo tempo que a outra pessoa para ir direto ao envio.
 
 SEM WI-FI? CONECTAR DIRETAMENTE
-Um celular Android mostra um código, o outro escaneia, e os dois ficam conectados sem roteador e sem dados móveis.
+Um celular Android mostra um código, o outro escaneia e pronto: os dois ficam conectados sem roteador e sem usar dados móveis.
 
-APPS, PASTAS E CELULARES INTEIROS
-- Envie apps instalados para outro celular Android, com todas as suas partes. O Android pergunta antes de instalar qualquer coisa.
-- Envie uma pasta inteira e ela chega com as subpastas.
-- Trocar de celular: leve suas fotos, vídeos e contatos para um celular novo.
+APPS, PASTAS E TROCA DE CELULAR
+- Envie apps instalados para outro celular Android, com todas as partes. O Android pergunta antes de instalar qualquer coisa.
+- Envie uma pasta inteira e ela chega com todas as subpastas.
+- Com "Trocar de celular", leve suas fotos, vídeos e contatos para o celular novo.
 
 TRANSFORME SEU CELULAR EM UM DRIVE SEM FIO
-Compartilhe uma pasta como drive no seu Wi-Fi. Navegue e assista pelo navegador, ou abra no Finder do Mac, no Explorador do Windows ou em qualquer app WebDAV. Por padrão é só leitura, com senha opcional e uma chave para deixar os convidados editarem.
+Compartilhe uma pasta como drive na sua rede Wi-Fi. Explore e reproduza os arquivos em qualquer navegador, ou abra no Finder do Mac, no Explorador de Arquivos do Windows ou em qualquer app WebDAV. Por padrão, o acesso é somente leitura, com senha opcional e uma chave para permitir que convidados editem.
 
 MEUS DISPOSITIVOS
-Adicione seu celular, tablet e computador uma única vez. Os arquivos entre eles chegam sem perguntar, e com "Compartilhar área de transferência" você copia em um e cola no outro. Suas fotos e vídeos podem fazer backup no computador quando os dois estão no mesmo Wi-Fi, e depois que o computador conferir tudo você pode liberar espaço no celular.
+Adicione seu celular, tablet e computador uma única vez. Entre eles, os arquivos chegam sem pedir confirmação, e com "Compartilhar área de transferência" você copia em um e cola no outro. Você pode fazer backup das fotos e vídeos no computador quando os dois estiverem no mesmo Wi-Fi e, depois que o computador conferir tudo, liberar espaço no celular.
 
 FEITO PARA ARQUIVOS GRANDES
-- Uma transferência que perde a conexão continua sozinha quando o aparelho volta
-- Envie de novo um arquivo alterado e só as partes alteradas viajam
-- Envie o mesmo arquivo duas vezes e nada é reenviado
-- Fotos e vídeos saem direto da galeria, ou escolha qualquer arquivo
+- Se a conexão cair, a transferência continua sozinha quando o aparelho voltar
+- Se você reenviar um arquivo alterado, só as partes que mudaram vão pela rede
+- Se enviar o mesmo arquivo duas vezes, na segunda nada é transferido
+- Escolha fotos e vídeos direto da galeria, ou qualquer outro arquivo
 
 PRIVADO POR PRINCÍPIO
 - As transferências entre aparelhos com CrossDrop têm criptografia de ponta a ponta
-- Sem contas, sem anúncios, sem análises, sem rastreamento
+- Sem cadastro, sem anúncios, sem métricas de uso, sem rastreamento
 - Os arquivos nunca saem da sua rede local
-- Os arquivos recebidos vão para uma pasta CrossDrop em Downloads, ou para a pasta que você escolher
-- Código aberto sob a licença Apache-2.0: github.com/GranTurismo/crossdrop
+- Os arquivos recebidos ficam em uma pasta CrossDrop dentro de Downloads, ou na pasta que você escolher
+- Código aberto, com licença Apache-2.0: github.com/GranTurismo/crossdrop
 
 TAMBÉM NO COMPUTADOR E NO IPHONE
-O CrossDrop também roda em Mac, Windows, Linux, iPhone e iPad, e todos funcionam juntos. Links: github.com/GranTurismo/crossdrop
+O CrossDrop também roda em Mac, Windows, Linux, iPhone e iPad, e todas as versões se conectam entre si. Saiba mais em github.com/GranTurismo/crossdrop
 
-ÓTIMO PARA
+IDEAL PARA
 - Passar fotos e vídeos para o notebook sem cabo
-- Compartilhar com um amigo que não instalou nada
-- Mover arquivos grandes quando você está sem sinal ou com pouco plano de dados
-- Navegar e assistir aos arquivos do celular pelo computador
+- Compartilhar arquivos com quem não tem nada instalado
+- Mover arquivos pesados quando você está sem sinal ou com os dados móveis acabando
+- Ver e reproduzir os arquivos do celular pelo computador
 
-Em português, inglês, árabe, espanhol, georgiano, hindi, indonésio, persa, russo e turco. Requer Android 10 ou mais recente.
+Disponível em português, inglês, árabe, espanhol, georgiano, hindi, indonésio, persa, russo e turco. Requer Android 10 ou superior.

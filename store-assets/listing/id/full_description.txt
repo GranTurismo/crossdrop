@@ -1,45 +1,45 @@
-Kirim foto, video, aplikasi, dan file ke orang di dekat Anda tanpa internet, tanpa akun, dan tanpa iklan. CrossDrop memindahkannya langsung dari ponsel Anda ke perangkat lain lewat Wi-Fi Anda sendiri, dengan kecepatan penuh jaringan lokal. Tidak ada yang lewat server.
+Kirim foto, video, aplikasi, dan file ke orang di sekitar Anda tanpa internet, tanpa akun, dan tanpa iklan. CrossDrop mengirimnya langsung dari ponsel Anda ke perangkat lain lewat Wi-Fi Anda sendiri, dengan kecepatan penuh jaringan lokal. Tidak ada yang melewati server.
 
 PENERIMA TIDAK PERLU APLIKASI
-Ketuk "Kirim ke siapa saja" dan kode QR akan muncul. Orang lain memindainya dengan kamera dan mengunduh file di browser mereka. Bisa dengan iPhone, Android, Mac, Windows, Linux, dan Chromebook. Beberapa file tiba sebagai satu zip. Tautannya hanya berfungsi di jaringan lokal Anda.
+Ketuk "Kirim ke siapa saja", lalu kode QR akan muncul. Penerima cukup memindainya dengan kamera dan mengunduh file lewat browser. Berfungsi di iPhone, Android, Mac, Windows, Linux, dan Chromebook. Kalau ada beberapa file, semuanya diterima dalam satu file zip. Tautannya hanya berfungsi di jaringan lokal Anda.
 
 TEMUKAN PERANGKAT DI RADAR
-Buka CrossDrop di dua perangkat dan keduanya muncul di radar langsung. Ketuk perangkat, pilih file, lalu kirim. Penerima mengetuk Terima, dan tidak ada yang masuk tanpa ketukan itu. Atau guncang dua ponsel bersamaan untuk langsung mengirim.
+Buka CrossDrop di dua perangkat, dan keduanya akan muncul di radar secara langsung. Ketuk perangkatnya, pilih file, lalu kirim. Penerima harus mengetuk "Terima" dulu; tanpa itu, tidak ada yang masuk. Atau guncangkan dua ponsel pada saat yang sama, dan Anda langsung bisa mengirim.
 
-TIDAK ADA WI-FI? HUBUNGKAN LANGSUNG
-Satu ponsel Android menampilkan kode, ponsel lain memindainya, dan keduanya terhubung tanpa router dan tanpa data seluler.
+TANPA WI-FI? HUBUNGKAN LANGSUNG
+Satu ponsel Android menampilkan kode, ponsel lain memindainya, dan keduanya langsung terhubung tanpa router dan tanpa data seluler.
 
-APLIKASI, FOLDER, SELURUH PONSEL
-- Kirim aplikasi yang terpasang ke ponsel Android lain, lengkap dengan semua bagiannya. Android akan bertanya sebelum memasang apa pun.
-- Kirim satu folder utuh dan folder itu tiba lengkap dengan subfoldernya.
-- Pindah ponsel: pindahkan foto, video, dan kontak Anda ke ponsel baru.
+APLIKASI, FOLDER, HINGGA SELURUH ISI PONSEL
+- Kirim aplikasi yang sudah terpasang ke ponsel Android lain, lengkap dengan semua bagiannya. Android akan meminta konfirmasi dulu sebelum memasang apa pun.
+- Kirim satu folder utuh, lengkap dengan semua subfoldernya.
+- "Pindah ponsel": bawa foto, video, dan kontak Anda ke ponsel baru.
 
 JADIKAN PONSEL ANDA DRIVE NIRKABEL
-Bagikan folder sebagai drive di Wi-Fi Anda. Jelajahi dan putar isinya dari browser mana pun, atau buka di Finder pada Mac, di Windows Explorer, atau di aplikasi WebDAV apa pun. Secara bawaan hanya bisa dibaca, dengan kode sandi opsional dan sakelar agar tamu bisa mengedit.
+Bagikan sebuah folder sebagai drive di jaringan Wi-Fi Anda. Jelajahi dan putar isinya langsung dari browser apa pun, atau buka lewat Finder di Mac, File Explorer di Windows, atau aplikasi WebDAV apa pun. Secara bawaan, drive hanya bisa dibaca. Anda bisa menambahkan kode sandi jika mau, dan ada sakelar untuk mengizinkan tamu mengedit.
 
 PERANGKAT SAYA
-Tambahkan ponsel, tablet, dan komputer Anda sendiri sekali saja. File di antara perangkat itu masuk tanpa ditanya, dan dengan "Bagikan papan klip" Anda menyalin di satu perangkat lalu menempel di perangkat lain. Foto dan video Anda bisa dicadangkan ke komputer saat keduanya berada di Wi-Fi yang sama, dan setelah komputer memeriksanya Anda bisa mengosongkan ruang di ponsel.
+Tambahkan ponsel, tablet, dan komputer Anda sendiri, cukup sekali saja. Setelah itu, file antarperangkat langsung masuk tanpa perlu konfirmasi, dan dengan "Bagikan papan klip" Anda bisa menyalin di satu perangkat lalu menempelkannya di perangkat lain. Foto dan video Anda juga bisa dicadangkan ke komputer saat ponsel dan komputer terhubung ke Wi-Fi yang sama. Setelah komputer memeriksanya, Anda bisa mengosongkan ruang penyimpanan ponsel.
 
-DIBUAT UNTUK FILE BESAR
-- Transfer yang terputus akan lanjut sendiri saat perangkat kembali
-- Kirim ulang file yang berubah, hanya bagian yang berubah yang dikirim
-- Kirim file yang sama dua kali, tidak ada yang dikirim ulang
-- Foto dan video langsung dari galeri, atau pilih file apa pun
+SIAP UNTUK FILE BESAR
+- Transfer yang terputus akan otomatis berlanjut begitu perangkat terhubung lagi
+- Kirim ulang file yang sudah diubah, dan hanya bagian yang berubah yang dikirim
+- Kirim file yang sama dua kali, dan tidak ada yang dikirim ulang
+- Pilih foto dan video langsung dari galeri, atau file apa pun
 
-PRIVAT SEJAK AWAL
-- Transfer antar perangkat CrossDrop dienkripsi end-to-end
+DIRANCANG UNTUK PRIVASI
+- Transfer antarperangkat CrossDrop dienkripsi end-to-end
 - Tanpa akun, tanpa iklan, tanpa analitik, tanpa pelacakan
 - File tidak pernah keluar dari jaringan lokal Anda
-- File yang diterima masuk ke folder CrossDrop di Download, atau ke folder pilihan Anda
+- File yang diterima disimpan di folder CrossDrop di dalam folder Download, atau di folder pilihan Anda
 - Sumber terbuka dengan lisensi Apache-2.0: github.com/GranTurismo/crossdrop
 
-JUGA DI KOMPUTER DAN IPHONE
-CrossDrop juga berjalan di Mac, Windows, Linux, iPhone, dan iPad, dan semuanya bisa saling terhubung. Tautan: github.com/GranTurismo/crossdrop
+JUGA ADA DI KOMPUTER DAN IPHONE
+CrossDrop juga bisa dipakai di Mac, Windows, Linux, iPhone, dan iPad, dan semuanya saling terhubung. Selengkapnya di github.com/GranTurismo/crossdrop
 
 COCOK UNTUK
 - Memindahkan foto dan video ke laptop tanpa kabel
-- Berbagi dengan teman yang belum memasang apa pun
-- Memindahkan file besar saat tidak ada sinyal atau kuota terbatas
-- Menjelajahi dan memutar file ponsel dari komputer
+- Berbagi file dengan teman yang belum memasang aplikasi apa pun
+- Mengirim file besar saat tidak ada sinyal atau kuota tinggal sedikit
+- Membuka dan memutar file di ponsel dari komputer
 
-Dalam bahasa Indonesia, Inggris, Arab, Georgia, Hindi, Persia, Portugis, Rusia, Spanyol, dan Turki. Memerlukan Android 10 atau yang lebih baru.
+Tersedia dalam bahasa Indonesia, Inggris, Arab, Georgia, Hindi, Persia, Portugis, Rusia, Spanyol, dan Turki. Memerlukan Android 10 atau versi yang lebih baru.
