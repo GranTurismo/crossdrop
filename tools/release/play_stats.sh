@@ -27,7 +27,7 @@ openssl req -x509 -newkey rsa:3072 -noenc -keyout "$TMP/key.pem" -out "$TMP/cert
 
 ref_args=(); [ -z "${PLAY_STATS_REF:-}" ] || ref_args=(--ref "$PLAY_STATS_REF")
 since="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-gh workflow run play-stats.yml "${ref_args[@]}" \
+gh workflow run play-stats.yml ${ref_args[@]+"${ref_args[@]}"} \
   -f recipient="$(base64 < "$TMP/cert.pem" | tr -d '\n')" \
   -f packages="$PACKAGES" -f months="$MONTHS" -f bucket="${PLAY_REPORTS_BUCKET:-}" >/dev/null
 
