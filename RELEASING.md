@@ -140,3 +140,16 @@ Set up 2026-11-17, nothing in the repository holds a certificate or a provisioni
 - Proven on 2026-11-17: a dry run built and cloud-signed both Apple apps on a clean GitHub runner, notarized and
   stapled both DMGs, and App Store Connect's upload service accepted the key (it rejected only the already-used
   build number 3 when I validated that build). The real upload happens on the first release with a bumped build.
+
+## Play statistics
+
+`tools/release/play_stats.sh <out-dir>` gathers CrossDrop's Google Play statistics with the same service account
+(`PLAY_SERVICE_ACCOUNT_JSON`), read-only: the monthly bulk reports (installs, uninstalls and active devices by day, country,
+app version, Android version and device; ratings; crashes; store-listing visitors and conversion; reviews), Android vitals
+(crash and ANR rates) and the last week's written reviews. The key lives only in GitHub, so the script starts
+**Actions -> Play statistics** (`.github/workflows/play-stats.yml`, which runs `tools/release/play_stats_fetch.sh`).
+This repository is public, so the workflow encrypts its result to a one-off certificate the script made; only this
+machine can open it, and the script deletes the artifact once it has it. Write the output somewhere outside the
+repository. Options: a second argument for other packages (space-separated), a third for months (default 3),
+`PLAY_REPORTS_BUCKET` when the workflow can't guess Play's reports bucket (Play Console -> Download reports -> Copy
+Cloud Storage URI). Vitals need the "Google Play Developer Reporting API" enabled in the service account's Cloud project.

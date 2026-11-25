@@ -1,0 +1,71 @@
+name: Play statistics
+
+# Read-only: gathers Google Play statistics with the release service account (PLAY_SERVICE_ACCOUNT_JSON) through
+# tools/release/play_stats_fetch.sh: monthly bulk reports (installs, ratings, crashes, store performance, reviews),
+# Android vitals and the last week's reviews. It changes nothing in Play Console.
+#
+# This repository is public, so its logs and artifacts are readable by anyone. The results are therefore
+# encrypted on the runner to the certificate passed in `recipient`; only the matching private key, which never
+# leaves the machine that asked, opens them. Run it with tools/release/play_stats.sh, which makes a one-off key
+# pair, starts this workflow, downloads and decrypts the result and deletes the artifact again.
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipient:
+        description: "Base64 of the PEM certificate the results are encrypted to (tools/release/play_stats.sh makes one)"
+        required: true
+      packages:
+        description: "Space-separated package names"
+        required: false
+        default: com.crossdrop
+      months:
+        description: "Months of bulk reports, this one included (1-24)"
+        required: false
+        default: "3"
+      bucket:
+        description: "Play's reports bucket (Play Console -> Download reports -> Copy Cloud Storage URI, without gs://). Empty = guess from the developer id"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the recipient certificate
+        env:
+          RECIPIENT: ${{ inputs.recipient }}
+        run: |
+          printf '%s' "$RECIPIENT" | base64 -d > "$RUNNER_TEMP/recipient.pem"
+          openssl x509 -in "$RUNNER_TEMP/recipient.pem" -noout >/dev/null || { echo "::error::recipient is not a base64 PEM certificate"; exit 1; }
+
+      - name: Fetch (the log shows only which sources answered)
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_PACKAGES: ${{ inputs.packages }}
+          PLAY_MONTHS: ${{ inputs.months }}
+          PLAY_REPORTS_BUCKET: ${{ inputs.bucket }}
+        run: |
+          [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ] || { echo "::error::the PLAY_SERVICE_ACCOUNT_JSON secret is not set"; exit 1; }
+          tools/release/play_stats_fetch.sh "$RUNNER_TEMP/stats"
+
+      - name: Encrypt
+        run: |
+          mkdir sealed
+          tar -C "$RUNNER_TEMP" -czf "$RUNNER_TEMP/stats.tgz" stats
+          openssl cms -encrypt -binary -aes256 -outform DER -in "$RUNNER_TEMP/stats.tgz" \
+            -out sealed/stats.p7m "$RUNNER_TEMP/recipient.pem"
+          rm -rf "$RUNNER_TEMP/stats" "$RUNNER_TEMP/stats.tgz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: play-stats
+          path: sealed/stats.p7m
+          retention-days: 1
+          if-no-files-found: error
