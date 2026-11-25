@@ -1,0 +1,45 @@
+Send photos, videos, apps and files to people nearby with no internet, no accounts and no ads. CrossDrop moves them straight from your phone to the other device over your own Wi-Fi, at full local network speed. Nothing goes through a server.
+
+NO APP NEEDED ON THE OTHER SIDE
+Tap "Send to anyone" and a QR code appears. The other person scans it with their camera and downloads in their browser. It works with iPhone, Android, Mac, Windows, Linux and Chromebook. Several files arrive as one zip. The link only works on your local network.
+
+FIND DEVICES ON THE RADAR
+Open CrossDrop on two devices and they show up on a live radar. Tap a device, pick your files, and send. The other person taps Accept, and nothing arrives without that tap. Or shake two phones at the same moment to go straight to sending.
+
+NO WI-FI? CONNECT DIRECTLY
+One Android phone shows a code, the other phone scans it, and the two are connected with no router and no mobile data.
+
+APPS, FOLDERS, WHOLE PHONES
+- Send installed apps to another Android phone, with all their parts. Android asks before it installs anything.
+- Send a whole folder and it arrives with its subfolders.
+- Switch phones: move your photos, videos and contacts to a new phone.
+
+TURN YOUR PHONE INTO A WIRELESS DRIVE
+Share a folder as a drive on your Wi-Fi. Browse and stream it from any web browser, or open it in Finder on a Mac, in Windows Explorer, or in any WebDAV app. It is read-only by default, with an optional passcode and a switch to let guests edit.
+
+MY DEVICES
+Add your own phone, tablet and computer once. Files between them arrive without asking, and with "Share clipboard" you copy on one and paste on another. Your photos and videos can back up to your computer when both are on the same Wi-Fi, and once the computer has checked them you can free up space on your phone.
+
+BUILT FOR BIG FILES
+- A transfer that loses its connection carries on by itself when the device is back
+- Send a changed file again and only the changed parts travel
+- Send the same file twice and nothing is re-sent
+- Photos and videos come straight from your gallery, or pick any file
+
+PRIVATE BY DESIGN
+- Transfers between CrossDrop devices are end-to-end encrypted
+- No accounts, no ads, no analytics, no tracking
+- Files never leave your local network
+- Received files go to a CrossDrop folder in your Downloads, or to a folder you choose
+- Open source under the Apache-2.0 license: github.com/GranTurismo/crossdrop
+
+ALSO ON YOUR COMPUTER AND IPHONE
+CrossDrop also runs on Mac, Windows, Linux, iPhone and iPad, and all of them work together. Links: github.com/GranTurismo/crossdrop
+
+GREAT FOR
+- Getting photos and videos onto a laptop without a cable
+- Sharing with a friend who has not installed anything
+- Moving large files when you have no signal or little mobile data
+- Browsing and streaming your phone's files from your computer
+
+In English, Arabic, Georgian, Hindi, Indonesian, Persian, Portuguese, Russian, Spanish and Turkish. Requires Android 10 or newer.

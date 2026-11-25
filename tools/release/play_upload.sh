@@ -4,6 +4,9 @@
 #
 #   play_upload.sh --check  <package>                         prove the key and its permissions work
 #   play_upload.sh --upload <package> <app.aab> <notes.txt>   upload, roll out to production, send for review
+#   play_upload.sh --listings <package> <dir>                  store listing texts from <dir>/<language>/
+#                                                              {title,short_description,full_description}.txt
+#                                                              (PLAY_DRY_RUN=1: validate only, change nothing)
 #
 # The service account key is read from $PLAY_SERVICE_ACCOUNT_JSON (its contents) or, when that is
 # unset, from the file in $PLAY_SERVICE_ACCOUNT_FILE. Nothing secret is ever printed.
@@ -66,7 +69,7 @@ call() {
 }
 
 mode="${1:-}"; PKG="${2:-}"
-[ -n "$mode" ] && [ -n "$PKG" ] || die "usage: $0 --check <package> | --upload <package> <app.aab> <notes.txt>"
+[ -n "$mode" ] && [ -n "$PKG" ] || die "usage: $0 --check <package> | --upload <package> <app.aab> <notes.txt> | --listings <package> <dir>"
 load_key; token
 
 new_edit() { call POST "$API/$PKG/edits" -H 'Content-Type: application/json' -d '{}' | jq -r .id; }
@@ -102,6 +105,44 @@ case "$mode" in
     # With "Managed publishing" off (this app), committing sends the change straight to Google's review.
     call POST "$API/$PKG/edits/$EDIT:commit" >/dev/null
     echo "committed: $PKG $NAME is on the $TRACK track ($STATUS) and sent for review"
+    ;;
+
+  --listings)
+    DIR="${3:-}"
+    [ -d "$DIR" ] || die "no such folder: $DIR"
+    # Check every language before touching Play. Google counts characters; limits 30 / 80 / 4000.
+    langs=()
+    for d in "$DIR"/*/; do
+      lang="$(basename "$d")"
+      for f in title short_description full_description; do [ -s "$d/$f.txt" ] || die "$lang: missing $f.txt"; done
+      t="$(wc -m < "$d/title.txt")"; s="$(wc -m < "$d/short_description.txt")"; l="$(wc -m < "$d/full_description.txt")"
+      # wc counts the trailing newline, which is stripped before sending
+      [ "$t" -le 31 ] && [ "$s" -le 81 ] && [ "$l" -le 4001 ] || die "$lang: over Google's limits (title $t, short $s, full $l incl. newline)"
+      langs+=("$lang")
+    done
+    [ "${#langs[@]}" -gt 0 ] || die "no languages in $DIR"
+
+    EDIT="$(new_edit)"
+    have="$(call GET "$API/$PKG/edits/$EDIT/listings" | jq -r '[.listings[]?.language] | join(" ")')"
+    echo "live languages: ${have:-none}"
+    for lang in "${langs[@]}"; do
+      d="$DIR/$lang"
+      body="$(jq -cn --arg lang "$lang" --rawfile t "$d/title.txt" --rawfile s "$d/short_description.txt" --rawfile f "$d/full_description.txt" \
+        '{language:$lang, title:($t|rtrimstr("\n")), shortDescription:($s|rtrimstr("\n")), fullDescription:($f|rtrimstr("\n"))}')"
+      # PATCH an existing listing so fields we don't send (the promo video) stay; PUT creates a new language.
+      if [[ " $have " == *" $lang "* ]]; then method=PATCH; what=updated; else method=PUT; what=added; fi
+      call "$method" "$API/$PKG/edits/$EDIT/listings/$lang" -H 'Content-Type: application/json' -d "$body" >/dev/null
+      echo "  $lang: $what"
+    done
+    call POST "$API/$PKG/edits/$EDIT:validate" >/dev/null
+    if [ -n "${PLAY_DRY_RUN:-}" ]; then
+      call DELETE "$API/$PKG/edits/$EDIT" >/dev/null
+      echo "dry run: Google accepted all ${#langs[@]} listings; nothing was changed"
+    else
+      # With "Managed publishing" off (this app), committing sends the change straight to Google's review.
+      call POST "$API/$PKG/edits/$EDIT:commit" >/dev/null
+      echo "committed: ${#langs[@]} listings sent for review"
+    fi
     ;;
 
   *) die "unknown mode $mode" ;;

@@ -153,3 +153,13 @@ machine can open it, and the script deletes the artifact once it has it. Write t
 repository. Options: a second argument for other packages (space-separated), a third for months (default 3),
 `PLAY_REPORTS_BUCKET` when the workflow can't guess Play's reports bucket (Play Console -> Download reports -> Copy
 Cloud Storage URI). Vitals need the "Google Play Developer Reporting API" enabled in the service account's Cloud project.
+
+## Play store listing
+
+The listing texts live in `store-assets/listing/<language>/` (`title.txt` ≤ 30 characters, `short_description.txt`
+≤ 80, `full_description.txt` ≤ 4000; Play's language codes, e.g. `es-419`, `pt-BR`, `ka-GE`). After editing them, run
+**Actions -> Play store listing**: by default a dry run (Google validates every text, nothing changes); tick "publish" to
+send them to Google's review. Languages already on Play are updated in place, so the promo video and the graphics stay;
+the translations reuse the en-US screenshots. Locally: `PLAY_DRY_RUN=1 tools/release/play_upload.sh --listings
+com.crossdrop store-assets/listing` with a key file in `PLAY_SERVICE_ACCOUNT_FILE`. The texts in other languages are
+machine translations: have a native reader look at them when you can.

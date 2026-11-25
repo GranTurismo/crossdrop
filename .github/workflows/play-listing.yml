@@ -1,0 +1,35 @@
+name: Play store listing
+
+# Sends the Google Play store listing texts in store-assets/listing/<language>/ (title, short and full description)
+# with tools/release/play_upload.sh --listings. Languages already on Play are updated in place (the promo video and
+# graphics stay), new ones are added; languages that are on Play but not in the folder are left alone.
+# By default it is a dry run: Google validates every text and nothing changes. Tick "publish" to commit, which
+# sends the listing to Google's review (Managed publishing is off for this app).
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish (send to Google's review). Off = dry run, nothing changes."
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  listing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LC_ALL: C.UTF-8   # wc -m must count characters, not bytes
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Send the listings
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_DRY_RUN: ${{ inputs.publish && '' || '1' }}
+        run: |
+          [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ] || { echo "::error::the PLAY_SERVICE_ACCOUNT_JSON secret is not set"; exit 1; }
+          tools/release/play_upload.sh --listings com.crossdrop store-assets/listing
