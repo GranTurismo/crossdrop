@@ -29,7 +29,7 @@ jobs:
       - name: Send the listings
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          PLAY_DRY_RUN: ${{ inputs.publish && '' || '1' }}
+          PLAY_DRY_RUN: ${{ !inputs.publish && '1' || '' }}  # '1' = dry run; an empty string would count as false, so test the negation
         run: |
           [ -n "$PLAY_SERVICE_ACCOUNT_JSON" ] || { echo "::error::the PLAY_SERVICE_ACCOUNT_JSON secret is not set"; exit 1; }
           tools/release/play_upload.sh --listings com.crossdrop store-assets/listing
