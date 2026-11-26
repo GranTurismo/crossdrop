@@ -25,10 +25,16 @@ import java.util.zip.CRC32
  * the token (404, not 403 — the surface is invisible).
  *
  *   GET /<token>/               single-file HTML client
- *   GET /<token>/manifest.json  {device, files[], zip}
+ *   GET /<token>/manifest.json  {device, files[{i, name, size, mime, view}], zip}
  *   GET /<token>/status.json    live download counters (the page polls this)
- *   GET /<token>/f/<i>          file i (GET or HEAD, Content-Disposition)
+ *   GET /<token>/f/<i>          file i (GET or HEAD, Content-Disposition: attachment)
+ *   GET /<token>/v/<i>          photo i shown in the page (inline; only for [previewType] images,
+ *                               so an iPhone can press-and-hold it into Photos). 404 for anything else.
  *   GET /<token>/all.zip        all files as an uncompressed ZIP
+ *
+ * A preview counts as a download: the photo's bytes did reach the other device.
+ * Every response says nosniff, no-referrer (the token is in the URL) and files are CSP-sandboxed,
+ * so a shared file can never run as a page under the share's address.
  */
 class HttpShareServer(
     private val files: List<OutgoingFile>,
@@ -123,6 +129,12 @@ class HttpShareServer(
                 if (i !in files.indices) { notFound(output, headOnly); return }
                 sendFile(files[i], headOnly, output)
             }
+            path.startsWith("/$token/v/") -> {
+                val i = path.removePrefix("/$token/v/").toIntOrNull() ?: -1
+                val type = files.getOrNull(i)?.meta?.let { previewType(it.name, it.mime) }
+                if (type == null) { notFound(output, headOnly); return }
+                sendFile(files[i], headOnly, output, inlineType = type)
+            }
             path == "/$token/all.zip" -> sendZip(headOnly, output)
             else -> notFound(output, headOnly)
         }
@@ -134,7 +146,7 @@ class HttpShareServer(
             ShareManifest(
                 device = deviceName,
                 files = files.mapIndexed { i, f ->
-                    ShareFileEntry(i, f.meta.name, f.meta.size, f.meta.mime)
+                    ShareFileEntry(i, f.meta.name, f.meta.size, f.meta.mime, previewType(f.meta.name, f.meta.mime) != null)
                 },
                 zip = zip,
             )
@@ -154,6 +166,7 @@ class HttpShareServer(
         sb.append("Content-Type: ").append(contentType).append("\r\n")
         sb.append("Content-Length: ").append(body.size).append("\r\n")
         sb.append("Cache-Control: no-store\r\n")
+        sb.append(SAFETY_HEADERS)
         sb.append("Connection: close\r\n")
         extra.forEach { (k, v) -> sb.append(k).append(": ").append(v).append("\r\n") }
         sb.append("\r\n")
@@ -162,7 +175,8 @@ class HttpShareServer(
         output.flush()
     }
 
-    private fun sendFile(file: OutgoingFile, headOnly: Boolean, output: OutputStream) {
+    /** [inlineType] set = a photo preview: served inline with that (allow-listed) type instead of as a download. */
+    private fun sendFile(file: OutgoingFile, headOnly: Boolean, output: OutputStream, inlineType: String? = null) {
         val meta = file.meta
         // CR/LF in a filename or MIME would split response headers.
         val safeName = meta.name.replace(Regex("[\r\n\\\\\"]"), "_")
@@ -170,10 +184,12 @@ class HttpShareServer(
             ?: "application/octet-stream"
         val utf8Name = rfc5987(meta.name)
         val sb = StringBuilder("HTTP/1.1 200 OK\r\n")
-        sb.append("Content-Type: ").append(safeMime).append("\r\n")
+        sb.append("Content-Type: ").append(inlineType ?: safeMime).append("\r\n")
         sb.append("Content-Length: ").append(meta.size).append("\r\n")
-        sb.append("Content-Disposition: attachment; filename=\"").append(safeName)
+        sb.append("Content-Disposition: ").append(if (inlineType != null) "inline" else "attachment")
+            .append("; filename=\"").append(safeName)
             .append("\"; filename*=UTF-8''").append(utf8Name).append("\r\n")
+        sb.append(SAFETY_HEADERS).append("Content-Security-Policy: sandbox\r\n")
         sb.append("Connection: close\r\n\r\n")
         output.write(sb.toString().toByteArray(Charsets.ISO_8859_1))
         if (headOnly) { output.flush(); return }
@@ -199,7 +215,7 @@ class HttpShareServer(
             return
         }
         output.write("HTTP/1.1 200 OK\r\nContent-Type: application/zip\r\n".toByteArray(Charsets.ISO_8859_1))
-        output.write("Content-Disposition: attachment; filename=\"crossdrop.zip\"\r\nConnection: close\r\n\r\n".toByteArray(Charsets.ISO_8859_1))
+        output.write("Content-Disposition: attachment; filename=\"crossdrop.zip\"\r\n${SAFETY_HEADERS}Connection: close\r\n\r\n".toByteArray(Charsets.ISO_8859_1))
 
         onEvent(Event.DOWNLOAD_STARTED)
         started.incrementAndGet()
@@ -333,13 +349,35 @@ class HttpShareServer(
     @Serializable
     private data class ShareManifest(val device: String, val files: List<ShareFileEntry>, val zip: Boolean)
 
+    /** `view` = the page may show it as a photo ([previewType] is not null). Always written (no default). */
     @Serializable
-    private data class ShareFileEntry(val i: Int, val name: String, val size: Long, val mime: String?)
+    private data class ShareFileEntry(val i: Int, val name: String, val size: Long, val mime: String?, val view: Boolean)
 
-    private companion object {
-        const val MAX_HEAD = 16 * 1024
-        const val CHUNK = 64 * 1024
-        const val IO_TIMEOUT_MS = 120_000
-        const val ZIP64_LIMIT = 0xFFFF_FFFFL
+    companion object {
+        private const val MAX_HEAD = 16 * 1024
+        private const val CHUNK = 64 * 1024
+        private const val IO_TIMEOUT_MS = 120_000
+        private const val ZIP64_LIMIT = 0xFFFF_FFFFL
+        // no-referrer: the capability token lives in the URL and must not leak through a link.
+        private const val SAFETY_HEADERS = "X-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n"
+
+        private val PREVIEW_TYPES = setOf(
+            "image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/avif",
+        )
+        private val PREVIEW_EXTENSIONS = mapOf(
+            "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "png" to "image/png", "gif" to "image/gif",
+            "webp" to "image/webp", "heic" to "image/heic", "heif" to "image/heif", "avif" to "image/avif",
+        )
+
+        /**
+         * The type a file may be shown inline with, or null. Only raster photo types from a fixed list
+         * (never SVG or HTML, which can carry script); the sender's MIME string is never echoed as is.
+         * Swift twin: `HttpShareServer.previewType`.
+         */
+        fun previewType(name: String, mime: String?): String? {
+            val m = mime?.substringBefore(';')?.trim()?.lowercase()
+            if (m != null && m in PREVIEW_TYPES) return m
+            return PREVIEW_EXTENSIONS[name.substringAfterLast('.', "").lowercase()]
+        }
     }
 }

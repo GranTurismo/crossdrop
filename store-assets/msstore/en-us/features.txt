@@ -1,0 +1,13 @@
+Send photos, videos, files and whole folders to nearby devices over your own Wi-Fi
+A live radar shows the phones, tablets and computers running CrossDrop on your network
+Send to anyone: a QR code lets any phone download your files in its browser, no app needed
+Turn this PC into a drive that any browser, File Explorer, Finder or WebDAV app can open
+My devices: your own phones and computers send to each other without asking
+Share clipboard: copy on one paired device, paste on another
+Back up an Android phone's photos and videos to Pictures\CrossDrop Backup
+Interrupted transfers carry on by themselves when the device is back
+Send a changed file again and only the changed parts travel
+End-to-end encrypted, with no accounts, no ads and no tracking
+Received files go to Downloads\CrossDrop, or to a folder you choose
+Keeps receiving from the system tray when the window is closed
+Works with Android, iPhone, iPad, Mac and Linux

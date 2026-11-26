@@ -1,0 +1,39 @@
+Envía fotos, videos y archivos a quien tengas cerca, sin internet, sin registrarte y sin anuncios. CrossDrop los lleva directo de tu dispositivo al otro por tu propio Wi-Fi, a la máxima velocidad de tu red local. Nada pasa por ningún servidor.
+
+ENCUENTRA DISPOSITIVOS EN EL RADAR
+Abre CrossDrop en dos dispositivos y aparecen en un radar en tiempo real. Toca un dispositivo, elige tus archivos y envíalos. La otra persona toca Aceptar: sin ese toque, no llega nada. O agita tu celular al mismo tiempo que la otra persona para ir directo al envío.
+
+QUIEN RECIBE NO NECESITA LA APP
+Toca "Enviar a cualquiera" y aparece un código QR. La otra persona lo escanea con la cámara y descarga los archivos en su navegador, desde cualquier celular o computadora. Si son varios archivos, llegan juntos en un zip. El enlace solo funciona en tu red local.
+
+¿NO COMPARTEN WI-FI? CONECTAR DIRECTAMENTE
+Toca "Escanear un código" y apunta la cámara al código que muestra el otro celular. Tu iPhone se une a su red y los dos dispositivos se encuentran. También funciona cualquier código QR de Wi-Fi, como el de tu router.
+
+MÁS QUE ARCHIVOS
+- Envía un texto o un enlace, y la otra persona lo copia con un toque.
+- Envía contactos: llegan directo a los contactos de la otra persona.
+- Con "Cambiar de teléfono", pasa tus fotos, videos y contactos a tu celular nuevo.
+
+UNIDAD INALÁMBRICA
+Comparte una carpeta como unidad en tu red Wi-Fi. Otras personas exploran sus archivos y los reproducen desde cualquier navegador, desde el Finder de una Mac o desde cualquier app WebDAV. Por defecto es de solo lectura; si quieres, puedes ponerle un código y activar un interruptor para que los invitados editen. Las unidades de otros dispositivos con CrossDrop se abren dentro de la app.
+
+MIS DISPOSITIVOS
+Agrega tu iPhone, tu iPad y tu computadora una sola vez. Entre ellos, los archivos llegan sin pedir confirmación, y con "Compartir portapapeles" copias en uno y pegas en otro.
+
+PENSADO PARA ARCHIVOS GRANDES
+- Si vuelves a enviar un archivo modificado, solo viajan las partes que cambiaron
+- Si envías el mismo archivo dos veces, la segunda vez no se transfiere nada
+- Si se corta la conexión, vuelve a enviarlo y la transferencia sigue donde se quedó
+
+PRIVACIDAD DESDE EL DISEÑO
+- Las transferencias entre dispositivos con CrossDrop tienen cifrado de extremo a extremo
+- Sin registro, sin anuncios, sin analíticas, sin rastreo
+- Tus archivos nunca salen de tu red local
+- Código abierto con licencia Apache-2.0
+
+FUNCIONA EN TODOS TUS DISPOSITIVOS
+CrossDrop funciona en iPhone, iPad, Mac y otras plataformas, y todos se ven entre sí. En la Mac, arrastra archivos a CrossDrop para enviarlos; lo que recibes se guarda en una carpeta CrossDrop dentro de Descargas. En el iPhone y el iPad, lo encuentras en la app Archivos, en la carpeta CrossDrop.
+
+CONSEJOS
+- Mantén CrossDrop abierto mientras envías, recibes o compartes una unidad: el iPhone y el iPad pausan la actividad de red en segundo plano.
+- Ambos dispositivos deben estar en la misma red Wi-Fi. Permite el acceso a la red local cuando se te pida.

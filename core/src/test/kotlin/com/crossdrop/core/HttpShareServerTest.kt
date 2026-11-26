@@ -146,4 +146,79 @@ class HttpShareServerTest {
         assertEquals(404, get("/$token/f/9").first)
         assertEquals(404, get("/$token/f/abc").first)
     }
+
+    // ---- photo previews (v/<i>) ----
+
+    private val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte(), 1, 2, 3)
+    private val script = "<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>".toByteArray()
+
+    private fun startWithPhotos(): HttpShareServer {
+        fun file(name: String, mime: String?, bytes: ByteArray) =
+            OutgoingFile(FileMeta(name, bytes.size.toLong(), mime)) { ByteArrayInputStream(bytes) }
+        val shared = listOf(
+            file("beach.JPG", null, jpeg),                       // no MIME: the extension decides
+            file("drawing.svg", "image/svg+xml", script),        // an image type that can carry script
+            file("notes.txt", "text/plain", payloadB),
+            file("trick.jpg", "text/html", script),              // the sender's MIME is never echoed for a preview
+            file("pic.webp", "image/webp; charset=x", jpeg),
+        )
+        return HttpShareServer(shared, "TestPhone", token).also { it.start(); server = it }
+    }
+
+    private fun head(path: String): Map<String, String> {
+        val conn = URL("http://127.0.0.1:${server!!.port}$path").openConnection() as HttpURLConnection
+        conn.connectTimeout = 5000; conn.readTimeout = 5000
+        conn.responseCode
+        val h = conn.headerFields.filterKeys { it != null }.mapKeys { it.key.lowercase() }.mapValues { it.value.joinToString(",") }
+        runCatching { conn.inputStream.readBytes() }
+        conn.disconnect()
+        return h
+    }
+
+    @Test
+    fun `photos are served inline with an allow-listed type, everything else is not`() {
+        startWithPhotos()
+        val (code, body) = get("/$token/v/0")
+        assertEquals(200, code)
+        assertArrayEquals(jpeg, body)
+        val h = head("/$token/v/0")
+        assertEquals("image/jpeg", h["content-type"])
+        assertTrue(h["content-disposition"]!!, h["content-disposition"]!!.startsWith("inline;"))
+        assertEquals("nosniff", h["x-content-type-options"])
+        assertEquals("sandbox", h["content-security-policy"])
+        assertEquals("no-referrer", h["referrer-policy"])
+
+        assertEquals("image/jpeg", head("/$token/v/3")["content-type"])   // named .jpg, claimed text/html
+        assertEquals("image/webp", head("/$token/v/4")["content-type"])   // parameters dropped
+        assertEquals(404, get("/$token/v/1").first)                       // SVG
+        assertEquals(404, get("/$token/v/2").first)                       // text
+        assertEquals(404, get("/$token/v/9").first)
+        assertEquals(404, get("/$token/v/x").first)
+        assertEquals(404, get("/wrongtoken/v/0").first)
+    }
+
+    @Test
+    fun `downloads stay attachments and the manifest says which files are photos`() {
+        startWithPhotos()
+        val h = head("/$token/f/0")
+        assertTrue(h["content-disposition"]!!.startsWith("attachment;"))
+        assertEquals("sandbox", h["content-security-policy"])
+        assertEquals("text/html", head("/$token/f/3")["content-type"])   // the download keeps its MIME, sandboxed
+        assertEquals("sandbox", head("/$token/f/3")["content-security-policy"])
+        val json = String(get("/$token/manifest.json").second)
+        assertTrue(json, Regex("\"name\":\"beach\\.JPG\"[^}]*\"view\":true").containsMatchIn(json))
+        assertTrue(json, Regex("\"name\":\"drawing\\.svg\"[^}]*\"view\":false").containsMatchIn(json))
+        assertTrue(json, Regex("\"name\":\"notes\\.txt\"[^}]*\"view\":false").containsMatchIn(json))
+        assertEquals("no-referrer", head("/$token/")["referrer-policy"])
+    }
+
+    @Test
+    fun `preview types`() {
+        assertEquals("image/jpeg", HttpShareServer.previewType("a.jpeg", null))
+        assertEquals("image/heic", HttpShareServer.previewType("IMG_1.HEIC", "application/octet-stream"))
+        assertEquals("image/png", HttpShareServer.previewType("noext", "IMAGE/PNG"))
+        assertEquals(null, HttpShareServer.previewType("a.svg", "image/svg+xml"))
+        assertEquals(null, HttpShareServer.previewType("a.html", "text/html"))
+        assertEquals(null, HttpShareServer.previewType("jpg", null))
+    }
 }

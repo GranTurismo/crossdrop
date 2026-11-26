@@ -1,1 +1,1 @@
-airdrop,file transfer,share files,wifi,nearby,local,private,send,qr,webdav,drive,offline
+transfer photos,file transfer,share files,wifi,nearby,local,private,send,qr,webdav,drive,offline

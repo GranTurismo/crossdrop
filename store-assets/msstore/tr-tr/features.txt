@@ -1,0 +1,13 @@
+Fotoğrafları, videoları, dosyaları ve bütün klasörleri kendi Wi-Fi ağınızla yakındaki cihazlara gönderin
+Canlı radar, ağınızda CrossDrop çalıştıran telefonları, tabletleri ve bilgisayarları gösterir
+Herkese gönder: QR kodu okutan her telefon, dosyalarınızı uygulama olmadan tarayıcıdan indirir
+Bu PC'yi tarayıcıdan, Dosya Gezgini'nden, Finder'dan ya da WebDAV uygulamalarından açılan bir sürücüye dönüştürün
+Cihazlarım: kendi telefonlarınız ve bilgisayarlarınız birbirine sormadan dosya gönderir
+Panoyu paylaş: eşleştirilmiş bir cihazda kopyalayın, diğerinde yapıştırın
+Android telefonunuzun fotoğraf ve videolarını Pictures\CrossDrop Backup klasörüne yedekleyin
+Kesilen aktarımlar, cihaz geri geldiğinde kendiliğinden devam eder
+Değiştirilmiş bir dosyayı yeniden gönderdiğinizde yalnızca değişen kısımlar aktarılır
+Uçtan uca şifreleme; hesap, reklam ve takip yok
+Gelen dosyalar İndirilenler'deki CrossDrop klasörüne ya da seçtiğiniz klasöre kaydedilir
+Pencere kapalıyken sistem tepsisinden dosya almaya devam eder
+Android, iPhone, iPad, Mac ve Linux ile çalışır

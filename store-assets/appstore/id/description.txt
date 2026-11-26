@@ -1,0 +1,39 @@
+Kirim foto, video, dan file ke orang di sekitar Anda tanpa internet, tanpa akun, dan tanpa iklan. CrossDrop mengirimnya langsung dari perangkat Anda ke perangkat lain lewat Wi-Fi Anda sendiri, dengan kecepatan penuh jaringan lokal. Tidak ada yang melewati server.
+
+TEMUKAN PERANGKAT DI RADAR
+Buka CrossDrop di dua perangkat, dan keduanya akan muncul di radar secara langsung. Ketuk perangkatnya, pilih file, lalu kirim. Penerima harus mengetuk "Terima" dulu; tanpa itu, tidak ada yang masuk. Atau guncangkan dua ponsel pada saat yang sama, dan Anda langsung bisa mengirim.
+
+PENERIMA TIDAK PERLU APLIKASI
+Ketuk "Kirim ke siapa saja", lalu kode QR akan muncul. Penerima cukup memindainya dengan kamera dan mengunduh file lewat browser, di ponsel atau komputer apa pun. Kalau ada beberapa file, semuanya diterima dalam satu file zip. Tautannya hanya berfungsi di jaringan lokal Anda.
+
+TIDAK SATU WI-FI? HUBUNGKAN LANGSUNG
+Ketuk "Pindai kode" dan arahkan kamera ke kode yang ditampilkan ponsel lain. iPhone Anda akan bergabung ke jaringannya, dan kedua perangkat saling menemukan. Kode QR Wi-Fi apa pun juga bisa, misalnya yang tertempel di router.
+
+LEBIH DARI SEKADAR FILE
+- Kirim teks atau tautan, dan penerima bisa menyalinnya dengan satu ketukan.
+- Kirim kontak, dan kontak langsung masuk ke daftar kontak penerima.
+- "Pindah ponsel": bawa foto, video, dan kontak Anda ke ponsel baru.
+
+DRIVE NIRKABEL
+Bagikan sebuah folder sebagai drive di jaringan Wi-Fi Anda. Orang lain bisa menjelajahi dan memutar isinya dari browser apa pun, dari Finder di Mac, atau dari aplikasi WebDAV apa pun. Secara bawaan, drive hanya bisa dibaca. Anda bisa menambahkan kode sandi jika mau, dan ada sakelar untuk mengizinkan tamu mengedit. Drive CrossDrop dari perangkat lain bisa dibuka langsung di dalam aplikasi.
+
+PERANGKAT SAYA
+Tambahkan iPhone, iPad, dan komputer Anda sendiri, cukup sekali saja. Setelah itu, file antarperangkat langsung masuk tanpa perlu konfirmasi, dan dengan "Bagikan papan klip" Anda bisa menyalin di satu perangkat lalu menempelkannya di perangkat lain.
+
+SIAP UNTUK FILE BESAR
+- Kirim ulang file yang sudah diubah, dan hanya bagian yang berubah yang dikirim
+- Kirim file yang sama dua kali, dan tidak ada yang dikirim ulang
+- Jika koneksi terputus, kirim lagi dan transfer berlanjut dari titik terakhir
+
+DIRANCANG UNTUK PRIVASI
+- Transfer antarperangkat CrossDrop dienkripsi end-to-end
+- Tanpa akun, tanpa iklan, tanpa analitik, tanpa pelacakan
+- File tidak pernah keluar dari jaringan lokal Anda
+- Sumber terbuka dengan lisensi Apache-2.0
+
+BERFUNGSI DI SEMUA PERANGKAT ANDA
+CrossDrop berjalan di iPhone, iPad, Mac, dan platform lain, dan semuanya saling terlihat. Di Mac, seret file ke CrossDrop untuk mengirim; file yang diterima disimpan di folder CrossDrop di dalam folder Unduhan. Di iPhone dan iPad, file ada di app File, di folder CrossDrop.
+
+TIPS
+- Biarkan CrossDrop tetap terbuka saat mengirim, menerima, atau berbagi drive: iPhone dan iPad menjeda aktivitas jaringan di latar belakang.
+- Kedua perangkat harus berada di jaringan Wi-Fi yang sama. Izinkan akses Jaringan Lokal saat diminta.

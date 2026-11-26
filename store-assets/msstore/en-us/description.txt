@@ -1,0 +1,38 @@
+Send photos, videos and files between your PC and the phones, tablets and computers around you, with no internet, no accounts and no ads. CrossDrop moves them straight from one device to the other over your own Wi-Fi, at full local network speed. Nothing goes through a server.
+
+FIND DEVICES ON THE RADAR
+Open CrossDrop on your PC and on a phone on the same Wi-Fi, and they show up on each other's radar. Click a device, pick files or a whole folder, and send, or simply drop files onto the window. The other person taps Accept, and nothing arrives without that tap.
+
+NO APP NEEDED ON THE OTHER SIDE
+Click "Send to anyone" and a QR code appears. The other person scans it with their phone's camera and downloads the files in their browser. It works with iPhone, Android, Mac, Windows, Linux and Chromebook. Several files arrive as one zip. The link only works on your local network.
+
+TURN THIS PC INTO A DRIVE
+Share a folder as a drive on your Wi-Fi. Phones, tablets and other computers can browse and stream it from any web browser, from File Explorer on another PC, from Finder on a Mac, or from any WebDAV app. It is read-only by default, with an optional passcode and a switch to let guests edit. Drives shared by other devices open right inside the app.
+
+MY DEVICES
+Add your own phone, tablet and computer once. Files you send between them arrive without asking, and with "Share clipboard" you copy on one and paste on another.
+
+PHONE BACKUPS
+Pair your Android phone with this PC, and its photos and videos back up here whenever both are on the same Wi-Fi, in full quality, with their dates and places. They go to Pictures\CrossDrop Backup, one folder per month. Once the PC has checked them, you can free up space on the phone.
+
+BUILT FOR BIG FILES
+- A transfer that loses its connection carries on by itself when the device is back
+- Send a changed file again and only the changed parts travel
+- Send the same file twice and nothing is re-sent
+- Folders arrive with all their subfolders
+
+MADE FOR WINDOWS
+- Received files go to Downloads\CrossDrop and open from File Explorer, or go to a folder you choose
+- Close the window and CrossDrop keeps receiving from the system tray
+- Windows Firewall asks once, on first launch: allow CrossDrop on private networks so phones can find your PC
+
+PRIVATE BY DESIGN
+- Transfers between CrossDrop devices are end-to-end encrypted
+- No accounts, no ads, no analytics, no tracking
+- Files never leave your local network
+- Open source under the Apache-2.0 license
+
+ALSO ON YOUR PHONE
+CrossDrop also runs on Android, iPhone, iPad, Mac and Linux, and all of them work together. Get it for your phone on Google Play or the App Store.
+
+Available in English, Arabic, Georgian, Hindi, Indonesian, Persian, Portuguese, Russian, Spanish and Turkish.

@@ -115,10 +115,15 @@ final class ShareAuditTests: XCTestCase {
             XCTAssertTrue(r.head.lowercased().contains("referrer-policy: no-referrer"), path)
             XCTAssertTrue(r.head.lowercased().contains("x-content-type-options: nosniff"), path)
         }
-        // the page itself loads nothing from other origins
+        // the page itself loads nothing from other origins (store links are plain <a> links, followed only on a tap)
         let page = try raw(port, "GET /\(token)/ HTTP/1.1\r\nHost: x\r\n\r\n")
         let html = String(decoding: page.body, as: UTF8.self)
-        XCTAssertFalse(html.contains("src=\"http") || html.contains("href=\"http") || html.contains("url(http"))
+        XCTAssertFalse(html.contains("src=\"http") || html.contains("url(http") || html.contains("<link"))
+        // ...and following one can't hand the token-bearing address to the store
+        XCTAssertTrue(html.contains("<meta name=\"referrer\" content=\"no-referrer\">"))
+        let outbound = html.components(separatedBy: "<a ").dropFirst().filter { $0.contains("href=\"http") }
+        XCTAssertFalse(outbound.isEmpty)
+        for a in outbound { XCTAssertTrue(a.prefix(400).contains("rel=\"noopener noreferrer\""), String(a.prefix(80))) }
     }
 
     func testFilenameCannotInjectHeaders() throws {

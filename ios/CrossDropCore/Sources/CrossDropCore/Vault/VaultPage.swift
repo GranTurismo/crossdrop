@@ -5,6 +5,7 @@ enum VaultPage {
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
 <title>CrossDrop Vault</title>
 <style>
 :root{--bg:#030014;--panel:#141033;--edge:#2b2360;--txt:#eef2ff;--dim:#8b93bb;
@@ -67,6 +68,8 @@ padding:12px 0 12px 10px;margin:14px 0;outline:none}
 background:var(--panel);border:1px solid var(--teal);color:var(--txt);
 box-shadow:0 0 18px rgba(59,255,176,.25);
 padding:10px 18px;border-radius:99px;font-size:13px;display:none}
+.getapp{margin-top:22px;text-align:center;color:var(--dim);font-size:12px}
+.getapp a{color:var(--teal);text-decoration:none;font-weight:700;white-space:nowrap}
 </style></head>
 <body>
 <div class="wrap">
@@ -81,6 +84,8 @@ padding:10px 18px;border-radius:99px;font-size:13px;display:none}
   <div id="prog"><i></i></div>
   <div id="err"></div>
   <div class="card" id="list"><div class="empty">Loading…</div></div>
+  <div class="getapp">Shared with CrossDrop: free file sharing, no ads, no account.
+    <a id="getapp" href="https://github.com/GranTurismo/crossdrop#readme" target="_blank" rel="noopener noreferrer">Get the app</a></div>
 </div>
 <div id="pinbox"><div class="card">
   <b>This drive needs a PIN</b>
@@ -190,6 +195,14 @@ api("/api/info").then(j=>{
   if(j.pin&&!pin)$("#pinbox").classList.add("on");
 }).catch(()=>{});
 load("/");
+(()=>{const ua=navigator.userAgent,touchMac=/Macintosh/.test(ua)&&navigator.maxTouchPoints>1,a=$("#getapp");
+  const p=/Android/.test(ua)?["https://play.google.com/store/apps/details?id=com.crossdrop&referrer=utm_source%3Ddrive_page%26utm_medium%3Dweb","Android"]
+    :/iPhone|iPod/.test(ua)?["https://apps.apple.com/app/crossdrop/id6824914660","iPhone"]
+    :/iPad/.test(ua)||touchMac?["https://apps.apple.com/app/crossdrop/id6824914660","iPad"]
+    :/Macintosh/.test(ua)?["https://apps.apple.com/app/crossdrop/id6824914660","Mac"]
+    :/Windows/.test(ua)?["https://apps.microsoft.com/detail/9PBRFPV9GD7P?cid=drive_page","Windows"]
+    :/Linux|X11/.test(ua)?["https://github.com/GranTurismo/crossdrop/releases/latest","Linux"]:null;
+  if(p){a.href=p[0];a.textContent="Get CrossDrop for "+p[1]}})();
 </script>
 </body></html>
 

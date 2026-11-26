@@ -1,0 +1,38 @@
+Envía fotos, videos y archivos entre tu PC y los celulares, tablets y computadoras que tengas cerca, sin internet, sin registrarte y sin anuncios. CrossDrop los lleva directo de un dispositivo a otro por tu propio Wi-Fi, a la máxima velocidad de tu red local. Nada pasa por ningún servidor.
+
+ENCUENTRA DISPOSITIVOS EN EL RADAR
+Abre CrossDrop en tu PC y en un celular conectado al mismo Wi-Fi, y cada uno aparece en el radar del otro. Haz clic en un dispositivo, elige archivos o una carpeta entera y envíalos, o simplemente arrastra los archivos a la ventana. La otra persona toca Aceptar: sin ese toque, no llega nada.
+
+QUIEN RECIBE NO NECESITA LA APP
+Haz clic en "Enviar a cualquiera" y aparece un código QR. La otra persona lo escanea con la cámara de su celular y descarga los archivos en su navegador. Funciona con iPhone, Android, Mac, Windows, Linux y Chromebook. Si son varios archivos, llegan juntos en un zip. El enlace solo funciona en tu red local.
+
+CONVIERTE TU PC EN UNA UNIDAD
+Comparte una carpeta como unidad en tu red Wi-Fi. Celulares, tablets y otras computadoras pueden explorar sus archivos y reproducirlos desde cualquier navegador, desde el Explorador de archivos de otra PC, desde el Finder de una Mac o desde cualquier app WebDAV. Por defecto es de solo lectura; si quieres, puedes ponerle un código y activar un interruptor para que los invitados editen. Las unidades que comparten otros dispositivos se abren dentro de la app.
+
+MIS DISPOSITIVOS
+Agrega tu celular, tu tablet y tu computadora una sola vez. Entre ellos, los archivos llegan sin pedir confirmación, y con "Compartir portapapeles" copias en uno y pegas en otro.
+
+RESPALDO DEL CELULAR
+Vincula tu celular Android con esta PC y sus fotos y videos se respaldan aquí cada vez que ambos están en el mismo Wi-Fi, en calidad completa, con sus fechas y lugares. Se guardan en Pictures\CrossDrop Backup, una carpeta por mes. Cuando la PC los verifica, puedes liberar espacio en el celular.
+
+PENSADO PARA ARCHIVOS GRANDES
+- Si se corta la conexión, la transferencia se reanuda sola cuando el dispositivo vuelve
+- Si vuelves a enviar un archivo modificado, solo viajan las partes que cambiaron
+- Si envías el mismo archivo dos veces, la segunda vez no se transfiere nada
+- Las carpetas llegan con todas sus subcarpetas
+
+HECHO PARA WINDOWS
+- Lo que recibes se guarda en la carpeta CrossDrop dentro de Descargas y lo abres desde el Explorador de archivos, o en la carpeta que elijas
+- Cierra la ventana y CrossDrop sigue recibiendo desde la bandeja del sistema
+- El Firewall de Windows pregunta una sola vez, la primera vez que abres la app: permite CrossDrop en redes privadas para que los celulares encuentren tu PC
+
+PRIVACIDAD DESDE EL DISEÑO
+- Las transferencias entre dispositivos con CrossDrop tienen cifrado de extremo a extremo
+- Sin registro, sin anuncios, sin analíticas, sin rastreo
+- Tus archivos nunca salen de tu red local
+- Código abierto con licencia Apache-2.0
+
+TAMBIÉN EN TU CELULAR
+CrossDrop también funciona en Android, iPhone, iPad, Mac y Linux, y todas las versiones se conectan entre sí. Descárgalo para tu celular en Google Play o en la App Store.
+
+Disponible en español, inglés, árabe, georgiano, hindi, indonesio, persa, portugués, ruso y turco.
