@@ -140,6 +140,17 @@ mask) — verified by ZXing decode in test-scope tests (ZXing is NOT a shipped
 dep). Shares record history as peerName "browser share" on stop. `LocalIp`
 chooses wlan*/ap* IPv4 for the URL.
 
+Photos show as pictures in the page: `v/<i>` serves a file inline, only for `HttpShareServer.previewType`
+(raster types from a fixed list, decided by MIME or extension, never SVG/HTML; the sender's MIME isn't echoed), and
+the manifest's `view` flag tells the page which files those are. On an iPhone the page says "press and hold a photo to
+save it to Photos" (Safari's Save downloads go to Files). A preview counts as a download. Every response carries
+nosniff + `Referrer-Policy: no-referrer`, files `Content-Security-Policy: sandbox`. The page (and `vault.html`) ends
+with a "Get CrossDrop" button picked from the visitor's user agent (Play link with `utm_source=share_page` /
+`drive_page`, Microsoft Store `cid=…`, App Store, GitHub releases for Linux); the pages load nothing from other
+origins and the links are `rel="noopener noreferrer"` under a no-referrer meta, so the token never leaves
+(`ShareAuditTests`). Swift copies: `ShareHtml.swift` (same text) and `VaultPage.swift` (byte-identical; header + file +
+blank line).
+
 ## Local cloud drive (LAN vault) — "Wireless Drive"
 
 `core/vault/` turns a device into a browsable LAN drive — one `ServerSocket`

@@ -17,7 +17,7 @@ SEND TO ANYONE
 No app on the other side? Start "to anyone": CrossDrop shows a QR code and anyone on the same Wi-Fi can download your files in their browser — multiple files arrive as a single zip.
 
 WIRELESS DRIVE
-Turn your device into a network drive. Browse and download its files from Finder, Windows Explorer or any web browser, protected by an optional passcode and read-only by default. Mount other CrossDrop drives right inside the app.
+Turn your device into a network drive. Browse and download its files from Finder, your computer's file manager or any web browser, protected by an optional passcode and read-only by default. Mount other CrossDrop drives right inside the app.
 
 WORKS ACROSS YOUR DEVICES
 CrossDrop runs on iPhone, iPad, Mac and other platforms, and they all see each other. On Mac, drag files onto the window to send.
@@ -25,4 +25,4 @@ CrossDrop runs on iPhone, iPad, Mac and other platforms, and they all see each o
 TIPS
 • Keep CrossDrop open while sending or receiving — iPhone and iPad pause network activity in the background.
 • Both devices need to be on the same Wi-Fi network. Allow Local Network access when asked.
-• Received files stay in the app's Inbox until you open, export or delete them.
+• On iPhone and iPad, received files are in the Files app (On My iPhone › CrossDrop › Received); on Mac, in Downloads › CrossDrop.

@@ -1,0 +1,13 @@
+Envie fotos, vídeos, arquivos e pastas inteiras para aparelhos por perto pelo seu próprio Wi-Fi
+Um radar em tempo real mostra os celulares, tablets e computadores com CrossDrop na sua rede
+Enviar para qualquer um: com um QR code, qualquer celular baixa seus arquivos pelo navegador, sem app
+Transforme este PC em um drive que abre em qualquer navegador, no Explorador de Arquivos, no Finder ou em apps WebDAV
+Meus dispositivos: seus próprios celulares e computadores enviam arquivos entre si sem perguntar
+Compartilhar área de transferência: copie em um aparelho pareado e cole em outro
+Faça backup das fotos e vídeos de um celular Android em Pictures\CrossDrop Backup
+Transferências interrompidas continuam sozinhas quando o aparelho volta
+Reenvie um arquivo alterado e só as partes que mudaram vão pela rede
+Criptografia de ponta a ponta, sem cadastro, sem anúncios e sem rastreamento
+Os arquivos recebidos ficam na pasta CrossDrop dentro de Downloads ou na pasta que você escolher
+Continua recebendo pela bandeja do sistema com a janela fechada
+Funciona com Android, iPhone, iPad, Mac e Linux

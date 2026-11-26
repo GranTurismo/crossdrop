@@ -1,0 +1,1 @@
+With Send to anyone, the person who scans your code now sees your photos as pictures in their browser, and on an iPhone they can press and hold a photo to save it to Photos. The page has a new look that matches the app and a button to get CrossDrop for their own device. The Wireless Drive page links to the app too.

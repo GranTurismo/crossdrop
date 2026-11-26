@@ -126,6 +126,42 @@ final class ShareTests: XCTestCase {
         XCTAssertEqual(HttpShareServer.urlDecode("/a%20b%zz%C3%A9"), "/a b%zzé")
     }
 
+    func testPhotosAreServedInlineOnlyForAllowListedTypes() throws {
+        server.close()
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3])
+        let svg = Data("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>".utf8)
+        func file(_ name: String, _ mime: String?, _ data: Data) throws -> OutgoingFile {
+            let url = dir.appendingPathComponent(name)
+            try data.write(to: url)
+            return OutgoingFile(meta: FileMeta(name: name, size: Int64(data.count), mime: mime), url: url)
+        }
+        server = HttpShareServer(files: [
+            try file("beach.JPG", nil, jpeg),                  // no MIME: the extension decides
+            try file("drawing.svg", "image/svg+xml", svg),     // an image type that can carry script
+            try file("trick.jpg", "text/html", svg),           // the sender's MIME is never echoed for a preview
+        ], deviceName: "Test Phone", token: token)
+        try server.start()
+
+        let (code, h, body) = try get("/\(token)/v/0")
+        XCTAssertEqual(code, 200); XCTAssertEqual(body, jpeg)
+        XCTAssertEqual(h["content-type"], "image/jpeg")
+        XCTAssertTrue(h["content-disposition"]?.hasPrefix("inline;") == true)
+        XCTAssertEqual(h["x-content-type-options"], "nosniff")
+        XCTAssertEqual(h["content-security-policy"], "sandbox")
+        XCTAssertEqual(try get("/\(token)/v/2").1["content-type"], "image/jpeg")
+        XCTAssertEqual(try get("/\(token)/v/1").0, 404)
+        XCTAssertEqual(try get("/\(token)/v/9").0, 404)
+        XCTAssertTrue(try get("/\(token)/f/0").1["content-disposition"]?.hasPrefix("attachment;") == true)
+
+        let manifest = try XCTUnwrap(JSONSerialization.jsonObject(with: try get("/\(token)/manifest.json").2) as? [String: Any])
+        let files = try XCTUnwrap(manifest["files"] as? [[String: Any]])
+        XCTAssertEqual(files.map { $0["view"] as? Bool }, [true, false, true])
+
+        XCTAssertEqual(HttpShareServer.previewType(name: "IMG_1.HEIC", mime: "application/octet-stream"), "image/heic")
+        XCTAssertEqual(HttpShareServer.previewType(name: "noext", mime: "IMAGE/PNG; x=y"), "image/png")
+        XCTAssertNil(HttpShareServer.previewType(name: "jpg", mime: nil))
+    }
+
     func testLocalIpIsUsableIPv4() {
         if let ip = LocalIp.wifiIPv4() {
             XCTAssertEqual(ip.split(separator: ".").count, 4)

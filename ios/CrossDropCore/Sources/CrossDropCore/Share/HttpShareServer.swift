@@ -7,10 +7,12 @@ import Foundation
 /// without it (404, not 403 — the surface is invisible).
 ///
 ///   GET /<token>/               single-file HTML client
-///   GET /<token>/manifest.json  {device, files[], zip}
+///   GET /<token>/manifest.json  {device, files[{i, name, size, mime, view}], zip}
 ///   GET /<token>/status.json    live download counters (the page polls this)
-///   GET /<token>/f/<i>          file i (GET or HEAD, Content-Disposition)
+///   GET /<token>/f/<i>          file i (GET or HEAD, Content-Disposition: attachment)
+///   GET /<token>/v/<i>          photo i shown in the page (inline, only for `previewType` images); 404 otherwise
 ///   GET /<token>/all.zip        all files as an uncompressed ZIP
+/// A preview counts as a download (the photo's bytes did reach the other device).
 public final class HttpShareServer {
     public enum Event { case clientConnected, downloadStarted, downloadDone, downloadAborted }
     public struct Stats { public let downloadsStarted: Int; public let downloadsDone: Int; public let bytesServed: Int64 }
@@ -123,6 +125,12 @@ public final class HttpShareServer {
             let i = Int(path.dropFirst("\(base)/f/".count)) ?? -1
             guard files.indices.contains(i) else { return try notFound(out, headOnly) }
             try sendFile(files[i], headOnly, out)
+        } else if path.hasPrefix("\(base)/v/") {
+            let i = Int(path.dropFirst("\(base)/v/".count)) ?? -1
+            guard files.indices.contains(i), let type = Self.previewType(name: files[i].meta.name, mime: files[i].meta.mime) else {
+                return try notFound(out, headOnly)
+            }
+            try sendFile(files[i], headOnly, out, inlineType: type)
         } else if path == "\(base)/all.zip" {
             try sendZip(headOnly, out)
         } else {
@@ -133,7 +141,7 @@ public final class HttpShareServer {
     private func manifest() -> String {
         let zip = files.count > 1 && Self.zipFits(files)
         let entries = files.enumerated().map { i, f in
-            "{\"i\":\(i),\"name\":\(Self.jsonString(f.meta.name)),\"size\":\(f.meta.size),\"mime\":\(f.meta.mime.map(Self.jsonString) ?? "null")}"
+            "{\"i\":\(i),\"name\":\(Self.jsonString(f.meta.name)),\"size\":\(f.meta.size),\"mime\":\(f.meta.mime.map(Self.jsonString) ?? "null"),\"view\":\(Self.previewType(name: f.meta.name, mime: f.meta.mime) != nil)}"
         }.joined(separator: ",")
         return "{\"device\":\(Self.jsonString(deviceName)),\"files\":[\(entries)],\"zip\":\(zip)}"
     }
@@ -153,14 +161,15 @@ public final class HttpShareServer {
         try out.writeAll(Array(h.utf8) + (headOnly ? [] : body))
     }
 
-    private func sendFile(_ file: OutgoingFile, _ headOnly: Bool, _ out: TCPSocket) throws {
+    /// `inlineType` set = a photo preview: served inline with that (allow-listed) type instead of as a download.
+    private func sendFile(_ file: OutgoingFile, _ headOnly: Bool, _ out: TCPSocket, inlineType: String? = nil) throws {
         let meta = file.meta
         // CR/LF/quotes in a filename or MIME would split or break response headers.
         let safeName = String(meta.name.map { "\r\n\\\"".contains($0) ? "_" : $0 })
         let mimeOK = meta.mime.map { !$0.isEmpty && $0.unicodeScalars.allSatisfy { Self.mimeChars.contains($0) } } ?? false
         let safeMime = mimeOK ? meta.mime! : "application/octet-stream"
-        var h = "HTTP/1.1 200 OK\r\nContent-Type: \(safeMime)\r\nContent-Length: \(meta.size)\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: sandbox\r\n"
-        h += "Content-Disposition: attachment; filename=\"\(safeName)\"; filename*=UTF-8''\(Self.rfc5987(meta.name))\r\n"
+        var h = "HTTP/1.1 200 OK\r\nContent-Type: \(inlineType ?? safeMime)\r\nContent-Length: \(meta.size)\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nContent-Security-Policy: sandbox\r\n"
+        h += "Content-Disposition: \(inlineType != nil ? "inline" : "attachment"); filename=\"\(safeName)\"; filename*=UTF-8''\(Self.rfc5987(meta.name))\r\n"
         h += "Connection: close\r\n\r\n"
         try out.writeAll(Array(h.utf8))
         if headOnly { return }
@@ -315,6 +324,23 @@ public final class HttpShareServer {
             } else { out.append(bytes[i]); i += 1 }
         }
         return String(decoding: out, as: UTF8.self)
+    }
+
+    private static let previewTypes: Set<String> = ["image/jpeg", "image/png", "image/gif", "image/webp", "image/heic", "image/heif", "image/avif"]
+    private static let previewExtensions: [String: String] = [
+        "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "gif": "image/gif",
+        "webp": "image/webp", "heic": "image/heic", "heif": "image/heif", "avif": "image/avif",
+    ]
+
+    /// The type a file may be shown inline with, or nil. Only raster photo types from a fixed list (never SVG or HTML,
+    /// which can carry script); the sender's MIME string is never echoed as is. Kotlin twin: `HttpShareServer.previewType`.
+    static func previewType(name: String, mime: String?) -> String? {
+        if let m = mime?.split(separator: ";", maxSplits: 1, omittingEmptySubsequences: false).first?
+            .trimmingCharacters(in: .whitespaces).lowercased(), previewTypes.contains(m) {
+            return m
+        }
+        guard let dot = name.lastIndex(of: ".") else { return nil }
+        return previewExtensions[name[name.index(after: dot)...].lowercased()]
     }
 
     private static let mimeChars: CharacterSet = {

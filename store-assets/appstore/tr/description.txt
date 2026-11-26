@@ -1,0 +1,39 @@
+Fotoğrafları, videoları ve dosyaları yakınınızdaki kişilere internet olmadan, hesap açmadan ve reklam görmeden gönderin. CrossDrop dosyaları cihazınızdan doğrudan diğer cihaza, kendi Wi-Fi ağınız üzerinden ve yerel ağın tam hızıyla aktarır. Hiçbir şey sunucudan geçmez.
+
+CİHAZLARI RADARDA BULUN
+CrossDrop'u iki cihazda açın; ikisi de anında radarda belirir. Bir cihaza dokunun, dosyalarınızı seçin ve gönderin. Karşı taraf "Kabul et" düğmesine dokunmadıkça hiçbir şey gelmez. Ya da iki telefonu aynı anda sallayın ve hemen göndermeye geçin.
+
+KARŞI TARAFTA UYGULAMA GEREKMEZ
+"Herkese gönder" düğmesine dokunun; ekranda bir QR kod belirir. Karşınızdaki kişi kodu kamerasıyla okutup dosyaları herhangi bir telefon ya da bilgisayardaki tarayıcısından indirir. Birden fazla dosya tek bir zip dosyası olarak iner. Bağlantı yalnızca yerel ağınızda çalışır.
+
+ORTAK WI-FI YOK MU? DOĞRUDAN BAĞLANIN
+"Kod tara" düğmesine dokunun ve kamerayı diğer telefonun gösterdiği koda tutun. iPhone'unuz o ağa katılır ve iki cihaz birbirini bulur. Modemin üzerindeki gibi herhangi bir Wi-Fi QR kodu da işe yarar.
+
+DOSYADAN FAZLASI
+- Bir metin ya da bağlantı gönderin; karşı taraf tek dokunuşla kopyalasın.
+- Kişileri gönderin; doğrudan karşı tarafın kişilerine eklenir.
+- "Telefon değiştir" ile fotoğraflarınızı, videolarınızı ve kişilerinizi yeni telefonunuza taşıyın.
+
+KABLOSUZ SÜRÜCÜ
+Bir klasörü Wi-Fi ağınızda sürücü olarak paylaşın. Başkaları dosyalara herhangi bir web tarayıcısından, Mac'teki Finder'dan ya da herhangi bir WebDAV uygulamasından göz atıp oynatabilir. Sürücü varsayılan olarak salt okunurdur; dilerseniz şifre belirleyebilir ve misafirlerin dosyaları düzenlemesine izin verebilirsiniz. Başka cihazların CrossDrop sürücüleri doğrudan uygulamanın içinde açılır.
+
+CİHAZLARIM
+iPhone'unuzu, iPad'inizi ve bilgisayarınızı bir kez ekleyin; aralarında gönderilen dosyalar onay beklemeden gelir. "Panoyu paylaş" açıkken birinde kopyaladığınızı diğerinde yapıştırabilirsiniz.
+
+BÜYÜK DOSYALAR İÇİN TASARLANDI
+- Değiştirdiğiniz bir dosyayı yeniden gönderdiğinizde yalnızca değişen kısımlar aktarılır
+- Aynı dosyayı ikinci kez gönderdiğinizde hiçbir şey yeniden aktarılmaz
+- Bağlantı koparsa dosyayı yeniden gönderin; aktarım kaldığı yerden devam eder
+
+GİZLİLİK ODAKLI
+- CrossDrop yüklü cihazlar arasındaki aktarımlar uçtan uca şifrelenir
+- Hesap, reklam, analitik ve takip yok
+- Dosyalar yerel ağınızdan asla çıkmaz
+- Apache-2.0 lisanslı açık kaynak
+
+TÜM CİHAZLARINIZDA
+CrossDrop iPhone, iPad, Mac ve diğer platformlarda çalışır ve hepsi birbirini görür. Mac'te göndermek için dosyaları CrossDrop'a sürükleyin; gelen dosyalar İndirilenler'deki CrossDrop klasörüne kaydedilir. iPhone ve iPad'de ise Dosyalar uygulamasında, CrossDrop klasöründedir.
+
+İPUÇLARI
+- Gönderirken, alırken ya da sürücü paylaşırken CrossDrop'u açık tutun: iPhone ve iPad arka planda ağ etkinliğini duraklatır.
+- İki cihazın da aynı Wi-Fi ağında olması gerekir. Sorulduğunda Yerel Ağ erişimine izin verin.

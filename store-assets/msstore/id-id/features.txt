@@ -1,0 +1,13 @@
+Kirim foto, video, file, dan folder utuh ke perangkat di sekitar lewat Wi-Fi Anda sendiri
+Radar langsung menampilkan ponsel, tablet, dan komputer yang menjalankan CrossDrop di jaringan Anda
+Kirim ke siapa saja: dengan kode QR, ponsel apa pun bisa mengunduh file Anda lewat browser tanpa aplikasi
+Jadikan PC ini drive yang bisa dibuka dari browser, File Explorer, Finder, atau aplikasi WebDAV
+Perangkat saya: ponsel dan komputer Anda sendiri saling mengirim file tanpa bertanya
+Bagikan papan klip: salin di satu perangkat yang dipasangkan, tempel di perangkat lain
+Cadangkan foto dan video ponsel Android ke Pictures\CrossDrop Backup
+Transfer yang terputus berlanjut sendiri begitu perangkat kembali
+Kirim ulang file yang diubah, dan hanya bagian yang berubah yang dikirim
+Terenkripsi end-to-end, tanpa akun, tanpa iklan, tanpa pelacakan
+File yang diterima masuk ke folder CrossDrop di Unduhan, atau ke folder pilihan Anda
+Tetap menerima file dari area notifikasi saat jendela ditutup
+Berfungsi dengan Android, iPhone, iPad, Mac, dan Linux

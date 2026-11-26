@@ -1,0 +1,38 @@
+Kirim foto, video, dan file antara PC Anda dan ponsel, tablet, serta komputer di sekitar Anda tanpa internet, tanpa akun, dan tanpa iklan. CrossDrop mengirimnya langsung dari satu perangkat ke perangkat lain lewat Wi-Fi Anda sendiri, dengan kecepatan penuh jaringan lokal. Tidak ada yang melewati server.
+
+TEMUKAN PERANGKAT DI RADAR
+Buka CrossDrop di PC dan di ponsel yang terhubung ke Wi-Fi yang sama, dan keduanya akan saling muncul di radar. Klik perangkatnya, pilih file atau satu folder utuh, lalu kirim, atau cukup seret file ke jendela CrossDrop. Penerima harus mengetuk "Terima" dulu; tanpa itu, tidak ada yang masuk.
+
+PENERIMA TIDAK PERLU APLIKASI
+Klik "Kirim ke siapa saja", lalu kode QR akan muncul. Penerima cukup memindainya dengan kamera ponsel dan mengunduh file lewat browser. Berfungsi di iPhone, Android, Mac, Windows, Linux, dan Chromebook. Kalau ada beberapa file, semuanya diterima dalam satu file zip. Tautannya hanya berfungsi di jaringan lokal Anda.
+
+JADIKAN PC INI DRIVE
+Bagikan sebuah folder sebagai drive di jaringan Wi-Fi Anda. Ponsel, tablet, dan komputer lain bisa menjelajahi dan memutar isinya dari browser apa pun, dari File Explorer di PC lain, dari Finder di Mac, atau dari aplikasi WebDAV apa pun. Secara bawaan, drive hanya bisa dibaca. Anda bisa menambahkan kode sandi jika mau, dan ada sakelar untuk mengizinkan tamu mengedit. Drive yang dibagikan perangkat lain bisa dibuka langsung di dalam aplikasi.
+
+PERANGKAT SAYA
+Tambahkan ponsel, tablet, dan komputer Anda sendiri, cukup sekali saja. Setelah itu, file antarperangkat langsung masuk tanpa perlu konfirmasi, dan dengan "Bagikan papan klip" Anda bisa menyalin di satu perangkat lalu menempelkannya di perangkat lain.
+
+CADANGAN PONSEL
+Pasangkan ponsel Android Anda dengan PC ini, dan foto serta videonya akan dicadangkan ke sini setiap kali keduanya berada di Wi-Fi yang sama, dalam kualitas penuh, lengkap dengan tanggal dan lokasinya. Cadangan disimpan di Pictures\CrossDrop Backup, satu folder per bulan. Setelah PC memeriksanya, Anda bisa mengosongkan ruang penyimpanan ponsel.
+
+SIAP UNTUK FILE BESAR
+- Transfer yang terputus akan otomatis berlanjut begitu perangkat terhubung lagi
+- Kirim ulang file yang sudah diubah, dan hanya bagian yang berubah yang dikirim
+- Kirim file yang sama dua kali, dan tidak ada yang dikirim ulang
+- Folder diterima lengkap dengan semua subfoldernya
+
+DIBUAT UNTUK WINDOWS
+- File yang diterima disimpan di folder CrossDrop di dalam Unduhan dan bisa dibuka dari File Explorer, atau di folder pilihan Anda
+- Tutup jendelanya, dan CrossDrop tetap menerima file dari area notifikasi
+- Windows Firewall akan bertanya sekali saat pertama kali dibuka: izinkan CrossDrop di jaringan pribadi agar ponsel bisa menemukan PC Anda
+
+DIRANCANG UNTUK PRIVASI
+- Transfer antarperangkat CrossDrop dienkripsi end-to-end
+- Tanpa akun, tanpa iklan, tanpa analitik, tanpa pelacakan
+- File tidak pernah keluar dari jaringan lokal Anda
+- Sumber terbuka dengan lisensi Apache-2.0
+
+JUGA ADA DI PONSEL
+CrossDrop juga bisa dipakai di Android, iPhone, iPad, Mac, dan Linux, dan semuanya saling terhubung. Unduh untuk ponsel Anda di Google Play atau App Store.
+
+Tersedia dalam bahasa Indonesia, Inggris, Arab, Georgia, Hindi, Persia, Portugis, Rusia, Spanyol, dan Turki.

@@ -1,0 +1,38 @@
+Fotoğrafları, videoları ve dosyaları PC'niz ile yakınınızdaki telefonlar, tabletler ve bilgisayarlar arasında internet olmadan, hesap açmadan ve reklam görmeden gönderin. CrossDrop dosyaları bir cihazdan diğerine doğrudan, kendi Wi-Fi ağınız üzerinden ve yerel ağın tam hızıyla aktarır. Hiçbir şey sunucudan geçmez.
+
+CİHAZLARI RADARDA BULUN
+CrossDrop'u PC'nizde ve aynı Wi-Fi ağındaki bir telefonda açın; ikisi de birbirinin radarında belirir. Bir cihaza tıklayın, dosyaları ya da bütün bir klasörü seçin ve gönderin; dilerseniz dosyaları pencereye sürükleyip bırakın. Karşı taraf "Kabul et" düğmesine dokunmadıkça hiçbir şey gelmez.
+
+KARŞI TARAFTA UYGULAMA GEREKMEZ
+"Herkese gönder" düğmesine tıklayın; ekranda bir QR kod belirir. Karşınızdaki kişi kodu telefonunun kamerasıyla okutup dosyaları tarayıcıdan indirir. iPhone, Android, Mac, Windows, Linux ve Chromebook'ta çalışır. Birden fazla dosya tek bir zip dosyası olarak iner. Bağlantı yalnızca yerel ağınızda çalışır.
+
+BU PC'Yİ SÜRÜCÜYE DÖNÜŞTÜRÜN
+Bir klasörü Wi-Fi ağınızda sürücü olarak paylaşın. Telefonlar, tabletler ve diğer bilgisayarlar dosyalara herhangi bir web tarayıcısından, başka bir PC'deki Dosya Gezgini'nden, Mac'teki Finder'dan ya da herhangi bir WebDAV uygulamasından göz atıp oynatabilir. Sürücü varsayılan olarak salt okunurdur; dilerseniz şifre belirleyebilir ve misafirlerin dosyaları düzenlemesine izin verebilirsiniz. Başka cihazların paylaştığı sürücüler doğrudan uygulamanın içinde açılır.
+
+CİHAZLARIM
+Kendi telefonunuzu, tabletinizi ve bilgisayarınızı bir kez ekleyin; aralarında gönderilen dosyalar onay beklemeden gelir. "Panoyu paylaş" açıkken birinde kopyaladığınızı diğerinde yapıştırabilirsiniz.
+
+TELEFON YEDEKLERİ
+Android telefonunuzu bu PC ile eşleştirin; ikisi aynı Wi-Fi ağındayken fotoğraf ve videoları tam kalitede, tarih ve konumlarıyla buraya yedeklenir. Yedekler Pictures\CrossDrop Backup klasörüne, her ay için ayrı bir klasöre kaydedilir. PC yedekleri doğruladıktan sonra telefonunuzda yer açabilirsiniz.
+
+BÜYÜK DOSYALAR İÇİN TASARLANDI
+- Bağlantı koparsa, cihaz yeniden göründüğünde aktarım kendiliğinden devam eder
+- Değiştirdiğiniz bir dosyayı yeniden gönderdiğinizde yalnızca değişen kısımlar aktarılır
+- Aynı dosyayı ikinci kez gönderdiğinizde hiçbir şey yeniden aktarılmaz
+- Klasörler tüm alt klasörleriyle birlikte ulaşır
+
+WINDOWS İÇİN HAZIRLANDI
+- Gelen dosyalar İndirilenler'deki CrossDrop klasörüne kaydedilir ve Dosya Gezgini'nden açılır; isterseniz başka bir klasör seçebilirsiniz
+- Pencereyi kapatın, CrossDrop sistem tepsisinden dosya almaya devam eder
+- Windows Güvenlik Duvarı ilk açılışta bir kez sorar: telefonların PC'nizi bulabilmesi için CrossDrop'a özel ağlarda izin verin
+
+GİZLİLİK ODAKLI
+- CrossDrop yüklü cihazlar arasındaki aktarımlar uçtan uca şifrelenir
+- Hesap, reklam, analitik ve takip yok
+- Dosyalar yerel ağınızdan asla çıkmaz
+- Apache-2.0 lisanslı açık kaynak
+
+TELEFONUNUZDA DA
+CrossDrop Android, iPhone, iPad, Mac ve Linux'ta da çalışır; tüm sürümler birbiriyle uyumludur. Telefonunuz için Google Play'den ya da App Store'dan indirin.
+
+Dil seçenekleri: Türkçe, İngilizce, Arapça, Endonezce, Farsça, Gürcüce, Hintçe, İspanyolca, Portekizce ve Rusça.
