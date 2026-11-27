@@ -95,4 +95,38 @@ class DirectLinkMachineTest {
         m.refuse(DirectLinkFailure.LOCATION_OFF)
         assertEquals(DirectLinkState.Failed(DirectLinkFailure.LOCATION_OFF), m.state.value)
     }
+
+    /** The Wi-Fi Direct attempt falls back to the hotspot within one request; a stopped request starts nothing more. */
+    @Test fun `a fallback step only runs for the request that is still starting`() {
+        val m = DirectLinkMachine()
+        val r = m.begin()!!
+        assertTrue(m.pending(r))
+        m.stop()
+        assertFalse(m.pending(r))
+        val next = m.begin()!!
+        assertFalse("an older request is never pending again", m.pending(r))
+        assertTrue(m.pending(next))
+        m.timedOut(next)
+        assertFalse(m.pending(next))
+        val third = m.begin()!!
+        m.started(third, on)
+        assertFalse("already running", m.pending(third))
+    }
+
+    /** Jobs of an old request (its watcher, its auto-stop) must never act on a newer one. */
+    @Test fun `only the latest request owns the link, and idle means nothing to protect`() {
+        val m = DirectLinkMachine()
+        assertTrue(m.idle())
+        val first = m.begin()!!
+        assertTrue(m.owns(first)); assertFalse(m.idle())
+        m.started(first, on)
+        assertFalse(m.idle())
+        m.stop()
+        assertFalse("stopped: its jobs are stale", m.owns(first))
+        assertTrue(m.idle())
+        val second = m.begin()!!
+        assertFalse(m.owns(first)); assertTrue(m.owns(second))
+        m.timedOut(second)
+        assertTrue("a timed-out start leaves nothing running", m.idle())
+    }
 }

@@ -103,7 +103,23 @@ class AppContainer(private val app: Context) {
     val announced = com.crossdrop.core.discovery.AnnouncedPeers(scope).also { coordinator.hub.announced = it }
 
     /** "Scan a code": join another phone's private link (or any Wi-Fi code) and connect to it. */
-    val wifiJoin = com.crossdrop.net.WifiJoin(app, scope, engine, { listenerPort.value }, announced)
+    val wifiJoin = com.crossdrop.net.WifiJoin(app, scope, engine, { listenerPort.value }, announced, instanceId)
+
+    init {
+        // A CrossDrop Wi-Fi left running by a killed earlier run (public password) is removed at once.
+        directLink.cleanUpLeftover()
+        // While this phone runs the CrossDrop Wi-Fi, it also listens on that network's well-known port, so a device
+        // that joined in one tap (no code, so no port) can announce itself (see DirectWifi.PORT).
+        scope.launch {
+            directLink.state.collect { s ->
+                if ((s as? com.crossdrop.core.connect.DirectLinkState.On)?.oneTap == true) {
+                    server.openRendezvous(com.crossdrop.core.connect.DirectWifi.PORT)
+                } else {
+                    server.closeRendezvous()
+                }
+            }
+        }
+    }
 
     /** "Switch phones": this phone's library out, or another phone's library in. */
     val switchSender = com.crossdrop.switchphones.SwitchSender(scope, app, coordinator.hub, history)

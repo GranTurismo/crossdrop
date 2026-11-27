@@ -123,19 +123,19 @@ fun ScanCodeScreen(join: WifiJoin, onClose: () -> Unit, onJoined: () -> Unit, mo
                 fill = Ink.copy(alpha = 0.82f), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 when (val s = state) {
-                    is WifiJoin.State.Joining -> Status(
+                    is WifiJoin.State.Joining -> JoinStatus(
                         busy = true,
                         title = tr("Joining {0}…", s.ssid),
                         body = tr("Android asks you to confirm. Tap Connect."),
                     )
-                    is WifiJoin.State.Connecting -> Status(
+                    is WifiJoin.State.Connecting -> JoinStatus(
                         busy = true,
                         title = tr("Connected to {0}", s.ssid),
                         body = tr("Reaching the other phone…"),
                     )
-                    is WifiJoin.State.Joined -> Status(busy = false, title = tr("Connected to {0}", s.ssid), body = "")
+                    is WifiJoin.State.Joined -> JoinStatus(busy = false, title = tr("Connected to {0}", s.ssid), body = "")
                     is WifiJoin.State.Failed -> {
-                        val (title, body) = failureText(s)
+                        val (title, body) = joinFailureText(s)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             Dot(Amber)
                             Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -159,8 +159,8 @@ fun ScanCodeScreen(join: WifiJoin, onClose: () -> Unit, onJoined: () -> Unit, mo
                                 color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                if (notWifi) tr("That code isn't for a Wi-Fi network. On the other phone, tap Connect directly, then Show a code.")
-                                else tr("On the other phone: Connect directly, then Show a code. Any Wi-Fi code works too."),
+                                if (notWifi) tr("That code isn't for a Wi-Fi network. On the other phone, tap Connect directly, then Make a CrossDrop Wi-Fi.")
+                                else tr("On the other phone: Connect directly, then Make a CrossDrop Wi-Fi. Any Wi-Fi code works too."),
                                 color = if (notWifi) Amber else TextDim, fontSize = 13.sp, lineHeight = 18.sp,
                             )
                         }
@@ -175,7 +175,7 @@ fun ScanCodeScreen(join: WifiJoin, onClose: () -> Unit, onJoined: () -> Unit, mo
 }
 
 @Composable
-private fun Status(busy: Boolean, title: String, body: String) {
+internal fun JoinStatus(busy: Boolean, title: String, body: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         if (busy) CircularProgressIndicator(color = Accent, strokeWidth = 2.dp, modifier = Modifier.size(18.dp)) else Dot(Accent)
         Text(title, color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
@@ -184,7 +184,7 @@ private fun Status(busy: Boolean, title: String, body: String) {
 }
 
 @Composable
-private fun failureText(s: WifiJoin.State.Failed): Pair<String, String> = when (s.reason) {
+internal fun joinFailureText(s: WifiJoin.State.Failed): Pair<String, String> = when (s.reason) {
     WifiJoin.Failure.NOT_JOINED -> tr("Couldn't join {0}", s.ssid) to
         tr("Is the code still on the other phone's screen, and is it close by? If Android asked, tap Connect.")
     WifiJoin.Failure.LOST -> tr("The link to {0} ended", s.ssid) to

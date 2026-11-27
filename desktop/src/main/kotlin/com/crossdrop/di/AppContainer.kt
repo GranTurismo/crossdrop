@@ -197,6 +197,31 @@ class AppContainer {
     /** Devices that announced themselves (a phone that joined the same link, a network that blocks mDNS). */
     val announced = com.crossdrop.core.discovery.AnnouncedPeers(scope).also { coordinator.hub.announced = it }
 
+    /** "Join a CrossDrop Wi-Fi": one click onto the network an Android phone made (see core `DirectWifi`). */
+    val directWifi = com.crossdrop.net.DirectWifiJoin(
+        scope, engine, { listenerPort.value }, announced, com.crossdrop.platform.SystemWifi(), ::crossDropWifiAddress,
+        marker = object : com.crossdrop.net.DirectWifiJoin.JoinedMarker {
+            override var joined: Boolean
+                get() = prefs.getBoolean("direct_wifi_joined", false)
+                set(v) = prefs.putBoolean("direct_wifi_joined", v)
+        },
+    ).also { join ->
+        // A network a crash or force quit left remembered is forgotten now; every normal exit (⌘Q, logout, the tray's
+        // Quit, System.exit) forgets it on the way out, because AWT's default ⌘Q skips our window's dispose.
+        join.cleanUpLeftover()
+        Runtime.getRuntime().addShutdownHook(Thread({ runCatching { join.shutdown() } }, "direct-wifi-forget"))
+    }
+
+    /** Our address on a CrossDrop Wi-Fi when we're on one (Ethernet may be the main network), else the usual one. */
+    private fun crossDropWifiAddress(): String? = runCatching {
+        java.net.NetworkInterface.getNetworkInterfaces().toList()
+            .filter { it.isUp && !it.isLoopback }
+            .flatMap { it.inetAddresses.toList() }
+            .filterIsInstance<java.net.Inet4Address>()
+            .mapNotNull { it.hostAddress }
+            .firstOrNull(com.crossdrop.core.connect.DirectWifi::onGroupSubnet)
+    }.getOrNull() ?: com.crossdrop.net.LocalIp.wifiIpv4()
+
     // After mDNS: for a device seen both ways, its own advert speaks for it.
     private val discoveries: List<PeerDiscovery> = listOf(mdns, vaultDiscovery, announced)
 
@@ -290,6 +315,7 @@ class AppContainer {
 
     fun shutdown() {
         SleepGuard.hold(false)
+        runCatching { directWifi.shutdown() }
         runCatching { qrShare.stop() }
         runCatching { vaultHost.stop() }
         runCatching { vaultExplorer.close() }

@@ -124,6 +124,7 @@ fun Root(container: AppContainer) {
     val finishWelcome = { container.welcomeSeen = true; welcome = false }
     val hasNetwork by container.hasNetwork.collectAsState()
     var guideOpen by remember { mutableStateOf(false) }
+    val directWifi by container.directWifi.state.collectAsState()
     val tab = Tab.valueOf(tabName)
     var inboxCount by remember { mutableIntStateOf(container.inbox.list().size) }
     var historyTick by remember { mutableIntStateOf(0) }
@@ -192,6 +193,10 @@ fun Root(container: AppContainer) {
                         nsdEnabled = nsdEnabled,
                         hasNetwork = hasNetwork,
                         onShowConnectGuide = { guideOpen = true },
+                        directWifi = directWifi,
+                        onJoinWifi = container.directWifi::join.takeIf { container.directWifi.supported },
+                        onLeaveWifi = container.directWifi::leave,
+                        onDismissWifi = container.directWifi::dismiss,
                         offlineDevices = pairedDevices.filter { it.id !in here },
                         queued = queuedCounts,
                         sendingIds = sendingPairs,
@@ -269,7 +274,10 @@ fun Root(container: AppContainer) {
         // ---- how to get two devices on one network
         Overlay(true.takeIf { guideOpen }) {
             BackHandler { guideOpen = false }
-            com.crossdrop.ui.connect.ConnectGuideScreen(onClose = { guideOpen = false })
+            com.crossdrop.ui.connect.ConnectGuideScreen(
+                onClose = { guideOpen = false },
+                onJoinWifi = { guideOpen = false; container.directWifi.join() }.takeIf { container.directWifi.supported },
+            )
         }
 
         // ---- live transfer (one device, or a send to several)

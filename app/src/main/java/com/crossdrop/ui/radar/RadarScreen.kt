@@ -142,6 +142,8 @@ fun RadarScreen(
     /** Wi-Fi/Ethernet (or our own hotspot) is up; drives the "can't see the other device?" help. */
     hasNetwork: Boolean = true,
     directLinkOn: Boolean = false,
+    /** The link that is on is the CrossDrop Wi-Fi (not the fallback hotspot with a name of its own). */
+    directLinkOneTap: Boolean = true,
     onConnectDirectly: () -> Unit = {},
     onShowConnectGuide: () -> Unit = {},
     onOpenDirectLink: () -> Unit = {},
@@ -153,6 +155,8 @@ fun RadarScreen(
     onQueueFor: (com.crossdrop.core.pairing.PairedDevice) -> Unit = {},
     onShowCode: () -> Unit = onConnectDirectly,
     onScanCode: () -> Unit = {},
+    /** "Join a CrossDrop Wi-Fi" (one tap) from the not-on-your-Wi-Fi sheet. */
+    onJoinWifi: () -> Unit = onScanCode,
     /** This phone joined another's link by scanning its code: the network, and the phone once it answered. */
     joinedSsid: String? = null,
     joinedHost: String? = null,
@@ -379,7 +383,7 @@ fun RadarScreen(
                 exit = androidx.compose.animation.fadeOut() + androidx.compose.animation.shrinkVertically(),
             ) { ShakeHintCard(onDismiss = { shakeHintVisible = false }) }
             com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, onPrimary = onConnectDirectly)
-            if (directLinkOn) DirectLinkRow(onOpenDirectLink)
+            if (directLinkOn) DirectLinkRow(directLinkOneTap, onOpenDirectLink)
             if (joinedSsid != null) JoinedLinkRow(joinedSsid, joinedHost, onLeaveLink)
             com.crossdrop.ui.pairing.OfflineDevicesStrip(offlineDevices, queued, sendingIds, onQueueFor)
             SendToAnyoneCard(::startAnyoneFlow)
@@ -508,28 +512,28 @@ fun RadarScreen(
         NotOnWifiSheet(
             peer = peer,
             onDismiss = { notOnWifi = null },
-            onShowCode = { notOnWifi = null; onShowCode() },
-            onScanCode = { notOnWifi = null; onScanCode() },
+            onMake = { notOnWifi = null; onShowCode() },
+            onJoin = { notOnWifi = null; onJoinWifi() },
         )
     }
 }
 
 /**
  * The radar hears this phone over Bluetooth, but it isn't on the same Wi-Fi, so nothing can be sent yet.
- * One of the two shows a code, the other scans it, and they link directly.
+ * One of the two makes a CrossDrop Wi-Fi, the other joins it in one tap, and they link directly.
  */
 @Composable
-private fun NotOnWifiSheet(peer: Peer, onDismiss: () -> Unit, onShowCode: () -> Unit, onScanCode: () -> Unit) {
+private fun NotOnWifiSheet(peer: Peer, onDismiss: () -> Unit, onMake: () -> Unit, onJoin: () -> Unit) {
     CdSheet(onDismiss) {
         SheetHeader(
             tr("Nearby, but not on your Wi-Fi"), peer.name, CdIcons.Bluetooth, iconTint = Amber,
             meta = { Text(tr("Link the two phones directly. No Wi-Fi or internet needed."), color = TextDim, fontSize = 13.sp) },
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BigTile(tr("Show a code"), tr("They scan it with CrossDrop or their camera"), CdIcons.Qr, true, onShowCode, Modifier.weight(1f))
-            BigTile(tr("Scan their code"), tr("They tap Connect directly, then Show a code"), CdIcons.Scan, false, onScanCode, Modifier.weight(1f))
+            BigTile(tr("Make a Wi-Fi"), tr("They join it in one tap"), CdIcons.Wifi, true, onMake, Modifier.weight(1f))
+            BigTile(tr("Join theirs"), tr("They tap Connect directly, then Make a CrossDrop Wi-Fi"), CdIcons.Scan, false, onJoin, Modifier.weight(1f))
         }
-        NoteCard(tr("Only one of you shows a code. The link is private to your two phones and ends when you stop it."))
+        NoteCard(tr("Only one of you makes the Wi-Fi. It ends when you stop it."))
         PillButton(tr("Cancel"), onDismiss, Modifier.fillMaxWidth(), style = PillStyle.Glass)
     }
 }
@@ -558,18 +562,18 @@ private fun JoinedLinkRow(ssid: String, host: String?, onLeave: () -> Unit) {
 
 /** Shown while this phone's private link is up, so it never runs without being visible. */
 @Composable
-private fun DirectLinkRow(onOpen: () -> Unit) {
+private fun DirectLinkRow(oneTap: Boolean, onOpen: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp)).background(Accent.copy(alpha = 0.08f))
             .border(1.dp, Accent.copy(alpha = 0.3f), RoundedCornerShape(22.dp))
-            .clickable(role = Role.Button, onClickLabel = tr("Show the code"), onClick = onOpen)
+            .clickable(role = Role.Button, onClickLabel = tr("Show the network name and password"), onClick = onOpen)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         CdIcon(CdIcons.Wifi, Accent, size = 18.dp)
-        Text(tr("Direct connection is on"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-        Text(tr("Show code"), color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(if (oneTap) tr("Your CrossDrop Wi-Fi is on") else tr("Your private Wi-Fi is on"), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Text(tr("Show"), color = Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

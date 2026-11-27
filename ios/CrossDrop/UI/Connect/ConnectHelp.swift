@@ -1,4 +1,5 @@
 import SwiftUI
+@preconcurrency import CrossDropCore
 
 /// What the radar should tell someone about the network, if anything.
 /// Mirrors `core/connect/ConnectAdvice.kt`: keep the thresholds and the rule in step.
@@ -52,12 +53,14 @@ final class ConnectHintModel: ObservableObject {
 }
 
 /// "Can't see the other device?" — shown on the radar when the hint says so.
-/// An iPhone can't create a network for others, but it can join one: `onScan` ("Scan a code", iPhone/iPad only) reads
-/// the other phone's private-link code; `onGuide` opens the plain how-to.
+/// An iPhone can't create a network for others, but it can join one: `onJoinWifi` ("Join a CrossDrop Wi-Fi", iPhone/iPad
+/// only) joins the network an Android phone made, in one tap; `onScan` reads a phone's code instead (when there's no
+/// one-tap join); `onGuide` opens the plain how-to.
 struct ConnectHelpCard: View {
     let hint: ConnectHint
     let onGuide: () -> Void
     var onScan: (() -> Void)? = nil
+    var onJoinWifi: (() -> Void)? = nil
 
     private var title: String { hint == .noNetwork ? tr("You're not on Wi-Fi") : tr("Can't see the other device?") }
     private var message: String {
@@ -76,7 +79,9 @@ struct ConnectHelpCard: View {
                 Spacer(minLength: 0)
             }
             HStack(spacing: 8) {
-                if let onScan {
+                if let onJoinWifi {
+                    ChipButton(text: tr("Join a CrossDrop Wi-Fi"), fg: CD.onAccent, bg: CD.accent, height: 38, fontSize: 14, action: onJoinWifi)
+                } else if let onScan {
                     ChipButton(text: tr("Scan a code"), fg: CD.onAccent, bg: CD.accent, height: 38, fontSize: 14, action: onScan)
                 }
                 ChipButton(text: tr("Show me how"), height: 38, fontSize: 14, action: onGuide)
@@ -86,9 +91,37 @@ struct ConnectHelpCard: View {
     }
 }
 
-/// Plain-words guide to getting two devices on one network. Mirrors `ui/connect/ConnectHelp.kt`.
+/// The help card, hidden while a join is under way or being reported (the status row speaks then). Observes the join
+/// itself, which the radar doesn't.
+struct ConnectHelpGate: View {
+    @ObservedObject var join: WifiJoin
+    let hint: ConnectHint
+    let onGuide: () -> Void
+    var onScan: (() -> Void)? = nil
+    var onJoinWifi: (() -> Void)? = nil
+
+    var body: some View {
+        if hint != .none, showsCard {
+            ConnectHelpCard(hint: hint, onGuide: onGuide, onScan: onScan, onJoinWifi: onJoinWifi)
+        }
+    }
+
+    /** Hidden only while a row speaks for the join: one under way, linked, or a failed one-tap join. */
+    private var showsCard: Bool {
+        switch join.state {
+        case .idle: return true
+        case .failed: return !join.isCrossDropWifi        // a scanned code's failure has no row on the radar
+        default: return false
+        }
+    }
+}
+
+/// Plain-words guide to getting two devices on one network. Mirrors `ui/connect/ConnectHelp.kt`. `onJoinWifi` and
+/// `onScan` are set where this device can join a network from inside the app (iPhone and iPad).
 struct ConnectGuideScreen: View {
     let onClose: () -> Void
+    var onJoinWifi: (() -> Void)? = nil
+    var onScan: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -100,7 +133,10 @@ struct ConnectGuideScreen: View {
                     Text(tr("CrossDrop sends straight between devices on the same network, without the internet. Pick what fits:"))
                         .body(14, CD.textDim).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
 
-                    SectionLabel(tr("Use a hotspot")).padding(.top, 4)
+                    SectionLabel(tr("Join a phone's CrossDrop Wi-Fi")).padding(.top, 4)
+                    CrossDropWifiCard(onJoin: onJoinWifi, onScan: onScan)
+
+                    SectionLabel(tr("Or use a hotspot")).padding(.top, 4)
                     GroupCard(padding: .hv(14, 4)) {
                         step(1, tr("Turn on a hotspot on one phone"), tr("Settings → Hotspot (Personal Hotspot on iPhone)."))
                         RowSeparator()
@@ -145,5 +181,36 @@ struct ConnectGuideScreen: View {
 
     private func tip(_ text: String) -> some View {
         Text(text).body(13, CD.textSecondary).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 12)
+    }
+}
+
+/// The CrossDrop Wi-Fi an Android phone makes (Connect directly, then Make a CrossDrop Wi-Fi): one tap where this
+/// device can join it, and its name and password for joining from the Wi-Fi settings. Mirrors Kotlin `CrossDropWifiCard`.
+struct CrossDropWifiCard: View {
+    var onJoin: (() -> Void)?
+    var onScan: (() -> Void)?
+
+    var body: some View {
+        GlassCard(padding: .all(16), spacing: 10) {
+            Text(tr("Another phone makes it: Connect directly, then Make a CrossDrop Wi-Fi."))
+                .body(13, CD.textSecondary).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+            if let onJoin { PillButton(tr("Join a CrossDrop Wi-Fi"), action: onJoin) }
+            Text(onJoin != nil ? tr("Any other laptop or phone can join it from its Wi-Fi list with this name and password:")
+                 : tr("Join it from this device's Wi-Fi list with this name and password:"))
+                .body(13, CD.textDim).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+            detail(tr("Network"), DirectWifi.ssid)
+            RowSeparator()
+            detail(tr("Password"), DirectWifi.password)
+            if let onScan { ChipButton(text: tr("Scan a code instead"), action: onScan) }
+        }
+    }
+
+    private func detail(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 10) {
+            Text(label).body(12, CD.textDim).frame(minWidth: 80, alignment: .leading)
+            Text(verbatim: value).font(.mono(17)).foregroundColor(CD.textPrimary).textSelection(.enabled)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
     }
 }

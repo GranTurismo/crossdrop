@@ -109,6 +109,11 @@ fun RadarScreen(
     nsdEnabled: Boolean = true,
     hasNetwork: Boolean = true,
     onShowConnectGuide: () -> Unit = {},
+    /** "Join a CrossDrop Wi-Fi" (an Android phone's network): where it stands, and the actions; null where it can't. */
+    directWifi: com.crossdrop.net.DirectWifiJoin.State = com.crossdrop.net.DirectWifiJoin.State.Idle,
+    onJoinWifi: (() -> Unit)? = null,
+    onLeaveWifi: () -> Unit = {},
+    onDismissWifi: () -> Unit = {},
     /** Paired devices that are not here right now, and what is waiting for them ("send when it's back"). */
     offlineDevices: List<com.crossdrop.core.pairing.PairedDevice> = emptyList(),
     queued: Map<String, Int> = emptyMap(),
@@ -211,7 +216,17 @@ fun RadarScreen(
                     modifier = Modifier.widthIn(max = 560.dp),
                 )
             } else {
-                com.crossdrop.ui.connect.ConnectHelpCard(connectHint, onGuide = onShowConnectGuide, modifier = Modifier.widthIn(max = 560.dp))
+                com.crossdrop.ui.connect.DirectWifiRow(
+                    directWifi, onRetry = { onJoinWifi?.invoke() }, onLeave = onLeaveWifi, onDismiss = onDismissWifi,
+                    onGuide = onShowConnectGuide, modifier = Modifier.widthIn(max = 560.dp),
+                )
+                if (directWifi == com.crossdrop.net.DirectWifiJoin.State.Idle) {
+                    com.crossdrop.ui.connect.ConnectHelpCard(
+                        connectHint, onGuide = onShowConnectGuide, modifier = Modifier.widthIn(max = 560.dp),
+                        primaryLabel = tr("Join a CrossDrop Wi-Fi"), onPrimary = onJoinWifi,
+                        noNetworkBody = tr("Turn on Wi-Fi, then join the other device's network or an Android phone's CrossDrop Wi-Fi."),
+                    )
+                }
                 com.crossdrop.ui.pairing.OfflineDevicesStrip(offlineDevices, queued, sendingIds, onQueueFor, Modifier.widthIn(max = 560.dp))
                 SendToAnyoneCard(::startAnyoneFlow, Modifier.widthIn(max = 560.dp))
                 Row(Modifier.widthIn(max = 560.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {

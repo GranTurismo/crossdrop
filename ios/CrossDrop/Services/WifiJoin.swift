@@ -111,7 +111,11 @@ final class WifiJoin: ObservableObject {
 
     #if !targetEnvironment(macCatalyst)
     private func applied(_ gen: Int, _ code: JoinCode, _ error: Error?) {
-        guard gen == generation else { return }
+        guard gen == generation else {
+            // Cancelled while iOS was still asking: a join it completed anyway must not stay applied.
+            if error == nil, appliedSSID != code.ssid { NEHotspotConfigurationManager.shared.removeConfiguration(forSSID: code.ssid) }
+            return
+        }
         if let error = error as NSError? {
             let reason: Failure? = {
                 guard error.domain == NEHotspotConfigurationErrorDomain else { return .notJoined }
@@ -136,6 +140,19 @@ final class WifiJoin: ObservableObject {
         reach(code, gen)
     }
     #endif
+
+    /// One tap, no code: join the CrossDrop Wi-Fi an Android phone made (`DirectWifi`: the same name and password on
+    /// every phone). iOS asks the person once; the phone is then found at the network's well-known port.
+    func joinCrossDropWifi() { join(DirectWifi.joinCode()) }
+
+    /// Whether the current (or last) join is the CrossDrop Wi-Fi, for the radar's status row.
+    var isCrossDropWifi: Bool {
+        switch state {
+        case .joining(let s), .connecting(let s), .failed(let s, _): return DirectWifi.isCrossDropWifi(s)
+        case .joined(let s, _): return DirectWifi.isCrossDropWifi(s)
+        case .idle: return false
+        }
+    }
 
     /// Leave the network (iOS returns to the usual Wi-Fi) and forget the host.
     func leave() {
@@ -186,6 +203,23 @@ final class WifiJoin: ObservableObject {
 
     /// Announce to the code's device until it answers, then keep it current. Without an address, discovery has to find it.
     private func reachHost(_ code: JoinCode, _ gen: Int) async {
+        var code = code
+        if DirectWifi.isCrossDropWifi(code.ssid), code.host == nil || code.port == DirectWifi.port {
+            // A one-tap join has no code saying where the phone is: our address on its network tells (its .1).
+            let ip = await groupAddress(gen)
+            guard !Task.isCancelled, gen == generation else { return }
+            guard DirectWifi.onGroupSubnet(ip) else {
+                // iOS said yes but we never got an address on the phone's network: say so, and don't stay "on" it.
+                #if DEBUG
+                NSLog("CrossDrop join: no address on the CrossDrop Wi-Fi (now %@)", ip ?? "none")
+                #endif
+                leave()
+                state = .failed(ssid: code.ssid, reason: .notJoined)
+                return
+            }
+            code.host = DirectWifi.hostFor(ip)
+            code.port = DirectWifi.port
+        }
         guard let host = code.host else { state = .joined(ssid: code.ssid, hostName: nil); return }
         var first = true
         var misses = 0
@@ -234,6 +268,37 @@ final class WifiJoin: ObservableObject {
         if let result { NSLog("CrossDrop join: announced :%d to %@:%d -> %@ (%@)", listen, host, port, result.name, result.instanceId) }
         #endif
         return result
+    }
+
+    /// Our address on the CrossDrop Wi-Fi once iOS has one (DHCP takes a moment after joining); up to 10 s.
+    private func groupAddress(_ gen: Int) async -> String? {
+        var ip = Self.wifiIPv4()
+        var waited: TimeInterval = 0
+        while !DirectWifi.onGroupSubnet(ip), waited < 10, !Task.isCancelled, gen == generation {
+            await sleep(0.5); waited += 0.5
+            ip = Self.wifiIPv4()
+        }
+        return ip
+    }
+
+    /// This device's IPv4 address on Wi-Fi (`en0`), if it has one.
+    nonisolated static func wifiIPv4() -> String? {
+        var list: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&list) == 0, let first = list else { return nil }
+        defer { freeifaddrs(list) }
+        var cursor: UnsafeMutablePointer<ifaddrs>? = first
+        while let p = cursor {
+            let ifa = p.pointee
+            cursor = ifa.ifa_next
+            guard String(cString: ifa.ifa_name) == "en0", let addr = ifa.ifa_addr, Int32(addr.pointee.sa_family) == AF_INET else { continue }
+            var buf = [CChar](repeating: 0, count: Int(INET_ADDRSTRLEN))
+            let ok = addr.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { sin -> Bool in
+                var a = sin.pointee.sin_addr
+                return inet_ntop(AF_INET, &a, &buf, socklen_t(INET_ADDRSTRLEN)) != nil
+            }
+            if ok { return String(cString: buf) }
+        }
+        return nil
     }
 
     private func sleep(_ seconds: TimeInterval) async {
