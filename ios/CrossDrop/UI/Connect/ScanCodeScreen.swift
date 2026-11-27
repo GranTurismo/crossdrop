@@ -173,8 +173,8 @@ struct ScanCodeScreen: View {
             Text(tr("No camera available")).body(14, CD.textSecondary)
         case .unknown, .granted:
             Text(tr("Point at the code on the other phone")).body(15, weight: .semibold).fixedSize(horizontal: false, vertical: true)
-            Text(notWifi ? tr("That code isn't for a Wi-Fi network. On the other phone, tap Connect directly, then Show a code.")
-                 : tr("On the other phone: Connect directly, then Show a code. Any Wi-Fi code works too."))
+            Text(notWifi ? tr("That code isn't for a Wi-Fi network. On the other phone, tap Connect directly, then Make a CrossDrop Wi-Fi.")
+                 : tr("On the other phone: Connect directly, then Make a CrossDrop Wi-Fi. Any Wi-Fi code works too."))
                 .body(13, notWifi ? CD.amber : CD.textDim).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -239,5 +239,68 @@ struct JoinedLinkRow: View {
             .overlay(shape.strokeBorder(CD.accent.opacity(0.3), lineWidth: 1))
             .accessibilityElement(children: .contain)
         }
+    }
+}
+
+/// On the radar while a one-tap "Join a CrossDrop Wi-Fi" is waiting on iOS, or didn't work. Once on the network,
+/// `JoinedLinkRow` takes over. The twin of Android's `JoinWifiScreen` states, as a row.
+struct CrossDropWifiStatusRow: View {
+    @ObservedObject var join: WifiJoin
+    let onScan: () -> Void
+
+    var body: some View {
+        if join.isCrossDropWifi {
+            switch join.state {
+            case .joining:
+                row(tint: CD.accent, busy: true, title: tr("Joining {0}…", DirectWifi.ssid),
+                    body: tr("Your {0} asks you to confirm. Tap Join.", Platform.deviceNoun)) {
+                    ChipButton(text: tr("Cancel"), height: 34, fontSize: 13) { join.leave() }
+                }
+            case .failed(_, let reason):
+                let (title, body) = texts(reason)
+                VStack(alignment: .leading, spacing: 8) {
+                    row(tint: CD.amber, busy: false, title: title, body: body) {
+                        ChipButton(text: tr("Close"), height: 34, fontSize: 13) { join.dismiss() }
+                    }
+                    HStack(spacing: 8) {
+                        ChipButton(text: tr("Try again"), fg: CD.onAccent, bg: CD.accent, height: 34, fontSize: 13) { join.joinCrossDropWifi() }
+                        ChipButton(text: tr("Scan a code instead"), height: 34, fontSize: 13) { join.dismiss(); onScan() }
+                    }
+                    .padding(.leading, 16)
+                }
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    private func texts(_ reason: WifiJoin.Failure) -> (String, String) {
+        switch reason {
+        case .notJoined:
+            return (tr("Couldn't find a CrossDrop Wi-Fi"),
+                    tr("On the other phone, tap Connect directly, then Make a CrossDrop Wi-Fi. If asked, tap Join."))
+        case .lost:
+            return (tr("The CrossDrop Wi-Fi ended"), tr("The phone stopped it, or it's out of range."))
+        case .unsupported:
+            return (tr("This network can't be joined from an app"), tr("Join it in your phone's Wi-Fi settings instead."))
+        }
+    }
+
+    private func row<Trailing: View>(tint: Color, busy: Bool, title: String, body: String,
+                                     @ViewBuilder trailing: () -> Trailing) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 22, style: .continuous)
+        return HStack(spacing: 10) {
+            if busy { ProgressView().tint(CD.accent).scaleEffect(0.8) } else { CdIconView(CdIcons.wifi, color: tint, size: 18) }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).body(14, weight: .semibold).lineLimit(2)
+                Text(body).body(12, CD.textDim).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 4)
+            trailing()
+        }
+        .padding(.leading, 16).padding(.trailing, 8).padding(.vertical, 8)
+        .background(shape.fill(tint.opacity(0.08)))
+        .overlay(shape.strokeBorder(tint.opacity(0.3), lineWidth: 1))
+        .accessibilityElement(children: .contain)
     }
 }

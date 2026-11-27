@@ -117,7 +117,7 @@ class VaultHostManager(
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "crossdrop:drive")
             .apply { acquire(DRIVE_WAKE_TIMEOUT_MS) }
 
-        val ip = LocalIp.wifiIpv4()
+        val ip = LocalIp.wifiIpv4(preferDirectLink = false)
         val url = if (ip != null) "http://$ip:${srv.port}/" else null
         _state.value = State(
             port = srv.port,

@@ -121,7 +121,11 @@ struct RootView: View {
                 }
 
                 if guideOpen {
-                    ConnectGuideScreen(onClose: { guideOpen = false })
+                    ConnectGuideScreen(
+                        onClose: { guideOpen = false },
+                        onJoinWifi: WifiJoin.supported ? { guideOpen = false; container.wifiJoin.joinCrossDropWifi() } : nil,
+                        onScan: WifiJoin.supported ? { guideOpen = false; scanOpen = true } : nil
+                    )
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .zIndex(3)
                 }
@@ -182,7 +186,8 @@ struct RootView: View {
         ZStack {
             // The radar stays mounted (its pickers and ⌘O handler live there); hidden it stops animating.
             RadarScreen(active: tab == .radar, covered: radarCovered, onShowConnectGuide: { guideOpen = true },
-                        onScanCode: WifiJoin.supported ? { scanOpen = true } : nil)
+                        onScanCode: WifiJoin.supported ? { scanOpen = true } : nil,
+                        onJoinWifi: WifiJoin.supported ? { container.wifiJoin.joinCrossDropWifi() } : nil)
                 .opacity(tab == .radar ? 1 : 0)
                 .allowsHitTesting(tab == .radar)
                 .accessibilityHidden(tab != .radar)

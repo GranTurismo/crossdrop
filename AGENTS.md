@@ -562,21 +562,66 @@ rule, thresholds and copy in step). "Has a network" is Android `net/LocalNetwork
 `ap*`/`swlan*` interface), desktop `LocalIp` polled every 4 s, iOS `AppContainer.localNetworkUp()` (private IPv4 on `en*`/`bridge*`).
 The card also hides while a direct link is on.
 
-**Connect directly**: the card's "Connect directly" opens a choice, *Show a code* (Android only) or *Scan a code* (Android +
-iPhone); nothing starts until one is picked, because the phone that scans must not make a network. A Bluetooth-only radar node
-(near, not on this Wi-Fi) opens the same choice as a sheet (`RadarScreen.NotOnWifiSheet`) instead of doing nothing.
+**Connect directly**: the card's "Connect directly" opens a choice: *Make a CrossDrop Wi-Fi* (Android only) or *Join a CrossDrop
+Wi-Fi* (one tap, Android; iPhone and the desktop app have the same button on their help card and guide), with *Scan a code instead*
+underneath for a phone that could only make a network of its own naming. Nothing starts until one is picked, because the device that
+joins must not make a network too. A Bluetooth-only radar node (near, not on this Wi-Fi) opens the same choice as a sheet
+(`RadarScreen.NotOnWifiSheet`: "Make a Wi-Fi" / "Join theirs").
 
-*Show a code* — `net/DirectLink` starts Android's *local-only hotspot* (`startLocalOnlyHotspot`:
-random SSID/password, no internet shared, API 26+; needs `CHANGE_WIFI_STATE` + Nearby devices on 13+, or the Location permission *and* Location switched on before 13, so
-`ACCESS_FINE_LOCATION` is declared through API 32 and asked for only here, after an explanation). The phone answers a hotspot request whenever it
-likes or never, so `core/connect/DirectLinkMachine` (tested) tags every request: a 20 s start timeout, Stop that cancels a start in flight, and late
-"started"/"stopped" answers for an older request are ignored (the late hotspot is closed). Once the hotspot interface has an
-address, `DirectLink.findAddress` puts it in the code with our listener port (`DirectLinkMachine.located`): the QR is the standard
-`WIFI:T:WPA;S:..;P:..;` text plus CrossDrop's own field `CD:<ipv4>/<port>/<instance id>;` before `;;` (`core/connect/WifiQr`).
-Phone cameras ignore unknown fields (ZXing's and Android's parsers look up known keys; `JoinCodeTest` checks ZXing still reads the
-network), so the no-app path is unchanged; CrossDrop's scanner connects straight to the address. **Android 15+ lists the hotspot itself as a
-network with `NET_CAPABILITY_LOCAL_NETWORK`**: the address finder must not treat it as a client network (it did, and the code had no
-`CD`). While it is on the radar shows a "Direct connection is on" row; it stops on Stop, after 30 min, or when the system or process ends it.
+**The CrossDrop Wi-Fi** (`core/connect/DirectWifi`, Swift twin `CrossDropCore/DirectWifi.swift`, same values): every phone makes the
+*same* network, name `DIRECT-CD-CrossDrop` (Wi-Fi Direct names must start `DIRECT-xy`) and password `crossdrop123`, so CrossDrop
+elsewhere joins without a code and a laptop without CrossDrop types a short password. **The password is public on purpose** (open
+source); transfers stay end-to-end encrypted and accepted per offer, the network lives at most 30 min, and two phones making it at
+once in the same room look like one network to joiners (rare; the radar names who you are linked with). While it is on, the phone
+also listens on the well-known port `DirectWifi.PORT` = 47474 (`TransferServer.openRendezvous`, opened/closed by `AppContainer` from
+`DirectLink.state`), because a one-tap joiner has no code telling it the port; joiners announce to `.1` of their subnet
+(`DirectWifi.hostFor`; Android's group owner is always 192.168.49.1) at that port, then the usual announce loop. "Send to anyone"
+links use the link's address while it is on (`LocalIp.directLinkAddress`): the phone's own Wi-Fi usually stays up beside the group.
+
+*Make a CrossDrop Wi-Fi* — `net/DirectLink` asks for a **Wi-Fi Direct group** (`WifiP2pManager.createGroup` with
+`WifiP2pConfig.Builder().setNetworkName/setPassphrase`, API 29 = our minSdk; 2.4 GHz first so every laptop sees it, then
+band auto, never persistent). **Everything in `DirectLink` runs on the main looper** (jobs on `Dispatchers.Main`, tied to their request
+and cancelled with it; `DirectLinkMachine.owns/pending/idle` gate every step). **A group is only removed after `requestGroupInfo` shows
+it is ours** (the CrossDrop name, or the name this run's maker picked) **and no newer request wants it** (`machine.idle()`): another app's
+group (Quick Share, a printer) is never touched, whatever the timing; a follow-up removal 2 s after Stop is cancelled by a new start. A
+leftover CrossDrop group from this phone is removed and recreated on Make. **A group can outlive the process** (killed while hosting):
+prefs `direct_link/group_up` is set on create and cleared on removal, and `cleanUpLeftover()` (AppContainer init) removes it at the next
+launch. A watcher polls `requestGroupInfo` every 5 s (a slow answer counts as nothing, two "no group" answers as ended). Making a network
+leaves a joined one first and joining stops our own (`Root`), and `WifiJoin` ignores an answer from its own instance id (two phones'
+groups share 192.168.49.1). When Wi-Fi Direct
+can't (Wi-Fi switched off, no P2P, busy, refused, never formed), it **falls back to Android's local-only hotspot** (`startLocalOnlyHotspot`:
+random SSID/password; `DirectLinkState.On.oneTap = false`, and `wifiWasOff` makes the screen say "turn on Wi-Fi … so others can join in
+one tap"). Both need `CHANGE_WIFI_STATE` + Nearby devices on 13+, or the Location permission *and* Location switched on before 13, so
+`ACCESS_FINE_LOCATION` is declared through API 32 and asked for only here, after an explanation. The phone answers whenever it likes or
+never, so `core/connect/DirectLinkMachine` (tested) tags every request: a 25 s start timeout covering the whole fallback chain
+(`pending(request)` gates each step), Stop that cancels a start in flight, and late answers for an older request are undone (late group
+removed, late hotspot closed). The screen shows the **network name and password in large type straight away** (a laptop can't scan),
+then the QR: the standard `WIFI:T:WPA;S:..;P:..;` text plus CrossDrop's own field `CD:<ipv4>/<port>/<instance id>;` before `;;`
+(`core/connect/WifiQr`; `DirectLink.findAddress` fills it once the interface has an address). Phone cameras ignore unknown fields
+(ZXing's and Android's parsers look up known keys; `JoinCodeTest`/`DirectWifiTest` check ZXing still reads the network). **Android 15+
+lists the hotspot itself as a network with `NET_CAPABILITY_LOCAL_NETWORK`**: the address finder must not treat it as a client network.
+While it is on the radar shows a "Your CrossDrop Wi-Fi is on" row; it stops on Stop, after 30 min, or when the system or process ends it.
+
+*Join a CrossDrop Wi-Fi* — Android `ui/connect/JoinWifiScreen` → `WifiJoin.joinCrossDropWifi()` (the same `WifiNetworkSpecifier` path as a
+scanned code, exact SSID + fixed password; the host is taken from the joined network's DHCP server / gateway / own address). iPhone/iPad:
+`WifiJoin.joinCrossDropWifi()` (`NEHotspotConfiguration`, `joinOnce`; host from `en0`'s address), radar rows `CrossDropWifiStatusRow`
+(joining/failed) + `JoinedLinkRow`. Not on Mac Catalyst (no in-app join: its guide shows the name and password). **Desktop**
+`net/DirectWifiJoin` + `platform/WifiJoiner` join through the OS: macOS `networksetup -setairportnetwork <dev> <ssid> <pw>`, Windows a
+per-user WLAN profile with `connectionMode` **manual** + `netsh wlan connect` (run in the temp folder with a bare file name; the connect is
+retried 6× 3 s apart because Windows only joins networks in its cached scan), Linux `nmcli connection add … connection.autoconnect no` +
+`nmcli --wait 30 connection up` (deleted again if it doesn't come up). Success is judged by our address moving onto 192.168.49.x (tool
+output is localized), then announce. **The computer must never keep the network** (public password: a remembered one is rejoined
+automatically, a fake one included): a failed join, Leave, losing the network and quitting all forget it (macOS
+`-removepreferredwirelessnetwork` **does not disconnect**, seen on macOS 27, so when still on it the Mac's Wi-Fi is switched off and on and it
+rejoins its usual network; `netsh wlan delete profile` and `nmcli connection delete` disconnect by themselves). Every OS call goes through
+one `Mutex`; each join/leave bumps a generation, and a join the OS finishes after its Leave forgets the network unless a newer join wants it.
+Prefs `direct_wifi_joined` is set before every join and cleared after forgetting: `cleanUpLeftover()` at launch handles a crash/force
+quit, and a JVM shutdown hook calls `shutdown()` (AWT's default ⌘Q exits without our window's dispose). Radar row
+`ui/connect/DirectWifiRow` (desktop only); the help card's button is "Join a CrossDrop Wi-Fi". Tests: `DirectWifiJoinTest` (commands and
+output parsing for all three OSes; the flow against a real loopback device with the OS step faked: linked both ways, not found, no address,
+network lost, quit, Leave during a slow join, quit during a slow join, Leave + immediate re-join, cleanup after a crash). iPhone: a one-tap
+join whose address never lands on 192.168.49.x fails ("not joined") instead of claiming the link; a join cancelled while iOS was asking
+removes the configuration iOS applied anyway. iPhone text never names Android (App Review 2.3.10): "Another phone makes it".
 
 *Scan a code* — `ui/connect/ScanCodeScreen` (CameraX `ImageAnalysis` + ZXing core's `QRCodeReader`, a shipped dependency now,
 ~0.25 MB in the release APK) reads any `WIFI:` code; `net/WifiJoin` joins it with a `WifiNetworkSpecifier` request (the system asks
@@ -588,12 +633,15 @@ send. Leave (radar row "Linked with …") releases the request and Android retur
 just joins; discovery takes over. iPhones scan and join too, but can't host: `ios/CrossDrop/Services/WifiJoin.swift`
 (`NEHotspotConfiguration`, `joinOnce`; entitlement `com.apple.developer.networking.HotspotConfiguration` in
 `CrossDrop/CrossDrop.entitlements`, iPhone/iPad only; everything NetworkExtension is compiled out on Mac Catalyst), AVFoundation
-scanner `UI/Connect/ScanCodeScreen.swift`, announced peers `Services/AnnouncedPeers.swift`; the help card's button is "Scan a code".
+scanner `UI/Connect/ScanCodeScreen.swift`, announced peers `Services/AnnouncedPeers.swift`; the help card's button is "Join a CrossDrop
+Wi-Fi" now ("Scan a code" lives in the guide's CrossDrop Wi-Fi card and on a failed join).
 The Swift engine answers ANNOUNCE; it agrees to PAIR only for "Add a device" (`purpose: devices`) and refuses the old backup request (iPhones don't keep backups).
 iOS debug launch args: `-dev_join '<code>'`, `-dev_join_skip_wifi '<code>'`, `-dev_scan YES`. `crossdrop-cli announce --to h:p --port N`
 and `recv` (prints `ANNOUNCED-FROM …`) cover it; `SwiftInteropTest` checks ANNOUNCE both ways and the pairing crypto has the same
 known-answer vectors in Kotlin `ControlTest` and Swift `ControlTests`.
-Debug hooks: Android `-e dev_directlink on|fail` (the forced code carries the device's real address/port), `-e dev_ble_peer 'Galaxy S24'`
+Debug hooks: Android `-e dev_directlink on|own|fail` (on = the CrossDrop Wi-Fi, own = the fallback hotspot; the forced code carries the
+device's real address/port), `-e dev_join_wifi 1` (one-tap join for real), `-e dev_join_wifi_skip <host>` (skips the Wi-Fi step and announces
+to `<host>:47474`), `-e dev_ble_peer 'Galaxy S24'`
 (a Bluetooth-only radar node: emulators have no Bluetooth peers), `-e dev_join '<code>'` (real
 join, system dialog), `-e dev_join_skip_wifi '<code>'` (skips the Wi-Fi step: emulators can't join each other's hotspot). Mac-side peer for
 emulator tests: `JAVA_TOOL_OPTIONS=-Dcrossdrop.linkProbe=1 ./gradlew :desktop:test --tests 'com.crossdrop.LinkInteropProbe' --rerun -i`
@@ -601,6 +649,22 @@ emulator tests: `JAVA_TOOL_OPTIONS=-Dcrossdrop.linkProbe=1 ./gradlew :desktop:te
 Proven on the Android 16 emulator: the real hotspot's QR carries `CD:` with its address; a real `WifiNetworkSpecifier` join of the
 emulator's own network, bind, announce to the Mac, the Mac's offer received; Leave. **Not proven**: two real phones (a guest joining the
 host's hotspot), iPhone cameras with the extra field, makers that drop the host's own Wi-Fi (Samsung, Xiaomi/Oppo).
+**The CrossDrop Wi-Fi, proven 2026-11-27 on a Xiaomi 11T (Android 14, MIUI 14) + a Mac (macOS 27)**: the group comes up as
+`DIRECT-CD-CrossDrop` on 2.4 GHz (interface `p2p0`, 192.168.49.1, port 47474 listening) while the phone **stays on its own Wi-Fi**
+(wireless adb over it never dropped); Stop removes it (`P2P-GROUP-REMOVED … reason=REQUESTED`) and a restart brings it back; the Mac
+sees it in a scan by name, `networksetup -setairportnetwork` joins it with no output (≈10 s, address in 3 s), the phone answers on 47474
+and its usual port and its mDNS advert is visible over the group, `-removepreferredwirelessnetwork` works without admin; and the
+desktop app's own code end to end (`DirectWifiProbe`, below): Joined(hostName = "Xiaomi 11T") 12.5 s after the click, the phone on the
+Mac's radar at `192.168.49.1:47474`, the phone's screen showing "Mac (probe) is connected". Android's own mDNS also advertises on
+`p2p0` on this phone (beside `HostedMdns`; identical records, no conflict seen). **Phone ↔ phone, same day**: an Honor 600 Pro
+(Android 17) with Wi-Fi switched on but not connected, *while hosting its own hotspot on `wlan2`*, joined with one tap ("Device to use with
+CrossDrop: DIRECT-CD-CrossDrop" → Connect; `adb shell input tap` works on that system sheet), got 192.168.49.206, showed "Linked with
+Xiaomi 11T", the Xiaomi showed "HONOR 600 Pro is connected", and a text offer went Honor → Xiaomi over the group
+(192.168.49.206 → 192.168.49.1:41869) and completed. **Not proven yet**: iPhone join, Windows and Linux joins, other makers (Samsung,
+Pixel), the hotspot fallback path on a real phone, a large file over the group (speed).
+Real-hardware probe (takes the Mac off its Wi-Fi; restore with Wi-Fi off/on, `networksetup -setairportpower en0 off/on`):
+`JAVA_TOOL_OPTIONS=-Dcrossdrop.directWifiProbe=1 ./gradlew --offline :desktop:test --tests 'com.crossdrop.DirectWifiProbe' --rerun -i`
+with a phone showing "Your CrossDrop Wi-Fi is on". Run it from a script that restores Wi-Fi itself: the machine has no internet meanwhile.
 
 ## Shake to connect
 

@@ -11,12 +11,16 @@ import android.net.wifi.WifiNetworkSpecifier
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.crossdrop.core.Endpoint
+import com.crossdrop.core.connect.DirectWifi
 import com.crossdrop.core.connect.JoinCode
 import com.crossdrop.core.discovery.AnnouncedPeers
 import com.crossdrop.core.transfer.TransferEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -38,6 +42,8 @@ class WifiJoin(
     private val listenPort: () -> Int,
     /** Where the host shows up on our radar (the same list announcements land in). */
     private val known: AnnouncedPeers,
+    /** Our own per-launch id: an answer from ourselves (we host a CrossDrop Wi-Fi too) is no host. */
+    private val ownInstanceId: String? = null,
 ) {
     sealed interface State {
         data object Idle : State
@@ -126,6 +132,13 @@ class WifiJoin(
         }
     }
 
+    /**
+     * One tap, no code: join the CrossDrop Wi-Fi another phone made ([DirectWifi]: the same name and password on every
+     * phone). Android shows its own "Connect to device" question; the phone that made it is found at its well-known
+     * port once we're on.
+     */
+    fun joinCrossDropWifi() = join(DirectWifi.joinCode())
+
     /** Leave the network (Android returns to the usual Wi-Fi) and forget the host. */
     @Synchronized
     fun leave() {
@@ -155,8 +168,13 @@ class WifiJoin(
         runCatching { cm.bindProcessToNetwork(network) }
         bound = network
         _state.value = State.Connecting(code.ssid)
+        // A one-tap join (or a CrossDrop Wi-Fi code scanned before its address was known) doesn't say where the phone
+        // that made the network is: ask the network itself, and use the network's well-known port.
+        val knownPort = code.host?.port
+        val oneTap = DirectWifi.isCrossDropWifi(code.ssid) && (knownPort == null || knownPort == DirectWifi.PORT)
+        val target = if (oneTap) code.copy(host = Endpoint(hostOn(network), DirectWifi.PORT)) else code
         talk?.cancel()
-        talk = scope.launch { reachHost(code) }
+        talk = scope.launch { reachHost(target) }
     }
 
     @Synchronized
@@ -170,6 +188,21 @@ class WifiJoin(
         _state.value = State.Failed(ssid, why)
     }
 
+    /**
+     * The phone that runs the network we joined: the address that handed us ours (DHCP), else the default gateway,
+     * else the first address of our subnet (Android's Wi-Fi Direct group owner is 192.168.49.1).
+     */
+    private fun hostOn(network: Network): String {
+        val lp = runCatching { cm.getLinkProperties(network) }.getOrNull() ?: return DirectWifi.HOST
+        if (Build.VERSION.SDK_INT >= 30) {
+            (lp.dhcpServerAddress as? java.net.Inet4Address)?.hostAddress?.let { return it }
+        }
+        lp.routes.firstOrNull { it.isDefaultRoute && it.gateway is java.net.Inet4Address && !it.gateway!!.isAnyLocalAddress }
+            ?.gateway?.hostAddress?.let { return it }
+        val mine = lp.linkAddresses.map { it.address }.filterIsInstance<java.net.Inet4Address>().firstOrNull()?.hostAddress
+        return DirectWifi.hostFor(mine)
+    }
+
     /** Announce to the code's device until it answers, then keep it current. Without an address, discovery has to find it. */
     private suspend fun reachHost(code: JoinCode) {
         val host = code.host ?: run { _state.value = State.Joined(code.ssid); return }
@@ -179,8 +212,13 @@ class WifiJoin(
             val answer = runCatching {
                 engine.control(host) { announce(listenPort()); Triple(peerName, peerInstanceId, peerOs) }
             }.onFailure { Log.i(TAG, "announce to $host: ${it.message}") }.getOrNull()
-            if (answer != null) {
-                val (name, id, os) = answer
+            // The blocking call may outlive a Leave: don't put the host back on the radar after it.
+            currentCoroutineContext().ensureActive()
+            // Our own listener answering (this phone hosts a CrossDrop Wi-Fi at the same address) is no host.
+            val fromHost = answer?.takeIf { it.second != ownInstanceId }
+            if (answer != null && fromHost == null) Log.w(TAG, "announce reached ourselves at $host: not linked")
+            if (fromHost != null) {
+                val (name, id, os) = fromHost
                 hostId = id
                 known.add(id, name, host, os)
                 misses = 0

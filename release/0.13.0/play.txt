@@ -1,0 +1,1 @@
+Not on the same Wi-Fi? Tap Connect directly, then Make a CrossDrop Wi-Fi: your phone makes a network that other phones and computers with CrossDrop join in one tap, no code needed. A laptop without CrossDrop types the short password shown in large letters. Your phone keeps its own Wi-Fi on most models, and everything stays end-to-end encrypted.

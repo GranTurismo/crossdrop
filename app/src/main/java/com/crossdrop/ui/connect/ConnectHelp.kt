@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.crossdrop.core.connect.ConnectAdvice
 import com.crossdrop.core.connect.ConnectHint
+import com.crossdrop.core.connect.DirectWifi
 import com.crossdrop.core.i18n.tr
 import com.crossdrop.ui.BackHeader
 import com.crossdrop.ui.CdIcons
@@ -47,6 +48,7 @@ import com.crossdrop.ui.theme.ScreenGlow
 import com.crossdrop.ui.theme.TextDim
 import com.crossdrop.ui.theme.TextPrimary
 import com.crossdrop.ui.theme.TextSecondary
+import com.crossdrop.ui.theme.monoStyle
 import kotlinx.coroutines.delay
 
 /**
@@ -78,14 +80,15 @@ fun ConnectHelpCard(
     modifier: Modifier = Modifier,
     primaryLabel: String = tr("Connect directly"),
     onPrimary: (() -> Unit)? = null,
+    /** What to say when there is no network at all, where the default (phones linking) doesn't fit (a computer). */
+    noNetworkBody: String? = null,
 ) {
     if (hint == ConnectHint.NONE) return
     val direct = onPrimary != null
     val title = if (hint == ConnectHint.NO_NETWORK) tr("You're not on Wi-Fi") else tr("Can't see the other device?")
     // Short on purpose: the card shares a small phone's screen with the radar.
     val body = when (hint) {
-        ConnectHint.NO_NETWORK ->
-            if (direct) tr("Connect your phones directly. No Wi-Fi needed.")
+        ConnectHint.NO_NETWORK -> noNetworkBody ?: if (direct) tr("Connect your phones directly. No Wi-Fi needed.")
             else tr("Join the same Wi-Fi, or turn on a hotspot on one device.")
         else -> tr("Is CrossDrop open there, on the same Wi-Fi? Guest and hotel Wi-Fi can hide devices.")
     }
@@ -109,8 +112,9 @@ fun ConnectHelpCard(
 }
 
 /**
- * Plain-words guide to getting two devices on one network. [onConnectDirectly] adds the one-tap option
- * on devices that can create a private network themselves (Android); elsewhere the steps stand alone.
+ * Plain-words guide to getting two devices on one network. [onConnectDirectly] adds the option to make a network
+ * on devices that can (Android); [onJoinWifi] the one-tap join of a phone's CrossDrop Wi-Fi where CrossDrop can join
+ * networks itself (Android, the desktop app). The network's name and password are always shown, for typing.
  * Platform-free: shared with the desktop app.
  */
 @Composable
@@ -118,6 +122,7 @@ fun ConnectGuideScreen(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     onConnectDirectly: (() -> Unit)? = null,
+    onJoinWifi: (() -> Unit)? = null,
 ) {
     androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
         ScreenGlow(alpha = 0.16f, centerX = 0.3f, centerY = 120.dp, radius = 240.dp)
@@ -140,12 +145,15 @@ fun ConnectGuideScreen(
                     ) {
                         Text(tr("Easiest: connect directly"), color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                         Text(
-                            tr("Your phone makes a private link and shows a code. The other person scans it with their camera. No Wi-Fi, router or typing needed."),
+                            tr("One phone makes a CrossDrop Wi-Fi. The other device joins it in one tap with CrossDrop, or a laptop types a short password. No router or internet needed."),
                             color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp,
                         )
                         PillButton(tr("Connect directly"), onConnectDirectly, Modifier.fillMaxWidth(), glow = true)
                     }
                 }
+
+                SectionLabel(tr("Join a phone's CrossDrop Wi-Fi"), Modifier.padding(top = 4.dp))
+                CrossDropWifiCard(onJoinWifi)
 
                 SectionLabel(tr("Or use a hotspot"), Modifier.padding(top = 4.dp))
                 GroupCard(contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp)) {
@@ -174,6 +182,37 @@ fun ConnectGuideScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * The CrossDrop Wi-Fi an Android phone makes (Connect directly, then Make a CrossDrop Wi-Fi): one tap where this
+ * device can join it ([onJoin]), and its name and password for typing anywhere else.
+ */
+@Composable
+fun CrossDropWifiCard(onJoin: (() -> Unit)?, modifier: Modifier = Modifier) {
+    GlassCard(modifier.fillMaxWidth(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            tr("An Android phone makes it: Connect directly, then Make a CrossDrop Wi-Fi."),
+            color = TextSecondary, fontSize = 13.sp, lineHeight = 19.sp,
+        )
+        if (onJoin != null) PillButton(tr("Join a CrossDrop Wi-Fi"), onJoin, Modifier.fillMaxWidth())
+        Text(
+            if (onJoin != null) tr("Any other laptop or phone can join it from its Wi-Fi list with this name and password:")
+            else tr("Join it from this device's Wi-Fi list with this name and password:"),
+            color = TextDim, fontSize = 13.sp, lineHeight = 18.sp,
+        )
+        WifiDetail(tr("Network"), DirectWifi.SSID)
+        RowSeparator()
+        WifiDetail(tr("Password"), DirectWifi.PASSWORD)
+    }
+}
+
+@Composable
+private fun WifiDetail(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = TextDim, fontSize = 12.sp, modifier = Modifier.widthIn(min = 80.dp))
+        Text(value, style = monoStyle(17, TextPrimary))
     }
 }
 

@@ -151,6 +151,7 @@ fun Root(container: AppContainer) {
     // Opened from "Show a code" (skip the show/scan choice) rather than "Connect directly".
     var connectShowNow by rememberSaveable { mutableStateOf(false) }
     var scanOpen by rememberSaveable { mutableStateOf(false) }
+    var joinWifiOpen by rememberSaveable { mutableStateOf(false) }
     var guideOpen by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(directLink) { container.localNetwork.refresh() }
     val tab = Tab.valueOf(tabName)
@@ -291,11 +292,13 @@ fun Root(container: AppContainer) {
                     nsdEnabled = nsdEnabled,
                     hasNetwork = hasNetwork,
                     directLinkOn = directLinkOn,
+                    directLinkOneTap = (directLink as? com.crossdrop.core.connect.DirectLinkState.On)?.oneTap != false,
                     onConnectDirectly = { connectShowNow = false; connectOpen = true },
                     onShowConnectGuide = { guideOpen = true },
                     onOpenDirectLink = { connectShowNow = false; connectOpen = true },
                     onShowCode = { connectShowNow = true; connectOpen = true },
                     onScanCode = { scanOpen = true },
+                    onJoinWifi = { container.directLink.stop(); joinWifiOpen = true },
                     joinedSsid = when (val j = joinState) {
                         is com.crossdrop.net.WifiJoin.State.Joined -> j.ssid
                         is com.crossdrop.net.WifiJoin.State.Connecting -> j.ssid
@@ -404,6 +407,7 @@ fun Root(container: AppContainer) {
                 com.crossdrop.ui.connect.ConnectGuideScreen(
                     onClose = { guideOpen = false },
                     onConnectDirectly = { guideOpen = false; connectOpen = true },
+                    onJoinWifi = { container.directLink.stop(); guideOpen = false; joinWifiOpen = true },
                 )
             }
             Overlay(true.takeIf { connectOpen }) {
@@ -414,7 +418,18 @@ fun Root(container: AppContainer) {
                     onClose = { connectOpen = false },
                     onGuide = { connectOpen = false; guideOpen = true },
                     onScan = { connectOpen = false; scanOpen = true },
+                    onJoin = { container.directLink.stop(); connectOpen = false; joinWifiOpen = true },
                     showNow = connectShowNow,
+                    onBeforeMake = container.wifiJoin::leave,
+                )
+            }
+            Overlay(true.takeIf { joinWifiOpen }) {
+                BackHandler { container.wifiJoin.dismiss(); joinWifiOpen = false }
+                com.crossdrop.ui.connect.JoinWifiScreen(
+                    join = container.wifiJoin,
+                    onClose = { joinWifiOpen = false },
+                    onJoined = { joinWifiOpen = false; connectOpen = false },
+                    onScan = { joinWifiOpen = false; scanOpen = true },
                 )
             }
             Overlay(true.takeIf { backupOpen }) {

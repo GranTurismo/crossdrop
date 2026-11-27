@@ -70,17 +70,35 @@ class MainActivity : ComponentActivity() {
         if (!BuildConfig.DEBUG) return
         // -e dev_skip_welcome 1 — a fresh install goes straight to the radar (the first-run tour would cover it).
         if (intent?.hasExtra("dev_skip_welcome") == true) container.welcomeSeen = true
-        // -e dev_directlink on|fail — shows the "Connect directly" states without a hotspot (emulators can't make one).
+        // -e dev_directlink on|own|fail — shows the "Connect directly" states without a network (emulators can't make
+        // one): on = the CrossDrop Wi-Fi, own = the fallback hotspot with a name of the system's choosing.
         intent?.getStringExtra("dev_directlink")?.let {
             // The code carries this device's real address and port, so another emulator can "scan" it.
             android.os.Handler(mainLooper).postDelayed({
+                val ip = com.crossdrop.net.LocalIp.wifiIpv4()
                 container.directLink.forceStateForDebug(
-                    if (it == "on") com.crossdrop.core.connect.DirectLinkState.On(
-                        "AndroidShare_4821", "k9Qm-x2Lp", "WPA",
-                        com.crossdrop.net.LocalIp.wifiIpv4(), container.listenerPort.value, container.instanceId,
-                    )
-                    else com.crossdrop.core.connect.DirectLinkState.Failed(com.crossdrop.core.connect.DirectLinkFailure.BUSY),
+                    when (it) {
+                        "on" -> com.crossdrop.core.connect.DirectLinkState.On(
+                            com.crossdrop.core.connect.DirectWifi.SSID, com.crossdrop.core.connect.DirectWifi.PASSWORD, "WPA",
+                            ip, container.listenerPort.value, container.instanceId, oneTap = true,
+                        )
+                        "own" -> com.crossdrop.core.connect.DirectLinkState.On(
+                            "AndroidShare_4821", "k9Qm-x2Lp", "WPA", ip, container.listenerPort.value, container.instanceId,
+                            wifiWasOff = true,
+                        )
+                        else -> com.crossdrop.core.connect.DirectLinkState.Failed(com.crossdrop.core.connect.DirectLinkFailure.BUSY)
+                    },
                 )
+            }, 1_500)
+        }
+        // -e dev_join_wifi 1 — "Join a CrossDrop Wi-Fi" for real (system dialog); -e dev_join_wifi_skip <host> skips the
+        // Wi-Fi step and announces to <host> at the CrossDrop Wi-Fi's well-known port (another device's debug listener).
+        if (intent?.hasExtra("dev_join_wifi") == true) {
+            android.os.Handler(mainLooper).postDelayed({ container.wifiJoin.joinCrossDropWifi() }, 2_000)
+        }
+        intent?.getStringExtra("dev_join_wifi_skip")?.let { host ->
+            android.os.Handler(mainLooper).postDelayed({
+                container.wifiJoin.connectForDebug(com.crossdrop.core.connect.DirectWifi.joinCode(host))
             }, 1_500)
         }
         // -e dev_shake 1 — this phone "is shaken" 3 s after launch (emulators can't be shaken by hand).

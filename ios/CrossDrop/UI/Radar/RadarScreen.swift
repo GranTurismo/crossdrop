@@ -42,6 +42,8 @@ struct RadarScreen: View {
     var onShowConnectGuide: () -> Void = {}
     /// "Scan a code" (iPhone/iPad): join another phone's private link. Nil where the device can't (Mac).
     var onScanCode: (() -> Void)? = nil
+    /// "Join a CrossDrop Wi-Fi" (one tap onto an Android phone's network); nil where this device can't join from the app.
+    var onJoinWifi: (() -> Void)? = nil
     @StateObject private var connectHint = ConnectHintModel()
     @State private var pickingLanguage = I18n.devFlag("dev_language_sheet")
 
@@ -93,7 +95,9 @@ struct RadarScreen: View {
                         ShakeHintCard { withAnimation(.easeInOut(duration: 0.3)) { shakeHintVisible = false } }
                             .transition(.asymmetric(insertion: .offset(y: 36).combined(with: .opacity), removal: .opacity))
                     }
-                    if connectHint.hint != .none { ConnectHelpCard(hint: connectHint.hint, onGuide: onShowConnectGuide, onScan: onScanCode) }
+                    ConnectHelpGate(join: container.wifiJoin, hint: connectHint.hint, onGuide: onShowConnectGuide,
+                                    onScan: onScanCode, onJoinWifi: onJoinWifi)
+                    CrossDropWifiStatusRow(join: container.wifiJoin, onScan: { onScanCode?() })
                     JoinedLinkRow(join: container.wifiJoin)
                     #if !targetEnvironment(macCatalyst)
                     ClipboardShareCard(share: container.pasteboard, pairings: container.pairings)
